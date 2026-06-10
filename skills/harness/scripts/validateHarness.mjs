@@ -7,6 +7,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SKILL_BODY_MAX_LINES = 500;
+const BUILTIN_AGENT_TYPES = new Set([
+  'claude',
+  'claude-code-guide',
+  'Explore',
+  'general-purpose',
+  'Plan',
+  'statusline-setup',
+]);
+const FOLLOW_UP_KEYWORDS = ['다시', '재실행', '재구성', '수정', '보완', '업데이트', '개선'];
 
 const exists = async ({ path }) => {
   try {
@@ -36,7 +45,15 @@ const parseFrontmatter = ({ content }) => {
   return fields;
 };
 
-const validateSkillFile = async ({ skillDir, dirName, issues }) => {
+const collectAgentNames = async ({ agentsRoot }) => {
+  const names = new Set();
+  for (const entry of await listDir({ path: agentsRoot })) {
+    if (entry.isFile() && entry.name.endsWith('.md')) names.add(entry.name.replace(/\.md$/, ''));
+  }
+  return names;
+};
+
+const validateSkillFile = async ({ skillDir, dirName, agentNames, issues }) => {
   const skillPath = join(skillDir, 'SKILL.md');
   if (!(await exists({ path: skillPath }))) {
     issues.push({ level: 'error', path: skillPath, message: 'SKILL.md가 없다' });
@@ -59,6 +76,12 @@ const validateSkillFile = async ({ skillDir, dirName, issues }) => {
     }
     if (!frontmatter.description) {
       issues.push({ level: 'error', path: skillPath, message: 'frontmatter에 description이 없다' });
+    } else if (!FOLLOW_UP_KEYWORDS.some((keyword) => frontmatter.description.includes(keyword))) {
+      issues.push({
+        level: 'warn',
+        path: skillPath,
+        message: `description에 후속 작업 키워드(${FOLLOW_UP_KEYWORDS.join('·')} 등)가 없다 — 재실행·수정 요청이 트리거되지 않는다`,
+      });
     }
   }
 
@@ -83,14 +106,27 @@ const validateSkillFile = async ({ skillDir, dirName, issues }) => {
       });
     }
   }
+
+  const referencedAgentTypes = [
+    ...content.matchAll(/\b(?:agentType|agent_type|subagent_type)\s*:\s*['"]([\w-]+)['"]/g),
+  ].map((typeMatch) => typeMatch[1]);
+  for (const agentType of new Set(referencedAgentTypes)) {
+    if (BUILTIN_AGENT_TYPES.has(agentType) || agentNames.has(agentType)) continue;
+    issues.push({
+      level: 'error',
+      path: skillPath,
+      message: `본문이 참조하는 에이전트 타입 ${agentType}의 정의 파일이 없다 (.claude/agents/${agentType}.md)`,
+    });
+  }
 };
 
-const validateSkillsRoot = async ({ skillsRoot, issues }) => {
+const validateSkillsRoot = async ({ skillsRoot, agentNames, issues }) => {
   for (const entry of await listDir({ path: skillsRoot })) {
     if (!entry.isDirectory()) continue;
     await validateSkillFile({
       skillDir: join(skillsRoot, entry.name),
       dirName: entry.name,
+      agentNames,
       issues,
     });
   }
@@ -107,6 +143,34 @@ const validateAgents = async ({ agentsRoot, issues }) => {
     if (!frontmatter?.description) {
       issues.push({ level: 'error', path: agentPath, message: 'frontmatter에 description이 없다' });
     }
+  }
+};
+
+const validateClaudeMdPointer = async ({ rootDir, issues }) => {
+  const hasSkills = (await listDir({ path: join(rootDir, '.claude', 'skills') })).some((entry) =>
+    entry.isDirectory(),
+  );
+  const hasAgents = (await listDir({ path: join(rootDir, '.claude', 'agents') })).some(
+    (entry) => entry.isFile() && entry.name.endsWith('.md'),
+  );
+  if (!hasSkills && !hasAgents) return;
+
+  const claudeMdPath = join(rootDir, 'CLAUDE.md');
+  if (!(await exists({ path: claudeMdPath }))) {
+    issues.push({
+      level: 'warn',
+      path: claudeMdPath,
+      message: 'CLAUDE.md가 없다 — 하네스 포인터(트리거 규칙 + 변경 이력)를 등록하라 (Phase 4)',
+    });
+    return;
+  }
+  const content = await readFile(claudeMdPath, 'utf8');
+  if (!/##\s*하네스/.test(content)) {
+    issues.push({
+      level: 'warn',
+      path: claudeMdPath,
+      message: 'CLAUDE.md에 하네스 포인터 섹션(## 하네스: ...)이 없다 (Phase 4)',
+    });
   }
 };
 
@@ -145,10 +209,15 @@ const validatePluginManifests = async ({ rootDir, issues }) => {
 
 export const validateHarness = async ({ rootDir }) => {
   const issues = [];
-  await validateSkillsRoot({ skillsRoot: join(rootDir, '.claude', 'skills'), issues });
-  await validateSkillsRoot({ skillsRoot: join(rootDir, 'skills'), issues });
+  const agentNames = new Set([
+    ...(await collectAgentNames({ agentsRoot: join(rootDir, '.claude', 'agents') })),
+    ...(await collectAgentNames({ agentsRoot: join(rootDir, 'agents') })),
+  ]);
+  await validateSkillsRoot({ skillsRoot: join(rootDir, '.claude', 'skills'), agentNames, issues });
+  await validateSkillsRoot({ skillsRoot: join(rootDir, 'skills'), agentNames, issues });
   await validateAgents({ agentsRoot: join(rootDir, '.claude', 'agents'), issues });
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
+  await validateClaudeMdPointer({ rootDir, issues });
   await validatePluginManifests({ rootDir, issues });
   return issues;
 };

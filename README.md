@@ -30,6 +30,18 @@
 
 ## 사용
 
+**슬래시 명령어 (권장)** — 플러그인 스킬은 자동으로 슬래시 명령어로 노출되므로 별도 설정 없이 바로 쓸 수 있다. 자연어 트리거보다 확실하게 스킬을 실행한다:
+
+```
+/guksu-harness:harness 이 프로젝트에 하네스 구축해줘
+/guksu-harness:harness 점검
+/guksu-harness:harness QA 에이전트 추가
+```
+
+(이름이 다른 명령어와 겹치지 않으면 `/harness ...`로 줄여 입력해도 된다)
+
+**자연어 트리거** — description 매칭으로도 동작한다:
+
 ```
 > 이 프로젝트에 하네스 구축해줘
 > 하네스 점검해줘 / 에이전트·스킬 동기화해줘
@@ -45,6 +57,9 @@
 3. **산출물은 파일 기반** — 중간 산출물 보존, 감사 추적 가능.
 4. **단일 출처 문서 준수** — 설계·컨벤션 문서와 어긋나면 사용자에게 확인.
 5. **QA는 경계면 교차검증 + incremental** — 생산자↔소비자 shape 비교, 모듈 완성 직후마다.
+6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
+
+규칙 1(git)·6(시크릿)은 지침에 그치지 않고 생성되는 하네스의 `.claude/settings.json`에 **PreToolUse 훅 + permissions deny로 기계적으로 강제**된다.
 
 ## 구조
 
@@ -54,12 +69,13 @@ guksu-harness/
 │   ├── marketplace.json
 │   └── plugin.json
 └── skills/harness/
-    ├── SKILL.md                      # 핵심 워크플로우 (5 Phase)
+    ├── SKILL.md                      # 핵심 워크플로우 (5 Phase + 인자 해석 + 해체 절차)
     ├── references/
     │   ├── execution-modes.md        # Workflow·팀·서브 에이전트 결정 트리 (핵심)
     │   ├── agent-design.md           # 분리 기준 4축, 정의 템플릿, QA 가이드
     │   ├── skill-authoring.md        # description 트리거, progressive disclosure
     │   ├── orchestrator-template.md  # 모드별 골격, 데이터 전달, 에러 핸들링
+    │   ├── hooks-and-permissions.md  # 절대 규칙의 기계적 강제 (훅·deny·allowlist)
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
     └── scripts/
         ├── validateHarness.mjs       # 하네스 구조 검증기
