@@ -15,14 +15,17 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 ```
 
 검사 항목:
-- 스킬: SKILL.md 존재, frontmatter `name`/`description` 존재, name=디렉토리명 일치, 본문이 참조하는 `references/` 파일 실존, 500줄 초과 경고
-- 에이전트 참조: 스킬 본문의 `agentType`/`agent_type`/`subagent_type` 값이 빌트인이 아니면 `.claude/agents/{name}.md` 실존 검사 (dead link)
+- 스킬: SKILL.md 존재, frontmatter `name`/`description` 존재(멀티라인 값 지원), name=디렉토리명 일치, 본문이 참조하는 `references/` 파일 실존, 500줄 초과 경고
+- 에이전트 참조: 스킬 본문의 `agentType`/`agent_type`/`subagent_type` 값이 빌트인이 아니면 `.claude/agents/{name}.md` 실존 검사 — 누락 시 경고 (새 빌트인 타입 오탐 가능성 때문에 error가 아니라 warn이며, 커스텀 타입의 dead link면 반드시 수정한다)
 - description: 후속 작업 키워드(다시·재실행·수정·보완 등) 누락 시 경고
 - CLAUDE.md: 하네스(에이전트/스킬)가 존재하는데 포인터 섹션(`## 하네스:`)이 없으면 경고
 - 에이전트: frontmatter `name`/`description` 존재
+- 훅·권한: 하네스가 존재하는데 `.claude/settings.json`에 git 차단 훅·시크릿 deny가 없으면 경고 (`hooks-and-permissions.md`)
+- 오케스트레이터: name에 `orchestrator`가 포함된 스킬에 `## 테스트 시나리오` 섹션이 없으면 경고
+- `.claude/commands/`: 파일이 존재하면 경고 (하네스는 여기에 아무것도 생성하지 않는다)
 - 플러그인 repo: plugin.json ↔ marketplace.json 버전 일치
 
-**error 0건이 통과 기준이다.** Phase 0 감사와 Phase 3 검증 양쪽에서 실행한다. warn 중 CLAUDE.md 포인터는 Phase 4에서 해소되므로 Phase 3 시점에는 남아 있어도 된다. 추가로 수동 확인: `.claude/commands/`에 아무것도 생성되지 않았는가, 훅·permissions가 구성되었는가(`hooks-and-permissions.md`).
+**error 0건이 통과 기준이다.** Phase 0 감사와 Phase 3 검증 양쪽에서 실행한다. warn 중 CLAUDE.md 포인터는 Phase 4에서 해소되므로 Phase 3 시점에는 남아 있어도 되지만, 훅·권한 경고는 Phase 2 누락이므로 Phase 3에서 해소한다.
 
 ## 2. 트리거 검증
 

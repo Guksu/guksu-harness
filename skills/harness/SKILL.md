@@ -68,7 +68,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
    | 모드 | 선택 기준 | 조율 수단 |
    |------|----------|----------|
    | **Workflow** | 흐름이 사전 결정 가능(팬아웃·파이프라인·반복), 대량 항목, 스키마 검증된 산출물 | `Workflow` 도구 스크립트 |
-   | **에이전트 팀** | 진행 중 협상·피드백 루프(기획↔구현↔QA), 중간 산출물 상호 참조 | `TeamCreate`+`SendMessage`+`TaskCreate` |
+   | **에이전트 팀** | 진행 중 협상·피드백 루프(기획↔구현↔QA), 중간 산출물 상호 참조 | `Agent(name)` 스폰+`SendMessage`+`TaskCreate` (암시적 단일 팀) |
    | **서브 에이전트** | 단발 위임, 결과만 회수 | `Agent` 도구 |
    | **하이브리드** | Phase별 특성이 다름 | Phase마다 위 모드 조합 |
 
@@ -80,7 +80,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 1. **에이전트 정의** — `프로젝트/.claude/agents/{name}.md`. 빌트인 타입(general-purpose 등)을 쓰더라도 정의 파일은 만든다(다음 세션 재사용·협업 프로토콜 명시를 위해). 필수 섹션과 템플릿: `references/agent-design.md`
 2. **스킬 생성** — `프로젝트/.claude/skills/{name}/SKILL.md`. description은 적극적(pushy)으로, 본문은 Why 중심·명령형·500줄 이내로 → `references/skill-authoring.md`
 3. **오케스트레이터** — 실행 모드별 골격·데이터 전달 프로토콜·에러 핸들링·후속 작업(부분 재실행) 지원: `references/orchestrator-template.md`. 기존 확장이면 새로 만들지 말고 기존 오케스트레이터를 수정한다.
-4. **훅·권한 구성** — 절대 규칙 1(git)·6(시크릿)을 `.claude/settings.json`의 PreToolUse 훅·permissions deny로 기계적으로 강제하고, 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다 → `references/hooks-and-permissions.md`
+4. **훅·권한 구성** — 절대 규칙 1(git)·6(시크릿)을 기계적으로 강제한다: 이 스킬의 `assets/hooks/` 훅 2종(git 변경 차단 + Bash 경유 시크릿 접근 차단)을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 TDD 종료 게이트(Stop 훅)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
 
 ### Phase 3: 검증
 
@@ -116,7 +116,8 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 - [ ] `.claude/skills/` 스킬 (SKILL.md ≤500줄, 세부는 references/)
 - [ ] 오케스트레이터 1개 — 실행 모드 명시 + 데이터 흐름 + 에러 핸들링 + Phase 0 컨텍스트 확인(초기/부분 재실행) + 테스트 시나리오
 - [ ] 절대 규칙 6종이 오케스트레이터·에이전트 정의에 반영됨
-- [ ] git 차단 훅 + 시크릿 deny 권한이 `.claude/settings.json`에 구성됨 (기존 설정은 병합)
+- [ ] 훅 2종(git·시크릿)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
+- [ ] (Workflow 모드) 반복 실행 스크립트를 `.claude/workflows/{name}.mjs`로 저장하고 오케스트레이터가 이름으로 호출
 - [ ] 모델 하드코딩 없음 (오버라이드 시 이유 명시)
 - [ ] 신규 생성 전 기존 에이전트/스킬 중복 검토 완료
 - [ ] description이 pushy하게 작성되고 후속 작업 키워드 포함

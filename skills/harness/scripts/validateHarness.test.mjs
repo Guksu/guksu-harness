@@ -116,7 +116,7 @@ test('plugin.json과 marketplace.json의 버전이 다르면 에러', async () =
   await rm(rootDir, { recursive: true, force: true });
 });
 
-test('본문이 참조하는 에이전트 타입의 정의 파일이 없으면 에러', async () => {
+test('본문이 참조하는 에이전트 타입의 정의 파일이 없으면 경고', async () => {
   const skillBody = `---
 name: demo-skill
 description: "데모 스킬. 재실행 요청 시에도 사용."
@@ -125,16 +125,16 @@ description: "데모 스킬. 재실행 요청 시에도 사용."
 # Demo
 
 agent('검수', { agentType: 'qa-inspector' })
-TeamCreate(members: [{ agent_type: "general-purpose" }])
+Agent(name: "runner", subagent_type: "general-purpose")
 `;
   const rootDir = await makeFixture({
     files: { '.claude/skills/demo-skill/SKILL.md': skillBody },
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(
-    issues.some((issue) => issue.level === 'error' && issue.message.includes('qa-inspector')),
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('qa-inspector')),
   );
-  // 빌트인 타입은 에러가 아니다
+  // 빌트인 타입은 지적하지 않는다
   assert.ok(!issues.some((issue) => issue.message.includes('general-purpose')));
   await rm(rootDir, { recursive: true, force: true });
 });
@@ -194,6 +194,104 @@ test('CLAUDE.md에 하네스 포인터 섹션이 있으면 경고가 없다', as
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(!issues.some((issue) => issue.message.includes('CLAUDE.md')));
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('하네스가 있는데 git 훅·시크릿 deny가 미구성이면 경고', async () => {
+  const rootDir = await makeFixture({
+    files: { '.claude/agents/demo-agent.md': VALID_AGENT },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('blockGitMutation')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('시크릿 deny')),
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('git 훅과 시크릿 deny가 구성되어 있으면 경고가 없다', async () => {
+  const settings = {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: 'Bash',
+          hooks: [
+            { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/blockGitMutation.mjs"' },
+          ],
+        },
+      ],
+    },
+    permissions: { deny: ['Read(./.env)', 'Read(./.env.*)'] },
+  };
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/agents/demo-agent.md': VALID_AGENT,
+      '.claude/settings.json': JSON.stringify(settings),
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(!issues.some((issue) => issue.message.includes('blockGitMutation')));
+  assert.ok(!issues.some((issue) => issue.message.includes('시크릿 deny')));
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('.claude/commands/에 파일이 있으면 경고', async () => {
+  const rootDir = await makeFixture({
+    files: { '.claude/commands/deploy.md': '# deploy' },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('commands')),
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('오케스트레이터 스킬에 테스트 시나리오 섹션이 없으면 경고', async () => {
+  const skillBody = `---
+name: demo-orchestrator
+description: "데모 오케스트레이터. 재실행 요청 시에도 사용."
+---
+
+# Demo Orchestrator
+
+## 실행 모드: Workflow
+`;
+  const rootDir = await makeFixture({
+    files: { '.claude/skills/demo-orchestrator/SKILL.md': skillBody },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('테스트 시나리오')),
+  );
+  const withSection = await makeFixture({
+    files: {
+      '.claude/skills/demo-orchestrator/SKILL.md': `${skillBody}\n## 테스트 시나리오\n\n### 정상 흐름\n`,
+    },
+  });
+  const issuesWithSection = await validateHarness({ rootDir: withSection });
+  assert.ok(!issuesWithSection.some((issue) => issue.message.includes('테스트 시나리오')));
+  await rm(rootDir, { recursive: true, force: true });
+  await rm(withSection, { recursive: true, force: true });
+});
+
+test('멀티라인 frontmatter description을 파싱한다', async () => {
+  const skillBody = `---
+name: demo-skill
+description: >-
+  데모 스킬. 여러 줄에 걸친 설명이며
+  재실행 요청 시에도 사용.
+---
+
+# Demo
+`;
+  const rootDir = await makeFixture({
+    files: { '.claude/skills/demo-skill/SKILL.md': skillBody },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(!issues.some((issue) => issue.message.includes('description이 없다')));
+  assert.ok(!issues.some((issue) => issue.message.includes('후속 작업 키워드')));
   await rm(rootDir, { recursive: true, force: true });
 });
 

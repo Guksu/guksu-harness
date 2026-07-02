@@ -49,6 +49,7 @@
 | `parallel(thunks)` | 전부 끝날 때까지 대기(배리어). 전체 결과가 동시에 필요할 때만(중복 제거, 0건 조기 종료) |
 | `phase(title)` / `log(msg)` | 진행 상황 그룹핑/표시 |
 | `budget` | 토큰 버짓 조회 — 버짓 기반 반복 깊이 조절 |
+| `workflow(nameOrRef, args)` | 저장된 워크플로우 또는 스크립트 파일을 하위 단계로 실행 (1단계 중첩만 허용) |
 
 **스크립트 골격 예시 (찾기→검증 파이프라인):**
 
@@ -68,16 +69,25 @@ const results = await pipeline(
 return results.flat().filter(Boolean).filter((f) => f.verdict?.isReal)
 ```
 
+**재사용과 재개 — 하네스가 활용할 핵심 기능:**
+- **저장 워크플로우**: 반복 실행할 스크립트는 `프로젝트/.claude/workflows/{name}.mjs`에 저장하고 `Workflow({name})` 또는 스크립트 안에서 `workflow(name, args)`로 호출한다. 오케스트레이터 스킬 본문에 골격 텍스트로만 두는 것보다 재사용·버전 관리·`args` 파라미터화가 깔끔하다 — Workflow 모드 하네스의 산출물로 남긴다.
+- **`scriptPath` 반복 수정**: 모든 실행은 스크립트를 세션 디렉토리에 파일로 남긴다. 수정 재실행 시 스크립트 전문을 재전송하지 말고 그 파일을 Edit 후 `Workflow({scriptPath})`로 재호출한다.
+- **`resumeFromRunId` 재개**: 이전 실행의 완료된 `agent()` 호출은 캐시로 즉시 반환되고, 수정·추가된 호출부터만 실제 실행된다. 오케스트레이터의 **부분 재실행**(Phase 0 컨텍스트 확인)을 Workflow 모드에서 구현하는 기본 수단이다.
+- **`opts.effort`**: 모델 정책과 같은 원칙 — 기본은 세션 상속(생략). 기계적 단계만 `low`로 낮추고, 최난도 검증·심판 단계만 상향하며 이유를 주석으로 남긴다.
+
 **주의사항:**
 - 스크립트는 순수 JS(TS 문법 불가), `Date.now()`/`Math.random()` 사용 불가(재개 기능이 깨짐) — 타임스탬프는 `args`로 주입
 - `meta`는 순수 리터럴이어야 한다
 - 모델 오버라이드(`opts.model`)는 기본 생략 — 세션 모델 상속이 원칙
 - Workflow는 사용자가 멀티 에이전트 오케스트레이션을 명시적으로 요청한 맥락에서 실행된다. 하네스의 오케스트레이터 스킬이 Workflow를 실행 수단으로 쓰는 경우, 그 사실을 스킬 description과 본문에 명시해 사용자가 스킬 호출로 이미 옵트인했음을 분명히 한다
 - 에이전트 정의 파일(`.claude/agents/`)은 Workflow 모드에서도 만든다 — `agentType` 옵션으로 연결
+- 결과가 비었거나 이상하면 추측하지 말고 transcript 디렉토리의 `journal.jsonl`을 읽는다 — 각 `agent()`의 실제 반환값이 기록되어 있다
 
 ## 3. 에이전트 팀
 
-`TeamCreate`로 팀을 만들고 `TaskCreate`로 의존성 있는 작업을 등록하면, 팀원들이 `SendMessage`로 직접 통신하며 자체 조율한다. 리더(오케스트레이터)는 진행을 모니터링하고 결과를 종합한다.
+세션에는 암시적 팀이 항상 하나 존재한다 — 별도의 팀 생성·해체 단계가 없다. `Agent` 도구에 `name`을 지정해 팀원을 스폰하고, 이후 `SendMessage(to: 이름)`으로 그 팀원의 컨텍스트를 유지한 채 대화를 이어간다. 의존성 있는 작업은 `TaskCreate`로 공유 작업 목록에 등록하면 팀원들이 상태를 갱신하며 자체 조율한다. 리더(오케스트레이터)는 진행을 모니터링하고 결과를 종합한다.
+
+> **구 API 주의:** `TeamCreate`/`TeamDelete`는 더 이상 존재하지 않고, `Agent` 도구의 `team_name` 파라미터는 무시된다(deprecated). 감사(Phase 0)에서 기존 하네스가 이 도구들을 참조하면 현행화 대상이다.
 
 **언제 선택하는가:**
 - 생성-검증 피드백 루프: developer가 모듈을 완성할 때마다 QA가 교차검증하고 수정 요청을 보내는 구조
@@ -87,11 +97,11 @@ return results.flat().filter(Boolean).filter((f) => f.verdict?.isReal)
 **골격:**
 
 ```
-TeamCreate(team_name, members: [{ name, agent_type, prompt }...])
+Agent(name: "planner", subagent_type, prompt: 정의 전문 + 작업 컨텍스트 + 산출물 경로)
+Agent(name: "developer", ...)   ← 독립 팀원은 한 메시지에 병렬 스폰
 TaskCreate(tasks: [{ title, assignee, depends_on }...])
-→ 팀원 자체 조율 (SendMessage)
-→ 리더: TaskGet으로 모니터링, 막힌 팀원 지원
-→ 산출물 파일 확인 → 종료 판정 → TeamDelete
+→ 팀원 자체 조율 (SendMessage) — 리더는 TaskList/TaskGet으로 모니터링, 막힌 팀원은 SendMessage로 지원
+→ 산출물 파일 확인 → 종료 판정 → 사용자 보고
 ```
 
 **팀 크기:** 3명의 집중된 팀원이 5명의 산만한 팀원보다 낫다.
@@ -102,7 +112,7 @@ TaskCreate(tasks: [{ title, assignee, depends_on }...])
 | 중규모 (10~20개) | 3~5명 |
 | 대규모 (20개+) | 5~7명 |
 
-**제약:** 팀은 세션당 하나만 활성화된다. Phase별로 다른 전문가 조합이 필요하면 산출물을 파일로 저장 → `TeamDelete` → 새 팀 생성.
+**Phase 전환:** Phase별로 다른 전문가 조합이 필요하면 산출물을 파일로 남기고 다음 Phase의 팀원을 새로 스폰한다. 이전 팀원이 계속 필요하면 `SendMessage`로 컨텍스트를 유지한 채 재활용한다.
 
 ## 4. 서브 에이전트
 

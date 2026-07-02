@@ -59,7 +59,7 @@
 5. **QA는 경계면 교차검증 + incremental** — 생산자↔소비자 shape 비교, 모듈 완성 직후마다.
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
 
-규칙 1(git)·6(시크릿)은 지침에 그치지 않고 생성되는 하네스의 `.claude/settings.json`에 **PreToolUse 훅 + permissions deny로 기계적으로 강제**된다.
+규칙 1(git)·6(시크릿)은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 2종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성 하네스에는 테스트 실패 상태로 턴을 끝내지 못하게 하는 TDD 종료 게이트(Stop 훅)를 선택 적용할 수 있다.
 
 ## 구조
 
@@ -77,16 +77,20 @@ guksu-harness/
     │   ├── orchestrator-template.md  # 모드별 골격, 데이터 전달, 에러 핸들링
     │   ├── hooks-and-permissions.md  # 절대 규칙의 기계적 강제 (훅·deny·allowlist)
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
+    ├── assets/hooks/
+    │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (생성 하네스로 복사됨)
+    │   └── blockSecretAccess.mjs     # Bash 경유 시크릿 접근 차단 훅
     └── scripts/
         ├── validateHarness.mjs       # 하네스 구조 검증기
-        └── validateHarness.test.mjs
+        ├── validateHarness.test.mjs
+        └── hooks.test.mjs            # 훅 차단/허용 회귀 테스트
 ```
 
 ## 개발
 
 ```bash
-# 검증기 테스트
-node --test skills/harness/scripts/validateHarness.test.mjs
+# 검증기 + 훅 테스트
+node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs
 
 # 이 repo 자체를 검증 (셀프 호스팅 — 하네스가 자기 규칙을 통과해야 한다)
 node skills/harness/scripts/validateHarness.mjs .

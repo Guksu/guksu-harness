@@ -2,6 +2,26 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.2.0] - 2026-07-02
+
+### Changed
+
+- **에이전트 팀 API 현행화** — `TeamCreate`/`TeamDelete` 기반 골격을 현행 모델(암시적 단일 팀 + `Agent(name)` 스폰 + `SendMessage` 컨텍스트 유지 + `TaskCreate` 공유 작업 목록)로 교체. `team_name` 파라미터 deprecated 명시, Phase 전환은 새 팀원 스폰으로 (execution-modes / orchestrator-template / SKILL.md)
+- **git 차단 훅 우회 봉합** — `git -C <path> commit`·`git -c <k=v> push`처럼 값을 별도 인자로 받는 전역 플래그가 판정 정규식을 우회하던 결함 수정, `worktree` 추가
+- **agentType dead-link 검사를 error → warn으로 조정** — 새 빌트인 타입 오탐이 통과 기준(error 0건)을 깨지 않도록. 메시지에 커스텀/빌트인 분기 안내 포함
+
+### Added
+
+- **훅 스크립트 번들** (`assets/hooks/`) — `blockGitMutation.mjs` + `blockSecretAccess.mjs`를 실물 파일로 배포, 문서 코드블록 복사 방식 폐지. 회귀 테스트 4종(`scripts/hooks.test.mjs`) 포함
+- **시크릿 Bash 우회 차단 훅** (`blockSecretAccess.mjs`) — permissions.deny는 Read 도구만 막고 `cat .env` 같은 Bash 경유 읽기는 통과하던 구멍을 PreToolUse 훅으로 봉합. `.env.example` 등 예시 파일은 허용
+- **TDD 종료 게이트 (Stop 훅, 선택)** — 테스트 실패 상태로 턴 종료를 차단해 절대 규칙 2를 기계적으로 강제. `stop_hook_active` 무한 루프 가드 포함 (hooks-and-permissions.md)
+- **Workflow 최신 기능 반영** — `.claude/workflows/` 저장 워크플로우를 Workflow 모드 산출물로, `resumeFromRunId` 캐시 재개를 부분 재실행 수단으로, `scriptPath` 반복 수정, `workflow()` 중첩 호출, `opts.effort` 정책(세션 상속 기본), journal.jsonl 디버깅 (execution-modes / orchestrator-template / agent-design)
+- **validateHarness 검사 4종 확장** — (1) 하네스 존재 시 git 훅·시크릿 deny 미구성 warn, (2) `.claude/commands/` 파일 존재 warn, (3) 오케스트레이터 스킬의 `## 테스트 시나리오` 섹션 부재 warn, (4) frontmatter 멀티라인 값(`>-` 블록 스칼라·들여쓴 연속 줄) 파싱 지원. 테스트 12종 → 17종
+
+### Fixed
+
+- plugin.json·marketplace.json description의 팀 중심 구식 표현("에이전트 팀과 스킬 세트")을 모드 중립 표현("에이전트 정의와 스킬 세트")으로 통일
+
 ## [1.1.0] - 2026-06-10
 
 ### Added
