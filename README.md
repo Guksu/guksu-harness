@@ -15,6 +15,7 @@
 | 작업 기록 | 형식 자유 (에이전트마다 제각각) | **공통 워크로그 템플릿** — `docs` 스킬 + 생성되는 하네스에 자동 배포 |
 | 진화 | 지침 한 줄 | **`retro` 스킬** — 산출물 근거 회고 + 제안→승인→적용 |
 | 세션 연속성 | 없음 | **`handoff` 스킬** — 인계 문서로 세션 간 컨텍스트 이어받기 |
+| 루프 | 없음 (수동 반복 지시) | **`loop` 스킬** — 4요소 명세 + 검증자 게이트 + 토큰 예산 자동 중단 |
 | 본문 크기 | SKILL.md 458줄 | **124줄** — 세부는 references/ 5종으로 분리 (Progressive Disclosure) |
 | 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·버전 정합성 자동 검사 (테스트 포함) |
 
@@ -94,6 +95,20 @@
 - 인수 시 근거 파일을 실제로 열어 문서와 현실의 일치를 검증한 뒤 착수
 - 작업 완료 시 상태를 "완료"로 바꾸고 최종 기록은 워크로그로 — 인계 문서는 진행 중 스냅샷, 워크로그가 완결 기록
 
+## loop 스킬 — 루프 설계
+
+"~할 때까지 반복해줘/알아서 계속 고쳐줘" 같은 반복·수렴형 요청을 **루프 명세**(트리거/실행 단위/검증자/종료 규칙 + 안전장치)로 설계하고 실행 수단(`/goal`·`/loop`·검증자 게이트·Workflow 반복)에 매핑하는 독립 스킬. 프롬프트가 아니라 루프를 설계한다.
+
+```
+/guksu-harness:loop 테스트 전부 통과할 때까지 고치는 루프 만들어줘
+> 린트 클린될 때까지 알아서 반복해줘
+```
+
+- **자기평가 금지** — 종료 판정은 기계적 검증(명령 종료 코드)만. 검증 불가 목표는 루프로 만들지 않는다
+- **4요소는 사용자 확인 필수** — 트리거·실행 단위·검증자·종료 규칙을 확인받기 전에는 실행하지 않는다
+- **토큰 예산 안전장치** — 예산 초과 시 루프를 계속하지 않고 자동 중단, 진행 상황·남은 실패·사유 보고 후 종료
+- **검증자 게이트**(Stop 훅, `assets/hooks/verifierGate.mjs`) — 검증 실패 시 턴 종료 차단, 안전장치 도달 시 "보고 후 종료" 지시. TDD 게이트의 일반화(테스트+타입체크+린트 등 조합 가능)
+
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
 
 1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 명령을 절대 수행하지 않는다.
@@ -103,7 +118,7 @@
 5. **QA는 경계면 교차검증 + incremental** — 생산자↔소비자 shape 비교, 모듈 완성 직후마다.
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
 
-규칙 1(git)·6(시크릿)은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 2종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성 하네스에는 테스트 실패 상태로 턴을 끝내지 못하게 하는 TDD 종료 게이트(Stop 훅)를 선택 적용할 수 있다.
+규칙 1(git)·6(시크릿)은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 2종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 토큰 예산·최대 반복 초과 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
 
 ## 구조
 
@@ -117,11 +132,14 @@ guksu-harness/
 │   └── assets/templates/
 │       ├── worklog.md                # 공통 워크로그 템플릿 (생성 하네스로 복사됨)
 │       ├── retro.md                  # 공통 회고 템플릿 (retro 스킬이 사용)
-│       └── handoff.md                # 공통 인계 템플릿 (handoff 스킬이 사용)
+│       ├── handoff.md                # 공통 인계 템플릿 (handoff 스킬이 사용)
+│       └── loop-spec.md              # 공통 루프 명세 템플릿 (loop 스킬이 사용)
 ├── skills/retro/
 │   └── SKILL.md                      # 회고·진화 (산출물 분석 → 제안 → 승인 → 적용)
 ├── skills/handoff/
 │   └── SKILL.md                      # 세션 인계 (작성·갱신 / 인수 두 모드)
+├── skills/loop/
+│   └── SKILL.md                      # 루프 설계 (4요소 사용자 확인 + 안전장치 + 게이트)
 └── skills/harness/
     ├── SKILL.md                      # 핵심 워크플로우 (5 Phase + 인자 해석 + 해체 절차)
     ├── references/
@@ -133,7 +151,8 @@ guksu-harness/
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
     ├── assets/hooks/
     │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (생성 하네스로 복사됨)
-    │   └── blockSecretAccess.mjs     # Bash 경유 시크릿 접근 차단 훅
+    │   ├── blockSecretAccess.mjs     # Bash 경유 시크릿 접근 차단 훅
+    │   └── verifierGate.mjs          # 검증자 게이트 Stop 훅 (종료 규칙 + 토큰 예산 강제)
     └── scripts/
         ├── validateHarness.mjs       # 하네스 구조 검증기
         ├── validateHarness.test.mjs

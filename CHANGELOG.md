@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.6.0] - 2026-07-06
+
+### Added
+
+- **`loop` 스킬 (신규)** — 반복·수렴형 요청을 루프 명세(트리거/실행 단위/검증자/종료 규칙 + 안전장치)로 설계하고 실행 수단(/goal·/loop·검증자 게이트·Workflow 반복)에 매핑하는 루프 설계 스킬. 자기평가 금지(기계적 검증만), **4요소 사용자 확인 필수**(확인 전 실행 금지), 생성자·검증자 분리, 막힘 시 handoff 인계
+- **검증자 게이트 훅** (`assets/hooks/verifierGate.mjs`) — TDD 종료 게이트를 config 기반으로 일반화한 Stop 훅. `checks`(테스트·타입체크·린트 등 조합) 실패 시 턴 종료 차단, **`maxTokens`(transcript 누적 토큰)·`maxIterations` 도달 시 루프를 계속하지 않고 자동 중단 → 진행 상황·남은 실패·사유 보고 후 종료**. 문서 코드블록 템플릿(gateTestsOnStop) 방식 폐지, 회귀 테스트 6종 추가 (hooks.test 4종 → 10종)
+- **루프 명세 템플릿** (`skills/docs/assets/templates/loop-spec.md`) — docs 스킬 템플릿 4종 체제. 목표(검증 가능한 종료 상태) / 루프 설계(4요소 + 사용자 확인 필드) / 안전장치(최대 반복·토큰 예산·막힘 판정) / 실행 기록 / 종료 보고
+- **실행 모드에 루프 추가** — execution-modes 결정 트리 최상단에 반복·수렴형 판별 추가("종료를 기계적으로 검증할 수 있는가"), §5 루프 섹션 신설, 패턴 매핑에 반복 수렴 행 추가. SKILL.md Phase 1 모드 표에 루프 행 + "루프는 사용자 확인이 선행된다" 규칙
+
+### Changed
+
+- **hooks-and-permissions §4 재작성** — TDD 종료 게이트 → 검증자 게이트. 판정 순서(통과=허용 → 안전장치=보고 후 종료 → 실패=차단) 명문화
+- **validateHarness 공통 템플릿 목록 확장** — loop-spec.md 추가
+
 ## [1.5.0] - 2026-07-06
 
 ### Added
