@@ -6,7 +6,7 @@
 1. [훅 스크립트 설치 — assets/에서 복사](#1-훅-스크립트-설치--assets에서-복사)
 2. [git 차단 훅 (blockGitMutation)](#2-git-차단-훅-blockgitmutation)
 3. [시크릿 차단 — deny + 훅의 2중 방어](#3-시크릿-차단--deny--훅의-2중-방어)
-4. [TDD 종료 게이트 (Stop 훅, 선택)](#4-tdd-종료-게이트-stop-훅-선택)
+4. [검증자 게이트 (Stop 훅, 선택)](#4-검증자-게이트-stop-훅-선택)
 5. [allowlist — 자율 실행 보장](#5-allowlist--자율-실행-보장)
 6. [기존 설정과의 병합 규칙](#6-기존-설정과의-병합-규칙)
 
@@ -19,6 +19,8 @@ mkdir -p "$PROJECT/.claude/hooks"
 cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
    "{이 스킬 경로}/assets/hooks/blockSecretAccess.mjs" \
    "$PROJECT/.claude/hooks/"
+# 선택 — 검증자 게이트(§4)를 적용하는 하네스만:
+# cp "{이 스킬 경로}/assets/hooks/verifierGate.mjs" "$PROJECT/.claude/hooks/"
 ```
 
 `프로젝트/.claude/settings.json`에 두 훅을 등록한다. PreToolUse 훅은 도구 실행 전에 호출되며, **exit code 2면 호출이 차단되고 stderr가 에이전트에게 피드백**으로 전달된다:
@@ -73,26 +75,18 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 프로젝트의 실제 시크릿 위치(`.gitignore`에 단서가 있다)를 확인해 deny 패턴과 훅의 판정 패턴을 **같이** 맞춘다 — 두 겹의 커버리지가 어긋나면 우회 경로가 되살아난다. `.env.example` 같은 관례적 예시 파일은 훅이 허용한다. 기록 측(산출물에 토큰을 옮겨 적지 않는다)은 기계적 강제가 어려우므로 에이전트 정의의 작업 원칙으로 명시한다.
 
-## 4. TDD 종료 게이트 (Stop 훅, 선택)
+## 4. 검증자 게이트 (Stop 훅, 선택)
 
-절대 규칙 2(종료 기준 = 테스트 전체 통과)를 기계적으로 강제하는 선택 장치다. Stop 훅에서 테스트를 실행해 실패하면 exit 2로 턴 종료를 차단한다 — 에이전트는 실패 출력을 피드백으로 받고 수정을 계속한다.
+종료 규칙(검증 명령 전체 통과)을 기계적으로 강제하는 선택 장치다. `assets/hooks/verifierGate.mjs`를 §1과 같은 방식으로 `.claude/hooks/`에 복사하고, 스크립트 **옆에** `verifierGate.config.json`으로 검증 명령과 안전장치를 정의한다 (config가 없으면 게이트는 비활성):
 
-테스트 명령이 프로젝트마다 달라 assets/로 번들하지 않는다. 아래 템플릿의 `{TEST_COMMAND}`를 채워 `.claude/hooks/gateTestsOnStop.mjs`로 생성한다:
-
-```js
-#!/usr/bin/env node
-// Stop 훅 — 테스트 실패 상태로 턴을 끝내지 못하게 막는다 (절대 규칙 2).
-import { execSync } from 'node:child_process';
-const chunks = [];
-for await (const chunk of process.stdin) chunks.push(chunk);
-const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-if (input.stop_hook_active) process.exit(0); // 이 훅이 이미 차단한 재시도 — 무한 루프 방지
-try {
-  execSync('{TEST_COMMAND}', { stdio: 'pipe', timeout: 300000 });
-} catch (error) {
-  const output = `${error.stdout ?? ''}${error.stderr ?? ''}`.slice(0, 4000);
-  console.error(`테스트 실패 상태로 종료할 수 없다. 실패를 수정하라:\n${output}`);
-  process.exit(2);
+```json
+{
+  "checks": [
+    { "name": "test", "command": "npm test" },
+    { "name": "typecheck", "command": "npx tsc --noEmit" }
+  ],
+  "maxIterations": 10,
+  "maxTokens": 500000
 }
 ```
 
@@ -104,7 +98,7 @@ try {
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/gateTestsOnStop.mjs\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verifierGate.mjs\""
           }
         ]
       }
@@ -113,7 +107,14 @@ try {
 }
 ```
 
-**적용 조건:** 코드 생성 하네스이고, 테스트가 수 분 안에 끝나야 한다(모든 턴 종료마다 실행되므로 느린 스위트는 세션 전체를 마비시킨다). `stop_hook_active` 가드는 삭제 금지 — 없으면 "테스트 실패 → 차단 → 재시도 → 차단"의 무한 루프에 빠진다. 구성 전에 사용자에게 확인한다.
+**동작 (판정 순서가 규칙이다):**
+1. `checks` 전체 통과 → 종료 허용 (수렴 성공 — 예산과 무관).
+2. 실패가 남았는데 **안전장치 도달**(`maxTokens`: transcript 누적 토큰, `maxIterations`: 세션별 차단 횟수) → 루프를 계속하지 않는다. "진행 상황·남은 실패·중단 사유를 보고하고 종료하라"를 지시하고, 그 보고 후 종료는 통과시킨다 — **토큰 예산 초과 시 자동 중단·보고가 이렇게 강제된다.**
+3. 실패 + 여력 있음 → exit 2로 종료를 차단하고 실패 출력을 피드백으로 전달한다.
+
+절대 규칙 2의 TDD 게이트는 `checks`에 테스트 명령 하나만 넣은 특수 사례다. 루프 하네스에서는 `docs/loops/` 명세의 검증자·안전장치 값과 config를 **일치**시킨다 (loop 스킬 참조).
+
+**적용 조건:** checks가 수 분 안에 끝나야 한다(모든 턴 종료마다 실행되므로 느린 스위트는 세션 전체를 마비시킨다). 스크립트의 `stop_hook_active` 가드는 삭제 금지 — 없으면 "실패 → 차단 → 재시도 → 차단"의 무한 루프에 빠진다. 구성 전에 사용자에게 확인한다.
 
 ## 5. allowlist — 자율 실행 보장
 

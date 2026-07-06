@@ -201,6 +201,24 @@ const validateClaudeMdPointer = async ({ rootDir, issues }) => {
   }
 };
 
+// docs 스킬이 번들하는 공통 템플릿 — 하네스 구축 시 프로젝트 docs/templates/로 복사된다
+const COMMON_TEMPLATES = ['worklog.md', 'retro.md', 'handoff.md', 'loop-spec.md'];
+
+const validateCommonTemplates = async ({ rootDir, issues }) => {
+  if (!(await hasProjectHarness({ rootDir }))) return;
+
+  for (const templateName of COMMON_TEMPLATES) {
+    const templatePath = join(rootDir, 'docs', 'templates', templateName);
+    if (!(await exists({ path: templatePath }))) {
+      issues.push({
+        level: 'warn',
+        path: templatePath,
+        message: `공통 템플릿(${templateName})이 없다 — 절대 규칙 3의 기록 형식이 구성되지 않았다. docs 스킬의 assets/templates/${templateName}을 복사하라 (Phase 2)`,
+      });
+    }
+  }
+};
+
 const validateEnforcement = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
@@ -292,6 +310,7 @@ export const validateHarness = async ({ rootDir }) => {
   await validateAgents({ agentsRoot: join(rootDir, '.claude', 'agents'), issues });
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
   await validateClaudeMdPointer({ rootDir, issues });
+  await validateCommonTemplates({ rootDir, issues });
   await validateEnforcement({ rootDir, issues });
   await validateCommandsDir({ rootDir, issues });
   await validatePluginManifests({ rootDir, issues });

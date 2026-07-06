@@ -1,7 +1,7 @@
 {
   "name": "guksu-harness",
-  "description": "Guksu의 하네스 아키텍트 — 도메인 요청을 실행 모드(Workflow·에이전트 팀·서브 에이전트)에 맞는 에이전트 정의와 스킬 세트로 변환하는 메타 스킬. TDD 기본·git 사용자 전담·경계면 교차검증 QA를 모든 하네스에 내장한다.",
-  "version": "1.2.0",
+  "description": "Guksu의 하네스 아키텍트 — 도메인 요청을 실행 모드(Workflow·에이전트 팀·서브 에이전트·루프)에 맞는 에이전트 정의와 스킬 세트로 변환하는 메타 스킬. TDD 기본·git 사용자 전담·경계면 교차검증 QA·공통 워크로그 기록(docs)·회고 기반 진화(retro)·세션 인계(handoff)·루프 설계(loop)를 모든 하네스에 내장한다.",
+  "version": "1.6.0",
   "author": {
     "name": "Guksu",
     "email": "yung3152@gmail.com",

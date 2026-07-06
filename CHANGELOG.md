@@ -2,6 +2,52 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.6.0] - 2026-07-06
+
+### Added
+
+- **`loop` 스킬 (신규)** — 반복·수렴형 요청을 루프 명세(트리거/실행 단위/검증자/종료 규칙 + 안전장치)로 설계하고 실행 수단(/goal·/loop·검증자 게이트·Workflow 반복)에 매핑하는 루프 설계 스킬. 자기평가 금지(기계적 검증만), **4요소 사용자 확인 필수**(확인 전 실행 금지), 생성자·검증자 분리, 막힘 시 handoff 인계
+- **검증자 게이트 훅** (`assets/hooks/verifierGate.mjs`) — TDD 종료 게이트를 config 기반으로 일반화한 Stop 훅. `checks`(테스트·타입체크·린트 등 조합) 실패 시 턴 종료 차단, **`maxTokens`(transcript 누적 토큰)·`maxIterations` 도달 시 루프를 계속하지 않고 자동 중단 → 진행 상황·남은 실패·사유 보고 후 종료**. 문서 코드블록 템플릿(gateTestsOnStop) 방식 폐지, 회귀 테스트 6종 추가 (hooks.test 4종 → 10종)
+- **루프 명세 템플릿** (`skills/docs/assets/templates/loop-spec.md`) — docs 스킬 템플릿 4종 체제. 목표(검증 가능한 종료 상태) / 루프 설계(4요소 + 사용자 확인 필드) / 안전장치(최대 반복·토큰 예산·막힘 판정) / 실행 기록 / 종료 보고
+- **실행 모드에 루프 추가** — execution-modes 결정 트리 최상단에 반복·수렴형 판별 추가("종료를 기계적으로 검증할 수 있는가"), §5 루프 섹션 신설, 패턴 매핑에 반복 수렴 행 추가. SKILL.md Phase 1 모드 표에 루프 행 + "루프는 사용자 확인이 선행된다" 규칙
+
+### Changed
+
+- **hooks-and-permissions §4 재작성** — TDD 종료 게이트 → 검증자 게이트. 판정 순서(통과=허용 → 안전장치=보고 후 종료 → 실패=차단) 명문화
+- **validateHarness 공통 템플릿 목록 확장** — loop-spec.md 추가
+
+## [1.5.0] - 2026-07-06
+
+### Added
+
+- **`handoff` 스킬 (신규)** — 진행 중 작업을 인계 문서(목표/진행 상황/시도와 결과/다음 단계/미해결 질문)로 옮겨 세션 간 연속성을 보장하는 스킬. 작성·갱신/인수 두 모드, 작업 흐름당 1개 갱신형 문서(`docs/handoff/{slug}.md`), "시도와 결과" 누적 기록(막다른 길 반복 방지), 인수 시 근거 파일 실검증, 완료 시 워크로그로 최종 기록 이관
+- **인계 템플릿** (`skills/docs/assets/templates/handoff.md`) — docs 스킬 템플릿 3종 체제(worklog + retro + handoff)
+- **오케스트레이터 에러 핸들링에 인계 추가** — 세션 중단·컨텍스트 한계 임박 시 handoff 스킬로 인계 문서 작성 후 중단 (orchestrator-template / SKILL.md Phase 2)
+
+### Changed
+
+- **validateHarness 공통 템플릿 목록 확장** — worklog·retro에 handoff 추가
+
+## [1.4.0] - 2026-07-06
+
+### Added
+
+- **`retro` 스킬 (신규)** — 하네스 실행 산출물(워크로그·qa-report·이전 회고)을 근거로 잘된 점·반복 문제를 분석하고 에이전트 정의·스킬·오케스트레이터·description의 개선안을 도출하는 회고 스킬. 제안 → 승인 → 적용 원칙(자동 적용 금지), 근거 산출물 병기 의무, 이전 회고 대비 재발 추적, 적용 후 validateHarness 재검증 포함. "하네스는 진화하는 시스템" 원칙(Phase 4)의 실행 수단
+- **회고 템플릿** (`skills/docs/assets/templates/retro.md`) — docs 스킬 템플릿 2종 체제(worklog + retro). 잘된 점 / 반복 문제 / 개선안(상태 추적 표: 제안→승인→적용/보류) / 적용 결과 4섹션
+- **오케스트레이터 종료 절차에 회고 제안** — 생성되는 오케스트레이터 골격에 종료 단계(결과 보고 + 커밋 안내 + 회고 제안) 추가 (orchestrator-template / SKILL.md Phase 2·4)
+
+### Changed
+
+- **validateHarness 템플릿 검사 일반화** — worklog 단일 검사를 공통 템플릿 목록(worklog·retro) 순회로 확장. 템플릿별 개별 warn
+
+## [1.3.0] - 2026-07-06
+
+### Added
+
+- **`docs` 스킬 (신규)** — 모든 작업을 공통 워크로그 템플릿(1.개요 / 2.작업내용 / 3.주의사항)으로 기록하는 두 번째 스킬. 템플릿은 `skills/docs/assets/templates/worklog.md` 실물 파일로 번들(훅과 같은 결정적 복사 방식). 단일 출처 규칙(프로젝트 사본 `docs/templates/worklog.md` 우선), 병렬 에이전트 파일 분리(`-{agent}` 접미사), 기존 기록 후속 갱신 절차, 시크릿 기록 금지 포함
+- **하네스 워크로그 내장** — Phase 2에 템플릿 배포 단계(5) 추가: 생성되는 하네스의 `docs/templates/worklog.md`로 복사되고, 에이전트 정의·오케스트레이터에 "작업 완료 시 워크로그 기록" 규칙이 명시된다(절대 규칙 3의 기록 형식 구체화). agent-design / orchestrator-template / 산출물 체크리스트 반영
+- **validateHarness 검사 1종 확장** — 하네스 존재 시 `docs/templates/worklog.md` 부재 warn. 테스트 17종 → 19종
+
 ## [1.2.0] - 2026-07-02
 
 ### Changed

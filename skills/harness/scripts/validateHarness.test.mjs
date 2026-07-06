@@ -197,6 +197,41 @@ test('CLAUDE.md에 하네스 포인터 섹션이 있으면 경고가 없다', as
   await rm(rootDir, { recursive: true, force: true });
 });
 
+test('하네스가 있는데 공통 템플릿이 없으면 템플릿별로 경고', async () => {
+  const rootDir = await makeFixture({
+    files: { '.claude/agents/demo-agent.md': VALID_AGENT },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('worklog.md')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('retro.md')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('handoff.md')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('loop-spec.md')),
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('공통 템플릿이 모두 있으면 경고가 없다', async () => {
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/agents/demo-agent.md': VALID_AGENT,
+      'docs/templates/worklog.md': '# {작업명}\n\n## 1. 개요\n\n## 2. 작업내용\n\n## 3. 주의사항\n',
+      'docs/templates/retro.md': '# 회고: {대상}\n\n## 1. 잘된 점\n\n## 2. 반복 문제\n\n## 3. 개선안\n\n## 4. 적용 결과\n',
+      'docs/templates/handoff.md': '# 인계: {작업 흐름}\n\n## 1. 목표\n\n## 2. 진행 상황\n\n## 3. 시도와 결과\n\n## 4. 다음 단계\n\n## 5. 미해결 질문\n',
+      'docs/templates/loop-spec.md': '# 루프: {이름}\n\n## 1. 목표\n\n## 2. 루프 설계\n\n## 3. 안전장치\n\n## 4. 실행 기록\n\n## 5. 종료 보고\n',
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(!issues.some((issue) => issue.message.includes('공통 템플릿')));
+  await rm(rootDir, { recursive: true, force: true });
+});
+
 test('하네스가 있는데 git 훅·시크릿 deny가 미구성이면 경고', async () => {
   const rootDir = await makeFixture({
     files: { '.claude/agents/demo-agent.md': VALID_AGENT },
