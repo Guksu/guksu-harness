@@ -201,6 +201,20 @@ const validateClaudeMdPointer = async ({ rootDir, issues }) => {
   }
 };
 
+const validateWorklogTemplate = async ({ rootDir, issues }) => {
+  if (!(await hasProjectHarness({ rootDir }))) return;
+
+  const templatePath = join(rootDir, 'docs', 'templates', 'worklog.md');
+  if (!(await exists({ path: templatePath }))) {
+    issues.push({
+      level: 'warn',
+      path: templatePath,
+      message:
+        '워크로그 템플릿이 없다 — 절대 규칙 3의 공통 기록 형식이 구성되지 않았다. docs 스킬의 assets/templates/worklog.md를 복사하라 (Phase 2)',
+    });
+  }
+};
+
 const validateEnforcement = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
@@ -292,6 +306,7 @@ export const validateHarness = async ({ rootDir }) => {
   await validateAgents({ agentsRoot: join(rootDir, '.claude', 'agents'), issues });
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
   await validateClaudeMdPointer({ rootDir, issues });
+  await validateWorklogTemplate({ rootDir, issues });
   await validateEnforcement({ rootDir, issues });
   await validateCommandsDir({ rootDir, issues });
   await validatePluginManifests({ rootDir, issues });

@@ -12,6 +12,7 @@
 | Workflow 도구 | 미지원 | **1급 실행 모드** — pipeline/parallel, 스키마 검증 출력, 토큰 버짓 |
 | 모델 정책 | `model: "opus"` 하드코딩 | **세션 모델 상속이 기본** — 모델 세대가 바뀌어도 하네스가 늙지 않는다 |
 | 작업 스타일 | 없음 | **절대 규칙 내장** — TDD 기본, git 사용자 전담, 경계면 교차검증 QA, 파일 기반 산출물 |
+| 작업 기록 | 형식 자유 (에이전트마다 제각각) | **공통 워크로그 템플릿** — `docs` 스킬 + 생성되는 하네스에 자동 배포 |
 | 본문 크기 | SKILL.md 458줄 | **124줄** — 세부는 references/ 5종으로 분리 (Progressive Disclosure) |
 | 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·버전 정합성 자동 검사 (테스트 포함) |
 
@@ -50,6 +51,19 @@
 
 스킬이 트리거되면 **감사 → 설계 → 구축 → 검증 → 등록·진화**의 5단계로 진행하며, 결과물로 프로젝트에 `.claude/agents/`, `.claude/skills/`, 오케스트레이터 스킬, CLAUDE.md 포인터가 생성된다.
 
+## docs 스킬 — 공통 워크로그 기록
+
+모든 작업을 하나의 공통 템플릿(**1. 개요 / 2. 작업내용 / 3. 주의사항**)으로 기록하는 독립 스킬. 형식이 통일되어야 에이전트 간·세션 간에 서로의 기록을 예측 가능하게 소비할 수 있다.
+
+```
+/guksu-harness:docs 오늘 작업 기록해줘
+> 이번 작업 워크로그 남겨줘 / 아까 기록 보완해줘
+```
+
+- 템플릿은 `skills/docs/assets/templates/worklog.md` 실물 파일로 번들 — 프로젝트에 `docs/templates/worklog.md` 사본이 있으면 그것이 단일 출처
+- 기록 위치: `docs/worklog/{YYYY-MM-DD}-{slug}.md` (병렬 에이전트는 `-{agent}` 접미사로 각자 파일)
+- 하네스가 생성하는 프로젝트에는 Phase 2에서 템플릿이 자동 배포되고, 각 에이전트 정의에 "작업 완료 시 워크로그 기록"이 명시된다
+
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
 
 1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 명령을 절대 수행하지 않는다.
@@ -68,6 +82,10 @@ guksu-harness/
 ├── .claude-plugin/
 │   ├── marketplace.json
 │   └── plugin.json
+├── skills/docs/
+│   ├── SKILL.md                      # 공통 워크로그 기록 (개요/작업내용/주의사항)
+│   └── assets/templates/
+│       └── worklog.md                # 공통 워크로그 템플릿 (생성 하네스로 복사됨)
 └── skills/harness/
     ├── SKILL.md                      # 핵심 워크플로우 (5 Phase + 인자 해석 + 해체 절차)
     ├── references/

@@ -2,6 +2,14 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.3.0] - 2026-07-06
+
+### Added
+
+- **`docs` 스킬 (신규)** — 모든 작업을 공통 워크로그 템플릿(1.개요 / 2.작업내용 / 3.주의사항)으로 기록하는 두 번째 스킬. 템플릿은 `skills/docs/assets/templates/worklog.md` 실물 파일로 번들(훅과 같은 결정적 복사 방식). 단일 출처 규칙(프로젝트 사본 `docs/templates/worklog.md` 우선), 병렬 에이전트 파일 분리(`-{agent}` 접미사), 기존 기록 후속 갱신 절차, 시크릿 기록 금지 포함
+- **하네스 워크로그 내장** — Phase 2에 템플릿 배포 단계(5) 추가: 생성되는 하네스의 `docs/templates/worklog.md`로 복사되고, 에이전트 정의·오케스트레이터에 "작업 완료 시 워크로그 기록" 규칙이 명시된다(절대 규칙 3의 기록 형식 구체화). agent-design / orchestrator-template / 산출물 체크리스트 반영
+- **validateHarness 검사 1종 확장** — 하네스 존재 시 `docs/templates/worklog.md` 부재 warn. 테스트 17종 → 19종
+
 ## [1.2.0] - 2026-07-02
 
 ### Changed

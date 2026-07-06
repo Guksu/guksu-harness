@@ -115,6 +115,7 @@ Agent(agent-2, run_in_background: true)
 **파일 기반 규칙:**
 - 중간 산출물은 `_workspace/` 또는 `docs/{domain}/{slug}/`에 저장, 최종만 사용자 지정 경로로
 - 파일명 컨벤션: `{순번}_{agent}_{artifact}.{ext}` 또는 도메인 고정 이름(`plan.md`, `dev-notes.md`, `qa-report.md`)
+- 작업 기록은 `docs/templates/worklog.md` 공통 템플릿(1.개요/2.작업내용/3.주의사항)으로 `docs/worklog/{YYYY-MM-DD}-{slug}.md`에 남긴다 — 작업한 에이전트 본인이 기록하고, 병렬 에이전트는 `-{agent}` 접미사로 각자 파일을 만든다 (docs 스킬 참조)
 - 중간 산출물은 삭제하지 않는다 (사후 검증·감사 추적·부분 재실행의 입력)
 
 ## 5. 에러 핸들링
