@@ -197,26 +197,30 @@ test('CLAUDE.md에 하네스 포인터 섹션이 있으면 경고가 없다', as
   await rm(rootDir, { recursive: true, force: true });
 });
 
-test('하네스가 있는데 워크로그 템플릿이 없으면 경고', async () => {
+test('하네스가 있는데 공통 템플릿이 없으면 템플릿별로 경고', async () => {
   const rootDir = await makeFixture({
     files: { '.claude/agents/demo-agent.md': VALID_AGENT },
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(
-    issues.some((issue) => issue.level === 'warn' && issue.message.includes('워크로그 템플릿')),
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('worklog.md')),
+  );
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('retro.md')),
   );
   await rm(rootDir, { recursive: true, force: true });
 });
 
-test('워크로그 템플릿이 있으면 경고가 없다', async () => {
+test('공통 템플릿이 모두 있으면 경고가 없다', async () => {
   const rootDir = await makeFixture({
     files: {
       '.claude/agents/demo-agent.md': VALID_AGENT,
       'docs/templates/worklog.md': '# {작업명}\n\n## 1. 개요\n\n## 2. 작업내용\n\n## 3. 주의사항\n',
+      'docs/templates/retro.md': '# 회고: {대상}\n\n## 1. 잘된 점\n\n## 2. 반복 문제\n\n## 3. 개선안\n\n## 4. 적용 결과\n',
     },
   });
   const issues = await validateHarness({ rootDir });
-  assert.ok(!issues.some((issue) => issue.message.includes('워크로그 템플릿')));
+  assert.ok(!issues.some((issue) => issue.message.includes('공통 템플릿')));
   await rm(rootDir, { recursive: true, force: true });
 });
 

@@ -2,6 +2,18 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.4.0] - 2026-07-06
+
+### Added
+
+- **`retro` 스킬 (신규)** — 하네스 실행 산출물(워크로그·qa-report·이전 회고)을 근거로 잘된 점·반복 문제를 분석하고 에이전트 정의·스킬·오케스트레이터·description의 개선안을 도출하는 회고 스킬. 제안 → 승인 → 적용 원칙(자동 적용 금지), 근거 산출물 병기 의무, 이전 회고 대비 재발 추적, 적용 후 validateHarness 재검증 포함. "하네스는 진화하는 시스템" 원칙(Phase 4)의 실행 수단
+- **회고 템플릿** (`skills/docs/assets/templates/retro.md`) — docs 스킬 템플릿 2종 체제(worklog + retro). 잘된 점 / 반복 문제 / 개선안(상태 추적 표: 제안→승인→적용/보류) / 적용 결과 4섹션
+- **오케스트레이터 종료 절차에 회고 제안** — 생성되는 오케스트레이터 골격에 종료 단계(결과 보고 + 커밋 안내 + 회고 제안) 추가 (orchestrator-template / SKILL.md Phase 2·4)
+
+### Changed
+
+- **validateHarness 템플릿 검사 일반화** — worklog 단일 검사를 공통 템플릿 목록(worklog·retro) 순회로 확장. 템플릿별 개별 warn
+
 ## [1.3.0] - 2026-07-06
 
 ### Added
