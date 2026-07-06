@@ -2,6 +2,18 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.5.0] - 2026-07-06
+
+### Added
+
+- **`handoff` 스킬 (신규)** — 진행 중 작업을 인계 문서(목표/진행 상황/시도와 결과/다음 단계/미해결 질문)로 옮겨 세션 간 연속성을 보장하는 스킬. 작성·갱신/인수 두 모드, 작업 흐름당 1개 갱신형 문서(`docs/handoff/{slug}.md`), "시도와 결과" 누적 기록(막다른 길 반복 방지), 인수 시 근거 파일 실검증, 완료 시 워크로그로 최종 기록 이관
+- **인계 템플릿** (`skills/docs/assets/templates/handoff.md`) — docs 스킬 템플릿 3종 체제(worklog + retro + handoff)
+- **오케스트레이터 에러 핸들링에 인계 추가** — 세션 중단·컨텍스트 한계 임박 시 handoff 스킬로 인계 문서 작성 후 중단 (orchestrator-template / SKILL.md Phase 2)
+
+### Changed
+
+- **validateHarness 공통 템플릿 목록 확장** — worklog·retro에 handoff 추가
+
 ## [1.4.0] - 2026-07-06
 
 ### Added

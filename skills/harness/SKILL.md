@@ -81,7 +81,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 2. **스킬 생성** — `프로젝트/.claude/skills/{name}/SKILL.md`. description은 적극적(pushy)으로, 본문은 Why 중심·명령형·500줄 이내로 → `references/skill-authoring.md`
 3. **오케스트레이터** — 실행 모드별 골격·데이터 전달 프로토콜·에러 핸들링·후속 작업(부분 재실행) 지원: `references/orchestrator-template.md`. 기존 확장이면 새로 만들지 말고 기존 오케스트레이터를 수정한다.
 4. **훅·권한 구성** — 절대 규칙 1(git)·6(시크릿)을 기계적으로 강제한다: 이 스킬의 `assets/hooks/` 훅 2종(git 변경 차단 + Bash 경유 시크릿 접근 차단)을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 TDD 종료 게이트(Stop 훅)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
-5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 2종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 오케스트레이터 종료 절차에 "회고 제안(`retro` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro` 스킬 참조.
+5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 3종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`·`handoff.md`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 오케스트레이터 종료 절차에 "회고 제안(`retro` 스킬)"을, 에러 핸들링에 "세션 중단 시 인계 문서 작성(`handoff` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro`·`handoff` 스킬 참조.
 
 ### Phase 3: 검증
 
@@ -118,7 +118,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 - [ ] 오케스트레이터 1개 — 실행 모드 명시 + 데이터 흐름 + 에러 핸들링 + Phase 0 컨텍스트 확인(초기/부분 재실행) + 테스트 시나리오
 - [ ] 절대 규칙 6종이 오케스트레이터·에이전트 정의에 반영됨
 - [ ] 훅 2종(git·시크릿)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
-- [ ] 공통 템플릿 2종(worklog·retro)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터 종료 절차에 회고 제안 명시
+- [ ] 공통 템플릿 3종(worklog·retro·handoff)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 회고 제안(종료)·인계(중단) 명시
 - [ ] (Workflow 모드) 반복 실행 스크립트를 `.claude/workflows/{name}.mjs`로 저장하고 오케스트레이터가 이름으로 호출
 - [ ] 모델 하드코딩 없음 (오버라이드 시 이유 명시)
 - [ ] 신규 생성 전 기존 에이전트/스킬 중복 검토 완료

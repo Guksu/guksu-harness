@@ -202,7 +202,7 @@ const validateClaudeMdPointer = async ({ rootDir, issues }) => {
 };
 
 // docs 스킬이 번들하는 공통 템플릿 — 하네스 구축 시 프로젝트 docs/templates/로 복사된다
-const COMMON_TEMPLATES = ['worklog.md', 'retro.md'];
+const COMMON_TEMPLATES = ['worklog.md', 'retro.md', 'handoff.md'];
 
 const validateCommonTemplates = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;

@@ -9,8 +9,8 @@
     {
       "name": "guksu-harness",
       "source": "./",
-      "description": "Guksu의 하네스 아키텍트 — 도메인 요청을 실행 모드(Workflow·에이전트 팀·서브 에이전트)에 맞는 에이전트 정의와 스킬 세트로 변환하는 메타 스킬. 공통 워크로그 기록(docs)·회고 진화(retro) 스킬 포함.",
-      "version": "1.4.0"
+      "description": "Guksu의 하네스 아키텍트 — 도메인 요청을 실행 모드(Workflow·에이전트 팀·서브 에이전트)에 맞는 에이전트 정의와 스킬 세트로 변환하는 메타 스킬. 공통 워크로그 기록(docs)·회고 진화(retro)·세션 인계(handoff) 스킬 포함.",
+      "version": "1.5.0"
     }
   ]
 }
