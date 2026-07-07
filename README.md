@@ -16,7 +16,10 @@
 | 진화 | 지침 한 줄 | **`retro` 스킬** — 산출물 근거 회고 + 제안→승인→적용 |
 | 세션 연속성 | 없음 | **`handoff` 스킬** — 인계 문서로 세션 간 컨텍스트 이어받기 |
 | 루프 | 없음 (수동 반복 지시) | **`loop` 스킬** — 4요소 명세 + 검증자 게이트 + 토큰 예산 자동 중단 |
-| 본문 크기 | SKILL.md 458줄 | **124줄** — 세부는 references/ 5종으로 분리 (Progressive Disclosure) |
+| 컨텍스트 비용 | 통제 없음 | **컨텍스트 경제 내장** — 상시/조건부 로딩 분리, CLAUDE.md ~200줄, 대량 읽기 서브 에이전트 격리 (절대 규칙 7) |
+| 세션 간 재사용 | 없음 (매 세션 재분석) | **`digest` 스킬** — 분석 요약을 내용 해시 검증 캐시(`docs/digests/`)로 저장, 다음 세션이 원문 대신 소비 |
+| 브랜치 위생 | 없음 (main 위에서 그대로 작업) | **`branch` 스킬 + branchGuard 훅** — 작업 시작 시 브랜치 확인·승인 후 전환, 보호 브랜치 편집은 기계적 차단 |
+| 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
 | 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·버전 정합성 자동 검사 (테스트 포함) |
 
 ## 설치
@@ -63,7 +66,7 @@
 > 이번 작업 워크로그 남겨줘 / 아까 기록 보완해줘
 ```
 
-- 템플릿은 `skills/docs/assets/templates/`에 실물 파일로 번들(worklog + retro + handoff 3종) — 프로젝트 `docs/templates/` 사본이 있으면 그것이 단일 출처
+- 템플릿은 `skills/docs/assets/templates/`에 실물 파일로 번들(worklog + retro + handoff + loop-spec + digest 5종) — 프로젝트 `docs/templates/` 사본이 있으면 그것이 단일 출처
 - 기록 위치: `docs/worklog/{YYYY-MM-DD}-{slug}.md` (병렬 에이전트는 `-{agent}` 접미사로 각자 파일)
 - 하네스가 생성하는 프로젝트에는 Phase 2에서 템플릿이 자동 배포되고, 각 에이전트 정의에 "작업 완료 시 워크로그 기록"이 명시된다
 
@@ -109,16 +112,45 @@
 - **토큰 예산 안전장치** — 예산 초과 시 루프를 계속하지 않고 자동 중단, 진행 상황·남은 실패·사유 보고 후 종료
 - **검증자 게이트**(Stop 훅, `assets/hooks/verifierGate.mjs`) — 검증 실패 시 턴 종료 차단, 안전장치 도달 시 "보고 후 종료" 지시. TDD 게이트의 일반화(테스트+타입체크+린트 등 조합 가능)
 
+## digest 스킬 — 세션 간 지식 캐시
+
+프롬프트 캐시는 세션 안에서만 산다 — 세션이 바뀌면 같은 대형 파일을 처음부터 다시 읽는다. 이 스킬은 대형 파일·모듈의 분석 결과를 다이제스트(`docs/digests/{slug}.md`)로 저장하고, 다음 세션이 원문 대신 다이제스트를 먼저 소비해 반복 분석 토큰을 없앤다. handoff가 "작업 상태"의 캐시라면 digest는 "코드 이해"의 캐시다.
+
+```
+/guksu-harness:digest 이 모듈 다이제스트 만들어줘
+> 코드 요약 캐싱해줘 / 다이제스트 갱신해줘
+```
+
+- **신선도는 내용 해시로 판정** — 소스별 해시를 frontmatter에 기록하고, 사용 전 `scripts/checkFreshness.mjs`로 fresh/stale/missing을 검증한다 (mtime은 체크아웃만으로 바뀌므로 쓰지 않는다)
+- **stale이면 바뀐 소스만** 다시 읽고 다이제스트를 갱신 — 전체 재작성 아님
+- **다이제스트는 지도이지 원문 대체가 아니다** — 수정할 파일은 원문을 읽는다
+- 하네스 연동: 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인 + 대형 분석 완료 시 다이제스트 기록"이 명시된다 (절대 규칙 7의 세션 간 실행 수단)
+
+## branch 스킬 — 작업 브랜치 확인
+
+보호 브랜치(main 등) 위에서 시작된 작업은 커밋 시점에야 발견된다 — 그때는 이미 변경이 쌓여 있다. 이 스킬은 **작업 시작 시점**에 현재 브랜치를 점검하고, 보호 브랜치라면 어떤 브랜치로 이동/생성할지 사용자 확인을 받은 뒤 전환한다.
+
+```
+/guksu-harness:branch 새 브랜치에서 작업하자
+> 브랜치 파줘 / 지금 어느 브랜치야? 옮겨서 작업해줘
+```
+
+- **확인 없이 전환하지 않는다** — 이름은 제안(기존 브랜치 패턴 우선, 없으면 `{type}/{slug}`), 결정은 사용자
+- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴 플래그(`-f`·`--discard-changes`·`-C`)와 `checkout`은 훅이 계속 차단
+- **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
+- 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담
+
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
 
-1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 명령을 절대 수행하지 않는다.
+1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 변경 명령을 절대 수행하지 않는다. (유일한 예외: 사용자 확인된 브랜치 전환 — `branch` 스킬이 `git switch(-c)`로만 수행)
 2. **코드 생성 하네스는 TDD 기본** — 인수조건 = 테스트 케이스 (Red→Green→Refactor).
 3. **산출물은 파일 기반** — 중간 산출물 보존, 감사 추적 가능.
 4. **단일 출처 문서 준수** — 설계·컨벤션 문서와 어긋나면 사용자에게 확인.
 5. **QA는 경계면 교차검증 + incremental** — 생산자↔소비자 shape 비교, 모듈 완성 직후마다.
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
+7. **컨텍스트 절약형 설계** — 상시 로딩(CLAUDE.md·description)은 포인터 수준, 파일 한정 지침은 `.claude/rules/`+`paths:`로, 대량 읽기는 서브 에이전트 격리. 플랫폼이 자동으로 하는 것(프롬프트 캐시·지연 로딩)은 재구현하지 않는다.
 
-규칙 1(git)·6(시크릿)은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 2종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 토큰 예산·최대 반복 초과 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
+규칙 1(git)·6(시크릿)과 브랜치 위생은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 3종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단, 보호 브랜치 편집 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 토큰 예산·최대 반복 초과 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
 
 ## 구조
 
@@ -133,7 +165,15 @@ guksu-harness/
 │       ├── worklog.md                # 공통 워크로그 템플릿 (생성 하네스로 복사됨)
 │       ├── retro.md                  # 공통 회고 템플릿 (retro 스킬이 사용)
 │       ├── handoff.md                # 공통 인계 템플릿 (handoff 스킬이 사용)
-│       └── loop-spec.md              # 공통 루프 명세 템플릿 (loop 스킬이 사용)
+│       ├── loop-spec.md              # 공통 루프 명세 템플릿 (loop 스킬이 사용)
+│       └── digest.md                 # 공통 다이제스트 템플릿 (digest 스킬이 사용)
+├── skills/branch/
+│   └── SKILL.md                      # 작업 브랜치 확인 (사용자 승인 후 git switch)
+├── skills/digest/
+│   ├── SKILL.md                      # 세션 간 지식 캐시 (작성·갱신 / 소비 두 모드)
+│   └── scripts/
+│       ├── checkFreshness.mjs        # 다이제스트 신선도 검사기 (내용 해시 기반)
+│       └── checkFreshness.test.mjs
 ├── skills/retro/
 │   └── SKILL.md                      # 회고·진화 (산출물 분석 → 제안 → 승인 → 적용)
 ├── skills/handoff/
@@ -148,10 +188,12 @@ guksu-harness/
     │   ├── skill-authoring.md        # description 트리거, progressive disclosure
     │   ├── orchestrator-template.md  # 모드별 골격, 데이터 전달, 에러 핸들링
     │   ├── hooks-and-permissions.md  # 절대 규칙의 기계적 강제 (훅·deny·allowlist)
+    │   ├── context-economy.md        # 토큰 절약 설계 (상시/조건부 로딩, 캐시, digest 연동)
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
     ├── assets/hooks/
     │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (생성 하네스로 복사됨)
     │   ├── blockSecretAccess.mjs     # Bash 경유 시크릿 접근 차단 훅
+    │   ├── branchGuard.mjs           # 보호 브랜치 편집 차단 훅 (branch 스킬과 한 쌍)
     │   └── verifierGate.mjs          # 검증자 게이트 Stop 훅 (종료 규칙 + 토큰 예산 강제)
     └── scripts/
         ├── validateHarness.mjs       # 하네스 구조 검증기
@@ -162,8 +204,8 @@ guksu-harness/
 ## 개발
 
 ```bash
-# 검증기 + 훅 테스트
-node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs
+# 검증기 + 훅 + 다이제스트 신선도 테스트
+node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs skills/digest/scripts/checkFreshness.test.mjs
 
 # 이 repo 자체를 검증 (셀프 호스팅 — 하네스가 자기 규칙을 통과해야 한다)
 node skills/harness/scripts/validateHarness.mjs .

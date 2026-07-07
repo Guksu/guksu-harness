@@ -2,6 +2,46 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.9.0] - 2026-07-07
+
+### Added
+
+- **`branch` 스킬 (신규)** — 파일 변경 작업 시작 전에 현재 브랜치를 점검하고, 보호 브랜치(main·master 등) 위라면 어떤 브랜치로 이동/생성할지 **사용자 확인 후** 전환하는 스킬. 이름 제안(기존 브랜치 패턴 우선 → `{type}/{slug}`), 전환 거부(미커밋 충돌) 시 처분은 사용자 몫, 보호 브랜치에서 계속하려면 사용자가 직접 config 수정(에이전트 우회 금지)
+- **브랜치 가드 훅** (`assets/hooks/branchGuard.mjs`) — matcher `Edit|Write|NotebookEdit` PreToolUse 훅. 보호 브랜치 위 파일 편집을 차단하고 branch 스킬 사용을 지시한다. `.git/HEAD` 직접 판독(서브프로세스 없음, worktree `gitdir:` 포인터 추적, detached HEAD·비저장소는 비활성), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master). 회귀 테스트 4종
+- **validateHarness 검사 확장** — 하네스 존재 시 branchGuard 미구성 warn
+
+### Changed
+
+- **절대 규칙 1에 예외 신설 (사용자 승인)** — "git 작업은 사용자 전담"의 유일한 예외로 **사용자 확인된 브랜치 전환**을 허용. `blockGitMutation`에서 `switch`를 차단 목록에서 제외하되, 작업 내용을 버릴 수 있는 플래그(`-f`/`--force`·`--discard-changes`·`-C`/`--force-create`)는 계속 차단. `checkout`은 파일 복원 기능이 있어 전체 차단 유지. 차단/허용 테스트 갱신
+- **오케스트레이터 Phase 0 첫 단계에 작업 브랜치 확인 추가** — 산출물 확인 전에 branch 스킬로 브랜치 점검 (orchestrator-template / agent-design 작업 원칙)
+- **hooks-and-permissions 재구성** — §3 브랜치 가드 신설(등록 JSON·config·한계: Bash 경유 쓰기는 지침 병행), 설치 절차 훅 3종 체제
+
+## [1.8.0] - 2026-07-07
+
+### Added
+
+- **`digest` 스킬 (신규)** — 대형 파일·모듈 분석 결과를 세션 간 재사용하는 지식 캐시. 프롬프트 캐시가 세션 안에서만 사는 한계를 파일 기반(`docs/digests/{slug}.md`)으로 보완한다(절대 규칙 7의 세션 간 실행 수단). 소스별 **내용 해시**를 frontmatter에 기록하고 소비 전 신선도를 검증(fresh → 다이제스트만 소비 / stale → 바뀐 소스만 재읽기·갱신 / missing → 정리 확인), "다이제스트는 지도이지 원문 대체가 아니다"(수정 파일은 원문 필독) 원칙, 시크릿 기록 금지
+- **신선도 검사기** (`skills/digest/scripts/checkFreshness.mjs`) — `hash <파일...>`(frontmatter 기록용 해시 출력) / `check <다이제스트> --root <경로>`(전 소스 판정 + 종료 코드) 두 서브커맨드. mtime이 아니라 sha256 내용 해시 12자리 — 체크아웃·복사에 오탐하지 않는다. node:test 회귀 테스트 7종
+- **다이제스트 템플릿** (`skills/docs/assets/templates/digest.md`) — docs 스킬 템플릿 5종 체제. frontmatter(sources 해시) + 책임 / 공개 인터페이스 / 의존과 데이터 흐름 / 불변식과 함정 4섹션
+- **하네스 내장** — Phase 2 템플릿 배포 5종 확장 + 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인, 대형 분석 완료 시 다이제스트 기록" 명시. context-economy §3 생성 규칙 5가 digest 스킬을 가리키도록 갱신
+
+### Changed
+
+- **validateHarness 공통 템플릿 목록 확장** — digest.md 추가
+- README docs 스킬 소개의 템플릿 종수 표기(3종)를 실제(5종)에 맞게 수정
+
+## [1.7.0] - 2026-07-07
+
+### Added
+
+- **절대 규칙 7 — 컨텍스트 절약형 설계 (신규)** — 상시 로딩(CLAUDE.md·description)은 포인터 수준으로 최소화(CLAUDE.md ~200줄), 파일 한정 지침은 `.claude/rules/` + `paths:`로 조건부 로딩, 대량 읽기·리서치는 서브 에이전트 격리 후 요약만 회수, 대형 로그·데이터는 스크립트 전처리. 플랫폼이 자동으로 하는 것(프롬프트 캐시·CLAUDE.md 세션당 1회 로드·스킬/MCP 지연 로딩)은 재구현 금지
+- **컨텍스트 경제 가이드** (`references/context-economy.md`) — (1) Claude Code 자동 메커니즘 표(프롬프트 캐시 ~10% 단가·TTL 리셋, 지연 로딩, 자동 컴팩션)와 재구현 금지 원칙, (2) 캐시를 깨는 행동(모델·effort 전환, MCP 연결/해제, 컴팩션) vs 유지하는 행동 — 루프 설계 시 회피 지침, (3) 상시/조건부 로딩 5층 구조와 생성 규칙 5종, (4) 측정 수단(/context·/usage·검증자 게이트 maxTokens)
+- **Phase 3 검증에 컨텍스트 경제 점검 추가** — CLAUDE.md ~200줄, rules 분리, 대량 읽기 격리 확인. 산출물 체크리스트에 컨텍스트 경제 항목 추가
+
+### Changed
+
+- **에이전트 템플릿·오케스트레이터 골격에 컨텍스트 경제 반영** — 작업 원칙에 "대량 읽기는 서브 에이전트 위임 + 요약 회수, 대형 로그는 스크립트 전처리" 추가 (agent-design / orchestrator-template). 오케스트레이터 절대 규칙에 "반복 실행 중 모델·effort 전환 금지(캐시 무효화)" 명시
+
 ## [1.6.0] - 2026-07-06
 
 ### Added

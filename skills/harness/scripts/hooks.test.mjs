@@ -1,9 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { isGitMutation } from '../assets/hooks/blockGitMutation.mjs';
 import { referencesSecret } from '../assets/hooks/blockSecretAccess.mjs';
 import { decide, runChecks, sumTranscriptTokens } from '../assets/hooks/verifierGate.mjs';
+import {
+  DEFAULT_PROTECTED_BRANCHES,
+  isProtectedBranch,
+  readCurrentBranch,
+} from '../assets/hooks/branchGuard.mjs';
 
 test('git 변경 명령을 차단한다', () => {
   const blocked = [
@@ -14,10 +22,33 @@ test('git 변경 명령을 차단한다', () => {
     'git --git-dir .git push',
     'git --git-dir=.git push',
     'git checkout -b feature',
+    'git checkout main',
     'git branch -D old',
     'git stash',
     'git worktree add ../wt',
     'cd repo && git rebase main',
+  ];
+  for (const command of blocked) {
+    assert.ok(isGitMutation(command), `차단되어야 한다: ${command}`);
+  }
+});
+
+test('git switch — 순수 브랜치 전환은 허용, 파괴 플래그는 차단한다', () => {
+  const allowed = [
+    'git switch -c feature/login',
+    'git switch feature/login',
+    'git switch -',
+    'git -C /tmp/repo switch -c fix/bug',
+  ];
+  for (const command of allowed) {
+    assert.ok(!isGitMutation(command), `허용되어야 한다: ${command}`);
+  }
+  const blocked = [
+    'git switch -f main',
+    'git switch --force main',
+    'git switch --discard-changes main',
+    'git switch -C feature', // 기존 브랜치 강제 리셋
+    'git switch --force-create feature',
   ];
   for (const command of blocked) {
     assert.ok(isGitMutation(command), `차단되어야 한다: ${command}`);
@@ -68,6 +99,48 @@ test('시크릿이 아닌 명령은 허용한다', () => {
   for (const command of allowed) {
     assert.ok(!referencesSecret(command), `허용되어야 한다: ${command}`);
   }
+});
+
+test('브랜치 가드 — .git/HEAD에서 현재 브랜치를 읽는다', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'guksu-branch-'));
+  await mkdir(join(rootDir, '.git'), { recursive: true });
+  await writeFile(join(rootDir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  assert.equal(readCurrentBranch({ projectDir: rootDir }), 'main');
+
+  await writeFile(join(rootDir, '.git', 'HEAD'), 'ref: refs/heads/feature/login\n');
+  assert.equal(readCurrentBranch({ projectDir: rootDir }), 'feature/login');
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('브랜치 가드 — worktree(.git 파일)의 gitdir 포인터를 따라간다', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'guksu-branch-'));
+  const gitDir = join(rootDir, 'gitdirs', 'wt1');
+  const workTree = join(rootDir, 'wt');
+  await mkdir(gitDir, { recursive: true });
+  await mkdir(workTree, { recursive: true });
+  await writeFile(join(gitDir, 'HEAD'), 'ref: refs/heads/develop\n');
+  await writeFile(join(workTree, '.git'), `gitdir: ${gitDir}\n`);
+  assert.equal(readCurrentBranch({ projectDir: workTree }), 'develop');
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('브랜치 가드 — detached HEAD·git 저장소 아님은 null (가드 비활성)', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'guksu-branch-'));
+  assert.equal(readCurrentBranch({ projectDir: rootDir }), null); // .git 없음
+  await mkdir(join(rootDir, '.git'), { recursive: true });
+  await writeFile(join(rootDir, '.git', 'HEAD'), 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2\n');
+  assert.equal(readCurrentBranch({ projectDir: rootDir }), null); // detached
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('브랜치 가드 — 보호 브랜치 판정 (기본 main·master)', () => {
+  assert.ok(isProtectedBranch({ branch: 'main', protectedBranches: DEFAULT_PROTECTED_BRANCHES }));
+  assert.ok(isProtectedBranch({ branch: 'master', protectedBranches: DEFAULT_PROTECTED_BRANCHES }));
+  assert.ok(
+    !isProtectedBranch({ branch: 'feature/login', protectedBranches: DEFAULT_PROTECTED_BRANCHES }),
+  );
+  assert.ok(!isProtectedBranch({ branch: null, protectedBranches: DEFAULT_PROTECTED_BRANCHES }));
+  assert.ok(isProtectedBranch({ branch: 'develop', protectedBranches: ['develop'] }));
 });
 
 test('검증자 게이트 — 검증 전체 통과면 종료를 허용한다', () => {

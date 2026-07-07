@@ -19,12 +19,13 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 
 생성되는 오케스트레이터·에이전트 정의에 아래 규칙을 명시적으로 포함시킨다:
 
-1. **git 작업은 사용자 전담.** commit·push·branch·merge 등 모든 git 명령을 에이전트가 수행하지 않는다. 종료 시 "커밋은 직접 진행하세요"로 안내만 한다.
+1. **git 작업은 사용자 전담.** commit·push·merge·branch 삭제 등 git 변경 명령을 에이전트가 수행하지 않는다. 종료 시 "커밋은 직접 진행하세요"로 안내만 한다. **유일한 예외: 사용자 확인된 브랜치 전환** — 작업 시작 전 `branch` 스킬이 사용자 승인을 받아 `git switch(-c)`로만 수행한다. 보호 브랜치(main 등) 위 파일 편집은 branchGuard 훅이 차단한다.
 2. **코드를 생성하는 하네스는 TDD가 기본.** 인수조건 = 테스트 케이스(Red→Green→Refactor). 종료 기준에 테스트 전체 통과를 포함한다. 외부 인프라(DB·외부 SDK)는 단위 대상이 아니라 모킹/스모크로 분리.
 3. **산출물은 파일 기반.** 약속된 경로(`docs/` 또는 `_workspace/`)에 쓰고 읽는다. 중간 산출물은 보존한다(감사 추적). 작업 기록은 공통 워크로그 템플릿(`docs/templates/worklog.md` — 1.개요/2.작업내용/3.주의사항)을 따른다 — 형식이 통일되어야 에이전트 간·세션 간에 서로의 기록을 소비할 수 있다.
 4. **단일 출처 문서를 따른다.** 프로젝트에 설계 문서·컨벤션 문서가 있으면 그것이 단일 출처다. 어긋나면 임의 판단하지 말고 사용자에게 확인한다.
 5. **QA는 경계면 교차검증 + incremental.** 존재 확인이 아니라 생산자(API/쿼리)↔소비자(훅/화면)를 동시에 읽고 shape을 비교한다. 전체 완성 후 1회가 아니라 모듈 완성 직후마다 실행한다.
 6. **시크릿은 읽지도 기록하지도 않는다.** `.env`·credential·키 파일을 읽지 않고, 산출물·로그·보고에 토큰/키/비밀번호를 옮겨 적지 않는다. 산출물은 보존되는 파일이므로(규칙 3) 기록된 시크릿은 곧 유출이다. 설정값이 필요하면 키 이름만 언급한다.
+7. **컨텍스트는 절약형으로 설계한다.** 상시 로딩(CLAUDE.md·description)은 포인터 수준으로 최소화하고(CLAUDE.md ~200줄), 특정 파일에만 적용되는 지침은 `.claude/rules/` + `paths:`로 내리고, 대량 읽기·리서치는 서브 에이전트로 격리해 요약만 회수하고, 대형 로그·데이터는 스크립트로 전처리한다. 플랫폼이 자동으로 하는 것(프롬프트 캐시·CLAUDE.md 세션당 1회 로드·스킬/MCP 지연 로딩)은 재구현하지 않는다 → `references/context-economy.md`
 
 규칙 1(git)·6(시크릿)은 지침으로만 두지 않고 생성하는 하네스의 `.claude/settings.json`에 훅·deny 권한으로 기계적으로 강제한다 → `references/hooks-and-permissions.md` (Phase 2에서 구성).
 
@@ -83,8 +84,8 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 1. **에이전트 정의** — `프로젝트/.claude/agents/{name}.md`. 빌트인 타입(general-purpose 등)을 쓰더라도 정의 파일은 만든다(다음 세션 재사용·협업 프로토콜 명시를 위해). 필수 섹션과 템플릿: `references/agent-design.md`
 2. **스킬 생성** — `프로젝트/.claude/skills/{name}/SKILL.md`. description은 적극적(pushy)으로, 본문은 Why 중심·명령형·500줄 이내로 → `references/skill-authoring.md`
 3. **오케스트레이터** — 실행 모드별 골격·데이터 전달 프로토콜·에러 핸들링·후속 작업(부분 재실행) 지원: `references/orchestrator-template.md`. 기존 확장이면 새로 만들지 말고 기존 오케스트레이터를 수정한다.
-4. **훅·권한 구성** — 절대 규칙 1(git)·6(시크릿)을 기계적으로 강제한다: 이 스킬의 `assets/hooks/` 훅 2종(git 변경 차단 + Bash 경유 시크릿 접근 차단)을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 검증자 게이트(Stop 훅 — 검증 명령 통과까지 턴 종료 차단 + 토큰 예산·최대 반복 안전장치, TDD 게이트의 일반화)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
-5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 4종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`·`handoff.md`·`loop-spec.md`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 오케스트레이터 종료 절차에 "회고 제안(`retro` 스킬)"을, 에러 핸들링에 "세션 중단 시 인계 문서 작성(`handoff` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro`·`handoff`·`loop` 스킬 참조.
+4. **훅·권한 구성** — 절대 규칙 1(git)·6(시크릿)을 기계적으로 강제한다: 이 스킬의 `assets/hooks/` 훅 3종(git 변경 차단 + Bash 경유 시크릿 접근 차단 + 보호 브랜치 편집 차단(branchGuard — `branch` 스킬과 한 쌍))을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 검증자 게이트(Stop 훅 — 검증 명령 통과까지 턴 종료 차단 + 토큰 예산·최대 반복 안전장치, TDD 게이트의 일반화)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
+5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 5종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`·`handoff.md`·`loop-spec.md`·`digest.md`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인 + 대형 분석 완료 시 다이제스트 기록(`digest` 스킬 — 절대 규칙 7의 세션 간 실행 수단)"을, 오케스트레이터 종료 절차에 "회고 제안(`retro` 스킬)"을, 에러 핸들링에 "세션 중단 시 인계 문서 작성(`handoff` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro`·`handoff`·`loop`·`digest` 스킬 참조.
 
 ### Phase 3: 검증
 
@@ -93,6 +94,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 3. **실행 테스트** — 현실적 테스트 프롬프트 2~3개로 실제 실행, 가능하면 with/without-skill 비교.
    방법론 상세: `references/testing-guide.md`
 4. 오케스트레이터에 `## 테스트 시나리오` 섹션(정상 1 + 에러 1 이상)이 있는지 확인한다.
+5. **컨텍스트 경제 점검** — CLAUDE.md 포인터 ~200줄 이내, 파일 한정 지침의 `.claude/rules/` 분리, 대량 읽기 단계의 서브 에이전트 격리 여부를 확인한다 → `references/context-economy.md` §3
 
 ### Phase 4: 등록과 진화
 
@@ -119,11 +121,12 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 - [ ] `.claude/agents/` 에이전트 정의 파일 (빌트인 타입이라도 생성)
 - [ ] `.claude/skills/` 스킬 (SKILL.md ≤500줄, 세부는 references/)
 - [ ] 오케스트레이터 1개 — 실행 모드 명시 + 데이터 흐름 + 에러 핸들링 + Phase 0 컨텍스트 확인(초기/부분 재실행) + 테스트 시나리오
-- [ ] 절대 규칙 6종이 오케스트레이터·에이전트 정의에 반영됨
-- [ ] 훅 2종(git·시크릿)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
-- [ ] 공통 템플릿 4종(worklog·retro·handoff·loop-spec)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 회고 제안(종료)·인계(중단) 명시
+- [ ] 절대 규칙 7종이 오케스트레이터·에이전트 정의에 반영됨
+- [ ] 훅 3종(git·시크릿·브랜치 가드)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
+- [ ] 공통 템플릿 5종(worklog·retro·handoff·loop-spec·digest)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 회고 제안(종료)·인계(중단) 명시
 - [ ] (루프 모드) 4요소·안전장치(토큰 예산 포함)가 사용자 확인을 거쳐 `docs/loops/` 명세로 기록되고, 검증자 게이트 config와 일치
 - [ ] (Workflow 모드) 반복 실행 스크립트를 `.claude/workflows/{name}.mjs`로 저장하고 오케스트레이터가 이름으로 호출
+- [ ] 컨텍스트 경제 — CLAUDE.md 포인터 ~200줄, 파일 한정 지침은 `.claude/rules/`+`paths:`, 대량 읽기는 서브 에이전트 격리 (규칙 7)
 - [ ] 모델 하드코딩 없음 (오버라이드 시 이유 명시)
 - [ ] 신규 생성 전 기존 에이전트/스킬 중복 검토 완료
 - [ ] description이 pushy하게 작성되고 후속 작업 키워드 포함
@@ -140,5 +143,6 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 | `references/skill-authoring.md` | 스킬 작성 시 |
 | `references/orchestrator-template.md` | 오케스트레이터 작성·수정 시 |
 | `references/hooks-and-permissions.md` | Phase 2 훅·권한 구성 시, 해체 시 정리 대상 확인 |
+| `references/context-economy.md` | 절대 규칙 7 적용 시 — CLAUDE.md 다이어트·rules 분리·대량 읽기 격리, Phase 3 점검 |
 | `references/testing-guide.md` | Phase 3 검증 시 |
 | `scripts/validateHarness.mjs` | Phase 0 감사·Phase 3 구조 검증 시 실행 (로딩 불필요) |

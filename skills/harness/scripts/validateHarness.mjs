@@ -202,7 +202,7 @@ const validateClaudeMdPointer = async ({ rootDir, issues }) => {
 };
 
 // docs 스킬이 번들하는 공통 템플릿 — 하네스 구축 시 프로젝트 docs/templates/로 복사된다
-const COMMON_TEMPLATES = ['worklog.md', 'retro.md', 'handoff.md', 'loop-spec.md'];
+const COMMON_TEMPLATES = ['worklog.md', 'retro.md', 'handoff.md', 'loop-spec.md', 'digest.md'];
 
 const validateCommonTemplates = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
@@ -240,6 +240,14 @@ const validateEnforcement = async ({ rootDir, issues }) => {
       path: settingsPath,
       message:
         'git 차단 훅(blockGitMutation)이 구성되지 않았다 — 절대 규칙 1의 기계적 강제가 없다 (hooks-and-permissions.md)',
+    });
+  }
+  if (!preToolUseCommands.includes('branchGuard')) {
+    issues.push({
+      level: 'warn',
+      path: settingsPath,
+      message:
+        '브랜치 가드 훅(branchGuard)이 구성되지 않았다 — 보호 브랜치 편집 차단이 없다 (hooks-and-permissions.md)',
     });
   }
   const denyPatterns = settings?.permissions?.deny ?? [];
