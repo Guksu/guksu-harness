@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.9.0] - 2026-07-07
+
+### Added
+
+- **`branch` 스킬 (신규)** — 파일 변경 작업 시작 전에 현재 브랜치를 점검하고, 보호 브랜치(main·master 등) 위라면 어떤 브랜치로 이동/생성할지 **사용자 확인 후** 전환하는 스킬. 이름 제안(기존 브랜치 패턴 우선 → `{type}/{slug}`), 전환 거부(미커밋 충돌) 시 처분은 사용자 몫, 보호 브랜치에서 계속하려면 사용자가 직접 config 수정(에이전트 우회 금지)
+- **브랜치 가드 훅** (`assets/hooks/branchGuard.mjs`) — matcher `Edit|Write|NotebookEdit` PreToolUse 훅. 보호 브랜치 위 파일 편집을 차단하고 branch 스킬 사용을 지시한다. `.git/HEAD` 직접 판독(서브프로세스 없음, worktree `gitdir:` 포인터 추적, detached HEAD·비저장소는 비활성), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master). 회귀 테스트 4종
+- **validateHarness 검사 확장** — 하네스 존재 시 branchGuard 미구성 warn
+
+### Changed
+
+- **절대 규칙 1에 예외 신설 (사용자 승인)** — "git 작업은 사용자 전담"의 유일한 예외로 **사용자 확인된 브랜치 전환**을 허용. `blockGitMutation`에서 `switch`를 차단 목록에서 제외하되, 작업 내용을 버릴 수 있는 플래그(`-f`/`--force`·`--discard-changes`·`-C`/`--force-create`)는 계속 차단. `checkout`은 파일 복원 기능이 있어 전체 차단 유지. 차단/허용 테스트 갱신
+- **오케스트레이터 Phase 0 첫 단계에 작업 브랜치 확인 추가** — 산출물 확인 전에 branch 스킬로 브랜치 점검 (orchestrator-template / agent-design 작업 원칙)
+- **hooks-and-permissions 재구성** — §3 브랜치 가드 신설(등록 JSON·config·한계: Bash 경유 쓰기는 지침 병행), 설치 절차 훅 3종 체제
+
 ## [1.8.0] - 2026-07-07
 
 ### Added

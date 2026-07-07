@@ -245,6 +245,9 @@ test('하네스가 있는데 git 훅·시크릿 deny가 미구성이면 경고',
     issues.some((issue) => issue.level === 'warn' && issue.message.includes('blockGitMutation')),
   );
   assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('branchGuard')),
+  );
+  assert.ok(
     issues.some((issue) => issue.level === 'warn' && issue.message.includes('시크릿 deny')),
   );
   await rm(rootDir, { recursive: true, force: true });
@@ -260,6 +263,12 @@ test('git 훅과 시크릿 deny가 구성되어 있으면 경고가 없다', asy
             { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/blockGitMutation.mjs"' },
           ],
         },
+        {
+          matcher: 'Edit|Write|NotebookEdit',
+          hooks: [
+            { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/branchGuard.mjs"' },
+          ],
+        },
       ],
     },
     permissions: { deny: ['Read(./.env)', 'Read(./.env.*)'] },
@@ -272,6 +281,7 @@ test('git 훅과 시크릿 deny가 구성되어 있으면 경고가 없다', asy
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(!issues.some((issue) => issue.message.includes('blockGitMutation')));
+  assert.ok(!issues.some((issue) => issue.message.includes('branchGuard')));
   assert.ok(!issues.some((issue) => issue.message.includes('시크릿 deny')));
   await rm(rootDir, { recursive: true, force: true });
 });

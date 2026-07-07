@@ -5,10 +5,11 @@
 ## 목차
 1. [훅 스크립트 설치 — assets/에서 복사](#1-훅-스크립트-설치--assets에서-복사)
 2. [git 차단 훅 (blockGitMutation)](#2-git-차단-훅-blockgitmutation)
-3. [시크릿 차단 — deny + 훅의 2중 방어](#3-시크릿-차단--deny--훅의-2중-방어)
-4. [검증자 게이트 (Stop 훅, 선택)](#4-검증자-게이트-stop-훅-선택)
-5. [allowlist — 자율 실행 보장](#5-allowlist--자율-실행-보장)
-6. [기존 설정과의 병합 규칙](#6-기존-설정과의-병합-규칙)
+3. [브랜치 가드 (branchGuard)](#3-브랜치-가드-branchguard)
+4. [시크릿 차단 — deny + 훅의 2중 방어](#4-시크릿-차단--deny--훅의-2중-방어)
+5. [검증자 게이트 (Stop 훅, 선택)](#5-검증자-게이트-stop-훅-선택)
+6. [allowlist — 자율 실행 보장](#6-allowlist--자율-실행-보장)
+7. [기존 설정과의 병합 규칙](#7-기존-설정과의-병합-규칙)
 
 ## 1. 훅 스크립트 설치 — assets/에서 복사
 
@@ -18,12 +19,13 @@
 mkdir -p "$PROJECT/.claude/hooks"
 cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
    "{이 스킬 경로}/assets/hooks/blockSecretAccess.mjs" \
+   "{이 스킬 경로}/assets/hooks/branchGuard.mjs" \
    "$PROJECT/.claude/hooks/"
-# 선택 — 검증자 게이트(§4)를 적용하는 하네스만:
+# 선택 — 검증자 게이트(§5)를 적용하는 하네스만:
 # cp "{이 스킬 경로}/assets/hooks/verifierGate.mjs" "$PROJECT/.claude/hooks/"
 ```
 
-`프로젝트/.claude/settings.json`에 두 훅을 등록한다. PreToolUse 훅은 도구 실행 전에 호출되며, **exit code 2면 호출이 차단되고 stderr가 에이전트에게 피드백**으로 전달된다:
+`프로젝트/.claude/settings.json`에 훅을 등록한다. PreToolUse 훅은 도구 실행 전에 호출되며, **exit code 2면 호출이 차단되고 stderr가 에이전트에게 피드백**으로 전달된다:
 
 ```json
 {
@@ -41,6 +43,15 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blockSecretAccess.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/branchGuard.mjs\""
+          }
+        ]
       }
     ]
   }
@@ -51,11 +62,24 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 절대 규칙 1(git 작업은 사용자 전담)을 강제한다.
 
-**차단 범위 원칙:** 변경 명령만 막는다. `git status`·`diff`·`log`·`show`·`blame` 같은 읽기 명령은 에이전트의 작업 파악에 필요하므로 허용한다. 도메인 특성상 `checkout`/`switch`가 필요한 하네스(예: 브랜치별 검수)라면 사용자 확인 후 패턴에서 제외하고, 제외 사유를 스크립트 주석에 남긴다.
+**차단 범위 원칙:** 변경 명령만 막는다. `git status`·`diff`·`log`·`show`·`blame` 같은 읽기 명령은 에이전트의 작업 파악에 필요하므로 허용한다. **switch는 예외로 허용된다** — 순수 브랜치 전환(`git switch <b>`·`-c <b>`)은 작업 내용을 파괴하지 않으며(충돌 시 git이 거부), `branch` 스킬이 사용자 확인 후에만 사용한다. 단 파괴 플래그(`-f`·`--discard-changes`·`-C`)와 `checkout`(파일 복원 기능 포함)은 계속 차단한다.
 
 **우회 방지:** 판정 정규식은 서브커맨드 앞의 전역 플래그를 건너뛴다. `-C <path>`·`-c <k=v>`·`--git-dir <path>`처럼 **값을 별도 인자로 받는 플래그**를 처리하지 않으면 `git -C /repo commit` 같은 우회가 생긴다 — 패턴을 수정할 때는 반드시 `scripts/hooks.test.mjs`의 차단/허용 케이스를 함께 갱신하고 통과를 확인한다.
 
-## 3. 시크릿 차단 — deny + 훅의 2중 방어
+## 3. 브랜치 가드 (branchGuard)
+
+"작업 시작 전에 작업 브랜치부터 확인"(`branch` 스킬)을 기계적으로 강제한다. matcher `Edit|Write|NotebookEdit`로 등록되어(§1) 보호 브랜치 위에서의 파일 편집 시도를 차단하고, branch 스킬로 사용자 확인을 받으라는 피드백을 전달한다.
+
+- **판정:** `.git/HEAD`를 직접 읽는다(서브프로세스 없음, worktree의 `gitdir:` 포인터 추적). detached HEAD·git 저장소 아님이면 비활성(무해).
+- **설정:** 스크립트 옆 `branchGuard.config.json`의 `protectedBranches`(기본 `["main", "master"]`). 프로젝트의 실제 기본/배포 브랜치(`develop`·`release/*` 운용 등)에 맞게 구축 시 사용자와 확인해 조정한다.
+
+```json
+{ "protectedBranches": ["main", "master"] }
+```
+
+- **한계:** Edit/Write 도구만 막는다 — Bash 경유 파일 쓰기(`echo > file`)는 걸러지지 않으므로, 에이전트 정의의 작업 원칙("파일 변경 작업 시작 전 branch 스킬로 브랜치 확인")과 병행한다. 보호 브랜치에서 의도적으로 계속하려면 사용자가 직접 config를 수정한다 — 에이전트가 대신 수정하지 않는다.
+
+## 4. 시크릿 차단 — deny + 훅의 2중 방어
 
 절대 규칙 6(시크릿 읽기·기록 금지)의 읽기 측은 두 겹으로 강제한다. **deny 권한은 Read 도구만 막는다** — `cat .env`·`grep KEY .env` 같은 Bash 경유 읽기는 deny로 막히지 않으므로, `blockSecretAccess.mjs` 훅(§1에서 설치)이 그 우회 경로를 닫는다.
 
@@ -75,7 +99,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 프로젝트의 실제 시크릿 위치(`.gitignore`에 단서가 있다)를 확인해 deny 패턴과 훅의 판정 패턴을 **같이** 맞춘다 — 두 겹의 커버리지가 어긋나면 우회 경로가 되살아난다. `.env.example` 같은 관례적 예시 파일은 훅이 허용한다. 기록 측(산출물에 토큰을 옮겨 적지 않는다)은 기계적 강제가 어려우므로 에이전트 정의의 작업 원칙으로 명시한다.
 
-## 4. 검증자 게이트 (Stop 훅, 선택)
+## 5. 검증자 게이트 (Stop 훅, 선택)
 
 종료 규칙(검증 명령 전체 통과)을 기계적으로 강제하는 선택 장치다. `assets/hooks/verifierGate.mjs`를 §1과 같은 방식으로 `.claude/hooks/`에 복사하고, 스크립트 **옆에** `verifierGate.config.json`으로 검증 명령과 안전장치를 정의한다 (config가 없으면 게이트는 비활성):
 
@@ -116,7 +140,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 **적용 조건:** checks가 수 분 안에 끝나야 한다(모든 턴 종료마다 실행되므로 느린 스위트는 세션 전체를 마비시킨다). 스크립트의 `stop_hook_active` 가드는 삭제 금지 — 없으면 "실패 → 차단 → 재시도 → 차단"의 무한 루프에 빠진다. 구성 전에 사용자에게 확인한다.
 
-## 5. allowlist — 자율 실행 보장
+## 6. allowlist — 자율 실행 보장
 
 에이전트 팀·Workflow가 매 테스트 실행마다 권한 프롬프트에 막히면 자율 실행이 끊긴다(특히 백그라운드 팀원은 프롬프트에 응답할 수 없다). 하네스가 반복 실행할 명령을 구축 시점에 미리 허용한다:
 
@@ -135,7 +159,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 **선정 기준:** 오케스트레이터·에이전트 정의가 명시하는 검증 명령(테스트·타입체크·린트·빌드)만. `rm`·패키지 publish·배포 명령처럼 파괴적이거나 외부로 나가는 명령은 절대 사전 허용하지 않는다. git은 allowlist가 아니라 2번 훅으로 다룬다.
 
-## 6. 기존 설정과의 병합 규칙
+## 7. 기존 설정과의 병합 규칙
 
 - `.claude/settings.json`이 이미 존재하면 **덮어쓰지 말고 읽어서 병합한다.** 기존 hooks·permissions 항목은 보존하고 하네스 항목만 추가한다.
 - 기존 훅과 충돌(같은 matcher에 상반된 동작)이 보이면 임의 판단하지 말고 사용자에게 확인한다 — 절대 규칙 4(단일 출처)와 같은 원리다.
