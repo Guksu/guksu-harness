@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.8.0] - 2026-07-07
+
+### Added
+
+- **`digest` 스킬 (신규)** — 대형 파일·모듈 분석 결과를 세션 간 재사용하는 지식 캐시. 프롬프트 캐시가 세션 안에서만 사는 한계를 파일 기반(`docs/digests/{slug}.md`)으로 보완한다(절대 규칙 7의 세션 간 실행 수단). 소스별 **내용 해시**를 frontmatter에 기록하고 소비 전 신선도를 검증(fresh → 다이제스트만 소비 / stale → 바뀐 소스만 재읽기·갱신 / missing → 정리 확인), "다이제스트는 지도이지 원문 대체가 아니다"(수정 파일은 원문 필독) 원칙, 시크릿 기록 금지
+- **신선도 검사기** (`skills/digest/scripts/checkFreshness.mjs`) — `hash <파일...>`(frontmatter 기록용 해시 출력) / `check <다이제스트> --root <경로>`(전 소스 판정 + 종료 코드) 두 서브커맨드. mtime이 아니라 sha256 내용 해시 12자리 — 체크아웃·복사에 오탐하지 않는다. node:test 회귀 테스트 7종
+- **다이제스트 템플릿** (`skills/docs/assets/templates/digest.md`) — docs 스킬 템플릿 5종 체제. frontmatter(sources 해시) + 책임 / 공개 인터페이스 / 의존과 데이터 흐름 / 불변식과 함정 4섹션
+- **하네스 내장** — Phase 2 템플릿 배포 5종 확장 + 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인, 대형 분석 완료 시 다이제스트 기록" 명시. context-economy §3 생성 규칙 5가 digest 스킬을 가리키도록 갱신
+
+### Changed
+
+- **validateHarness 공통 템플릿 목록 확장** — digest.md 추가
+- README docs 스킬 소개의 템플릿 종수 표기(3종)를 실제(5종)에 맞게 수정
+
 ## [1.7.0] - 2026-07-07
 
 ### Added
