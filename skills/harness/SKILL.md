@@ -25,6 +25,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 4. **단일 출처 문서를 따른다.** 프로젝트에 설계 문서·컨벤션 문서가 있으면 그것이 단일 출처다. 어긋나면 임의 판단하지 말고 사용자에게 확인한다.
 5. **QA는 경계면 교차검증 + incremental.** 존재 확인이 아니라 생산자(API/쿼리)↔소비자(훅/화면)를 동시에 읽고 shape을 비교한다. 전체 완성 후 1회가 아니라 모듈 완성 직후마다 실행한다.
 6. **시크릿은 읽지도 기록하지도 않는다.** `.env`·credential·키 파일을 읽지 않고, 산출물·로그·보고에 토큰/키/비밀번호를 옮겨 적지 않는다. 산출물은 보존되는 파일이므로(규칙 3) 기록된 시크릿은 곧 유출이다. 설정값이 필요하면 키 이름만 언급한다.
+7. **컨텍스트는 절약형으로 설계한다.** 상시 로딩(CLAUDE.md·description)은 포인터 수준으로 최소화하고(CLAUDE.md ~200줄), 특정 파일에만 적용되는 지침은 `.claude/rules/` + `paths:`로 내리고, 대량 읽기·리서치는 서브 에이전트로 격리해 요약만 회수하고, 대형 로그·데이터는 스크립트로 전처리한다. 플랫폼이 자동으로 하는 것(프롬프트 캐시·CLAUDE.md 세션당 1회 로드·스킬/MCP 지연 로딩)은 재구현하지 않는다 → `references/context-economy.md`
 
 규칙 1(git)·6(시크릿)은 지침으로만 두지 않고 생성하는 하네스의 `.claude/settings.json`에 훅·deny 권한으로 기계적으로 강제한다 → `references/hooks-and-permissions.md` (Phase 2에서 구성).
 
@@ -93,6 +94,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 3. **실행 테스트** — 현실적 테스트 프롬프트 2~3개로 실제 실행, 가능하면 with/without-skill 비교.
    방법론 상세: `references/testing-guide.md`
 4. 오케스트레이터에 `## 테스트 시나리오` 섹션(정상 1 + 에러 1 이상)이 있는지 확인한다.
+5. **컨텍스트 경제 점검** — CLAUDE.md 포인터 ~200줄 이내, 파일 한정 지침의 `.claude/rules/` 분리, 대량 읽기 단계의 서브 에이전트 격리 여부를 확인한다 → `references/context-economy.md` §3
 
 ### Phase 4: 등록과 진화
 
@@ -119,11 +121,12 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 - [ ] `.claude/agents/` 에이전트 정의 파일 (빌트인 타입이라도 생성)
 - [ ] `.claude/skills/` 스킬 (SKILL.md ≤500줄, 세부는 references/)
 - [ ] 오케스트레이터 1개 — 실행 모드 명시 + 데이터 흐름 + 에러 핸들링 + Phase 0 컨텍스트 확인(초기/부분 재실행) + 테스트 시나리오
-- [ ] 절대 규칙 6종이 오케스트레이터·에이전트 정의에 반영됨
+- [ ] 절대 규칙 7종이 오케스트레이터·에이전트 정의에 반영됨
 - [ ] 훅 2종(git·시크릿)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
 - [ ] 공통 템플릿 4종(worklog·retro·handoff·loop-spec)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 회고 제안(종료)·인계(중단) 명시
 - [ ] (루프 모드) 4요소·안전장치(토큰 예산 포함)가 사용자 확인을 거쳐 `docs/loops/` 명세로 기록되고, 검증자 게이트 config와 일치
 - [ ] (Workflow 모드) 반복 실행 스크립트를 `.claude/workflows/{name}.mjs`로 저장하고 오케스트레이터가 이름으로 호출
+- [ ] 컨텍스트 경제 — CLAUDE.md 포인터 ~200줄, 파일 한정 지침은 `.claude/rules/`+`paths:`, 대량 읽기는 서브 에이전트 격리 (규칙 7)
 - [ ] 모델 하드코딩 없음 (오버라이드 시 이유 명시)
 - [ ] 신규 생성 전 기존 에이전트/스킬 중복 검토 완료
 - [ ] description이 pushy하게 작성되고 후속 작업 키워드 포함
@@ -140,5 +143,6 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 | `references/skill-authoring.md` | 스킬 작성 시 |
 | `references/orchestrator-template.md` | 오케스트레이터 작성·수정 시 |
 | `references/hooks-and-permissions.md` | Phase 2 훅·권한 구성 시, 해체 시 정리 대상 확인 |
+| `references/context-economy.md` | 절대 규칙 7 적용 시 — CLAUDE.md 다이어트·rules 분리·대량 읽기 격리, Phase 3 점검 |
 | `references/testing-guide.md` | Phase 3 검증 시 |
 | `scripts/validateHarness.mjs` | Phase 0 감사·Phase 3 구조 검증 시 실행 (로딩 불필요) |

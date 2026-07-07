@@ -16,7 +16,8 @@
 | 진화 | 지침 한 줄 | **`retro` 스킬** — 산출물 근거 회고 + 제안→승인→적용 |
 | 세션 연속성 | 없음 | **`handoff` 스킬** — 인계 문서로 세션 간 컨텍스트 이어받기 |
 | 루프 | 없음 (수동 반복 지시) | **`loop` 스킬** — 4요소 명세 + 검증자 게이트 + 토큰 예산 자동 중단 |
-| 본문 크기 | SKILL.md 458줄 | **124줄** — 세부는 references/ 5종으로 분리 (Progressive Disclosure) |
+| 컨텍스트 비용 | 통제 없음 | **컨텍스트 경제 내장** — 상시/조건부 로딩 분리, CLAUDE.md ~200줄, 대량 읽기 서브 에이전트 격리 (절대 규칙 7) |
+| 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
 | 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·버전 정합성 자동 검사 (테스트 포함) |
 
 ## 설치
@@ -117,6 +118,7 @@
 4. **단일 출처 문서 준수** — 설계·컨벤션 문서와 어긋나면 사용자에게 확인.
 5. **QA는 경계면 교차검증 + incremental** — 생산자↔소비자 shape 비교, 모듈 완성 직후마다.
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
+7. **컨텍스트 절약형 설계** — 상시 로딩(CLAUDE.md·description)은 포인터 수준, 파일 한정 지침은 `.claude/rules/`+`paths:`로, 대량 읽기는 서브 에이전트 격리. 플랫폼이 자동으로 하는 것(프롬프트 캐시·지연 로딩)은 재구현하지 않는다.
 
 규칙 1(git)·6(시크릿)은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 2종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 토큰 예산·최대 반복 초과 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
 
@@ -148,6 +150,7 @@ guksu-harness/
     │   ├── skill-authoring.md        # description 트리거, progressive disclosure
     │   ├── orchestrator-template.md  # 모드별 골격, 데이터 전달, 에러 핸들링
     │   ├── hooks-and-permissions.md  # 절대 규칙의 기계적 강제 (훅·deny·allowlist)
+    │   ├── context-economy.md        # 토큰 절약 설계 (상시/조건부 로딩, 캐시, rules 분리)
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
     ├── assets/hooks/
     │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (생성 하네스로 복사됨)
