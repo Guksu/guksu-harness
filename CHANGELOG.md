@@ -2,6 +2,56 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.10.2] - 2026-07-08
+
+전체 하네스 정책 정합성 감사(정책 일관성 + 동작↔문서 대조, 병렬 감사 2종)에서 확인된 11건 수정. 동작 버그 0건 — 규칙↔강제 공백과 문서 누락 계열.
+
+### Fixed
+
+- **git restore·clean 차단 추가** (`blockGitMutation.mjs`) — checkout을 "파일 복원 기능 때문에 전체 차단"하면서 같은 워킹트리 파괴 계열인 restore·clean은 통과하던 규칙↔강제 공백 봉합. 차단 테스트 2종 추가
+- **오케스트레이터 골격 절대 규칙 7종 완성** (`orchestrator-template.md`) — 골격이 5종만 담아 "절대 규칙 7종 반영" 체크리스트를 통과할 수 없던 누락(규칙 3 파일 기반·규칙 5 QA 교차검증) 보충. 에이전트 정의 템플릿의 규칙 열거도 7종으로 완성 (agent-design)
+- **validateHarness에 blockSecretAccess 미등록 경고 추가** — 문서가 요구하는 훅 3종 중 1종의 누락이 감사에서 침묵 통과되던 공백. 테스트·testing-guide 목록 갱신
+- **루프를 실행 모드 열거에 반영** — harness SKILL.md description(상시 로딩 표면)과 오케스트레이터 골격의 실행 모드 필드에 루프 누락 수정, §3에 루프 골격(명세·게이트 포인터) 추가
+- **retro↔harness 트리거 경계 명문화** — '하네스 보완/업데이트' 류 발화가 두 스킬에 모두 매칭되던 모호성: retro description에 "구조 점검·동기화·직접 수정은 harness 스킬 대상" 구분 문장 추가
+- **loop-spec 템플릿에 stuckAfter 미러링 안내** — 막힘 판정 값을 명세에만 적으면 기계적으로 강제되지 않는다는 안내가 템플릿 단계에 없던 공백
+- **문서 표기 동기화** — README 차단 플래그에 `-d` 추가·`restore`/`clean` 반영, branchGuard 매처 표기를 Edit/Write/NotebookEdit로 통일 (README·hooks-and-permissions §3)
+
+## [1.10.1] - 2026-07-08
+
+v1.7.0~v1.10.0 전 범위 코드 리뷰(파인더 7앵글 + 실행 검증)에서 확인된 10건 수정.
+
+### Fixed
+
+- **git switch 파괴 플래그 우회 봉합** (`blockGitMutation.mjs`) — 정규식 한 줄 판정이 git의 번들(`-fc`)·값 붙임(`-Cmain`)·셸 따옴표(`"-f"`) 형태를 전부 통과시키던 결함을 토큰 단위 검사로 교체. `--orphan`(워킹트리 비움)·`-d`/`--detach`(detached HEAD로 branchGuard 무력화) 차단 추가, 꼬리 캡처가 개행을 포함해 멀티라인 명령의 다음 줄 플래그를 오인하던 오탐 수정, `/g` 전역 매칭으로 한 명령 안의 두 번째 switch도 검사
+- **verifierGate 막힘 시그니처를 출력 전체 기준으로 교체** — 첫 줄 기반 시그니처는 npm 배너("> pkg@1.0.0 test")가 첫 줄이면 모든 실패가 동일해져 수렴 중인 루프를 막힘으로 오판·조기 종료시켰다. 전체 출력(숫자·공백 정규화, 500자 캡)으로 실패 목록의 변화(진전)를 감지
+- **verifierGate allow 경로가 iterations를 리셋하던 회귀 수정** — flaky 체크가 한 번 통과할 때마다 maxIterations가 무력화되어 세션당 총 차단 횟수를 상한하지 못했다. 통과 시 막힘 추적(signature/streak)만 초기화하고 iterations(문서화된 세션 누적 의미)는 보존. 상태 쓰기는 쓰기 직전 재읽기 + 자기 키만 갱신으로 동시 세션 카운터 클로버 창을 축소, 변경 없으면 쓰지 않음
+- **checkFreshness check가 --root 생략 시 크래시** — usage에 선택으로 표기된 `--root` 없이 실행하면 indexOf(-1)+1=0 산술로 다이제스트 경로 자체가 제외되어 undefined 크래시. splice 기반 파싱으로 교체, `--root` 값 누락도 명확한 에러로
+- **branchGuard 설정 파싱 실패 시 fail-closed** — 깨진 branchGuard.config.json에서 uncaught 예외로 죽으면(exit≠2는 비차단) 보호가 조용히 사라졌다. 파싱 실패 시 차단 + 안내 메시지
+- **SKILL.md 구 실행 모드 모델 잔존 수정** — v1.10.0의 에스컬레이션 사다리가 references에만 반영되고 항상 로드되는 SKILL.md(핵심 원칙 2·Phase 1 표)는 수평 모델 그대로라 릴리스 취지가 무효였다. 원칙 2를 "단일 우선 사다리"로 교체, Phase 1 표를 사다리 순(직접 실행 단 신설, 팀=최후)으로 재배열
+- **문서 정합** — testing-guide 검사 목록에 branchGuard·공통 템플릿 검사 추가(누락), execution-modes의 핸드오프 포인터를 §9(무관한 표)에서 orchestrator-template §4로 정정, context-economy 목차에 §3.1 추가, CHANGELOG 1.10.0의 테스트 수 표기(3종→2종) 정정, 차단 플래그 목록을 훅 실구현과 동기화(README·branch 스킬·hooks-and-permissions)
+
+### Added
+
+- **회귀 테스트 3종 추가(43→46)** — switch 우회 형태 12케이스(번들·붙임·따옴표·orphan·detach·멀티라인·복합 명령), branchGuard CLI 스폰 테스트(차단/통과/fail-closed), checkFreshness CLI --root 생략·값 누락 테스트. failureSignature 테스트를 전체 출력 기준으로 재작성
+
+## [1.10.0] - 2026-07-08
+
+업계 실무 방법론 조사(Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례, 3인 적대 검증 통과 22건)를 반영한 방법론 정합화 릴리스. 신규 파일 없이 기존 references·훅·스킬을 보강한다.
+
+### Added
+
+- **실행 모드에 "단일 우선" 에스컬레이션 사다리** (`execution-modes.md` §1) — 멀티에이전트를 기본값으로 고르지 않는다. 근거: 멀티에이전트는 채팅 대비 ~15배 토큰이며 성능 이득의 80%가 토큰 사용량 자체로 설명됨(Anthropic), 대부분의 코딩 작업은 부적합, "단일 능력 소진 후에만 멀티에이전트"(OpenAI). 사다리(직접 실행→서브1→루프→Workflow→팀)와 기계적 상향 트리거 2종(로직 과다·도구 유사도 과부하), manager/decentralized 패턴 선택 규칙 추가. 결정 트리에 단일 우선 게이트 삽입
+- **대량 마이그레이션 실행 모드** (`execution-modes.md` §7) — 기계적 대량 변환 패턴(Workflow pipeline + 파일 단위 상태머신 + per-item 재시도 예산). 근거: Airbnb Enzyme→RTL 3,500파일 18개월→6주(>10배), 무식한 재시도 루프가 정교한 프롬프트를 이김(단순 ~10회·롱테일 50~100회)
+- **컨텍스트 경제 예외 조항** (`context-economy.md` §3.1) — 대량 기계적 변환은 "최소 고신호 토큰"의 예외. Airbnb는 프롬프트를 4만~10만 토큰까지 불려 성공(관련 파일 50개·few-shot). 추론 작업과 기계 변환 작업의 판별 기준 명시
+- **도구 위험 3등급 가드레일** (`hooks-and-permissions.md`) — allow/block 이분법 대신 low(allowlist)/medium(기본)/high(deny·훅·확인) 분류(OpenAI). 기존 훅 3종(git·시크릿·브랜치)을 high 등급 사례로 재배치, 새 도메인은 high 도구(결제·배포·프로덕션 DB) 재분류. SKILL.md Phase 2·allowlist 선정 기준 연동
+- **검증 수단 신뢰도 서열** (`agent-design.md` QA 가이드 + `loop` 스킬) — 규칙 기반(종료 코드) > 시각·실행 피드백 > LLM 판정 순. LLM 판정은 "robust하지 않음"(Anthropic)이라 단독 종료 판정 금지 — loop 자기평가 금지와 동일 원리로 명문화
+- **검증자 게이트 막힘 판정** (`verifierGate.mjs` `stuckAfter`) — 같은 실패 시그니처(검증 이름+출력 첫 줄, 숫자 정규화)가 N연속이면 예산 소진 전에 막힘으로 보고 후 종료. 루프 명세의 "막힘 판정"을 config로 강제하는 수단(Google ADK의 하드 예산+품질 조기탈출 dual-exit). 세션 상태 스키마를 {iterations,signature,streak}로 확장(구 숫자 스키마 호환). 회귀 테스트 2종 추가(41→43)
+
+### Changed
+
+- **병렬성 분리 축을 breadth-first로 정밀화** (`agent-design.md`) — 멀티에이전트의 본질은 협업이 아니라 토큰 예산(컨텍스트 창 용량) 병렬 확장(Anthropic, 이득의 80%가 토큰). 순차 의존 작업을 여러 에이전트로 짜면 토큰만 15배 쓰는 안티패턴임을 명시
+- **핸드오프를 명시적 계약으로 규정** (`orchestrator-template.md` §4) — 에이전트 간 인계는 자유 서술이 아니라 약속된 상태 키(경로+형식)로. Google ADK output_key→state 원리, 흐릿한 계약이 경계면 버그의 근원
+
 ## [1.9.0] - 2026-07-07
 
 ### Added

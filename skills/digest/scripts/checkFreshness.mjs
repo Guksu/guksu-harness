@@ -82,9 +82,24 @@ if (isDirectRun) {
       }
     }
   } else if (command === 'check' && rest.length > 0) {
-    const rootFlagIndex = rest.indexOf('--root');
-    const rootDir = rootFlagIndex >= 0 ? rest[rootFlagIndex + 1] : process.cwd();
-    const digestPath = rest.filter((arg, index) => index !== rootFlagIndex && index !== rootFlagIndex + 1)[0];
+    // --root <값> 쌍을 위치 인자에서 분리한다. splice 방식이라 --root가 없을 때(indexOf -1)
+    // 위치 인자가 오염되지 않는다 — 필터+인덱스 산술은 -1+1=0으로 다이제스트 경로를 지웠다.
+    const positional = [...rest];
+    let rootDir = process.cwd();
+    const rootFlagIndex = positional.indexOf('--root');
+    if (rootFlagIndex !== -1) {
+      const [, rootValue] = positional.splice(rootFlagIndex, 2);
+      if (rootValue == null) {
+        console.error('[error] --root 뒤에 프로젝트 루트 경로가 필요하다');
+        process.exit(1);
+      }
+      rootDir = rootValue;
+    }
+    const digestPath = positional[0];
+    if (!digestPath) {
+      console.error('[error] 검사할 다이제스트 파일 경로가 필요하다');
+      process.exit(1);
+    }
     const { ok, results, error } = await checkFreshness({ digestPath, rootDir });
     if (error) {
       console.error(`[error] ${digestPath}: ${error}`);

@@ -8,7 +8,7 @@
 
 | 영역 | 기존 하네스 플러그인 | guksu-harness |
 |------|--------------------|---------------|
-| 실행 모드 | 에이전트 팀이 무조건 기본 | **작업 형태가 결정** — 결정적 흐름은 Workflow, 피드백 루프는 팀, 단발 위임은 서브 에이전트 |
+| 실행 모드 | 에이전트 팀이 무조건 기본 | **단일 우선 에스컬레이션** — 직접 실행→서브→루프→Workflow→팀 순으로, 더 싼 모드가 안 되는 근거가 있을 때만 상향 (멀티에이전트는 ~15배 토큰) |
 | Workflow 도구 | 미지원 | **1급 실행 모드** — pipeline/parallel, 스키마 검증 출력, 토큰 버짓 |
 | 모델 정책 | `model: "opus"` 하드코딩 | **세션 모델 상속이 기본** — 모델 세대가 바뀌어도 하네스가 늙지 않는다 |
 | 작업 스타일 | 없음 | **절대 규칙 내장** — TDD 기본, git 사용자 전담, 경계면 교차검증 QA, 파일 기반 산출물 |
@@ -19,8 +19,9 @@
 | 컨텍스트 비용 | 통제 없음 | **컨텍스트 경제 내장** — 상시/조건부 로딩 분리, CLAUDE.md ~200줄, 대량 읽기 서브 에이전트 격리 (절대 규칙 7) |
 | 세션 간 재사용 | 없음 (매 세션 재분석) | **`digest` 스킬** — 분석 요약을 내용 해시 검증 캐시(`docs/digests/`)로 저장, 다음 세션이 원문 대신 소비 |
 | 브랜치 위생 | 없음 (main 위에서 그대로 작업) | **`branch` 스킬 + branchGuard 훅** — 작업 시작 시 브랜치 확인·승인 후 전환, 보호 브랜치 편집은 기계적 차단 |
+| 방법론 근거 | 저자 경험 | **업계 검증 반영** — Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례로 실행 모드·가드레일·검증 서열을 정합 |
 | 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
-| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·버전 정합성 자동 검사 (테스트 포함) |
+| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 46종) |
 
 ## 설치
 
@@ -55,7 +56,7 @@
 > QA 에이전트 추가해줘
 ```
 
-스킬이 트리거되면 **감사 → 설계 → 구축 → 검증 → 등록·진화**의 5단계로 진행하며, 결과물로 프로젝트에 `.claude/agents/`, `.claude/skills/`, 오케스트레이터 스킬, CLAUDE.md 포인터가 생성된다.
+스킬이 트리거되면 **감사 → 설계 → 구축 → 검증 → 등록·진화**의 5단계로 진행하며, 결과물로 프로젝트에 `.claude/agents/`(에이전트 정의), `.claude/skills/`(오케스트레이터), `.claude/hooks/`+permissions(훅·권한), `docs/templates/`(공통 템플릿 5종), CLAUDE.md 포인터가 생성된다.
 
 ## docs 스킬 — 공통 워크로그 기록
 
@@ -110,7 +111,7 @@
 - **자기평가 금지** — 종료 판정은 기계적 검증(명령 종료 코드)만. 검증 불가 목표는 루프로 만들지 않는다
 - **4요소는 사용자 확인 필수** — 트리거·실행 단위·검증자·종료 규칙을 확인받기 전에는 실행하지 않는다
 - **토큰 예산 안전장치** — 예산 초과 시 루프를 계속하지 않고 자동 중단, 진행 상황·남은 실패·사유 보고 후 종료
-- **검증자 게이트**(Stop 훅, `assets/hooks/verifierGate.mjs`) — 검증 실패 시 턴 종료 차단, 안전장치 도달 시 "보고 후 종료" 지시. TDD 게이트의 일반화(테스트+타입체크+린트 등 조합 가능)
+- **검증자 게이트**(Stop 훅, `assets/hooks/verifierGate.mjs`) — 검증 실패 시 턴 종료 차단, 안전장치(토큰 예산 `maxTokens`·최대 반복 `maxIterations`·막힘 `stuckAfter` — 같은 실패 시그니처 N연속) 도달 시 "보고 후 종료" 지시. TDD 게이트의 일반화(테스트+타입체크+린트 등 조합 가능)
 
 ## digest 스킬 — 세션 간 지식 캐시
 
@@ -136,8 +137,8 @@
 ```
 
 - **확인 없이 전환하지 않는다** — 이름은 제안(기존 브랜치 패턴 우선, 없으면 `{type}/{slug}`), 결정은 사용자
-- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴 플래그(`-f`·`--discard-changes`·`-C`)와 `checkout`은 훅이 계속 차단
-- **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
+- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`-d`/`--detach`)와 `checkout`·`restore`·`clean`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
+- **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write/NotebookEdit)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
 - 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담
 
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
@@ -150,7 +151,7 @@
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
 7. **컨텍스트 절약형 설계** — 상시 로딩(CLAUDE.md·description)은 포인터 수준, 파일 한정 지침은 `.claude/rules/`+`paths:`로, 대량 읽기는 서브 에이전트 격리. 플랫폼이 자동으로 하는 것(프롬프트 캐시·지연 로딩)은 재구현하지 않는다.
 
-규칙 1(git)·6(시크릿)과 브랜치 위생은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 3종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단, 보호 브랜치 편집 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 토큰 예산·최대 반복 초과 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
+규칙 1(git)·6(시크릿)과 브랜치 위생은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 3종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단, 보호 브랜치 편집 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 안전장치(토큰 예산·최대 반복·막힘 판정) 도달 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
 
 ## 구조
 
@@ -183,7 +184,7 @@ guksu-harness/
 └── skills/harness/
     ├── SKILL.md                      # 핵심 워크플로우 (5 Phase + 인자 해석 + 해체 절차)
     ├── references/
-    │   ├── execution-modes.md        # Workflow·팀·서브 에이전트 결정 트리 (핵심)
+    │   ├── execution-modes.md        # 에스컬레이션 사다리·결정 트리·마이그레이션 패턴 (핵심)
     │   ├── agent-design.md           # 분리 기준 4축, 정의 템플릿, QA 가이드
     │   ├── skill-authoring.md        # description 트리거, progressive disclosure
     │   ├── orchestrator-template.md  # 모드별 골격, 데이터 전달, 에러 핸들링

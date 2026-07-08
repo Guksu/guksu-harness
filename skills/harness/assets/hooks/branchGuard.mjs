@@ -44,8 +44,21 @@ if (isDirectRun) {
 
   const hookDir = dirname(fileURLToPath(import.meta.url));
   const configPath = join(hookDir, 'branchGuard.config.json');
-  const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
-  const protectedBranches = config.protectedBranches ?? DEFAULT_PROTECTED_BRANCHES;
+  let protectedBranches = DEFAULT_PROTECTED_BRANCHES;
+  if (existsSync(configPath)) {
+    try {
+      protectedBranches =
+        JSON.parse(readFileSync(configPath, 'utf8')).protectedBranches ??
+        DEFAULT_PROTECTED_BRANCHES;
+    } catch (error) {
+      // 가드 훅은 설정 오류에 fail-closed — 파싱 예외로 조용히 죽으면(exit≠2는 비차단)
+      // 사용자가 설정을 만지려던 순간 보호가 사라진 걸 아무도 모른다.
+      console.error(
+        `차단됨: branchGuard.config.json 파싱 실패(${error.message}) — 설정 파일을 고치기 전까지 파일 편집을 차단합니다.`,
+      );
+      process.exit(2);
+    }
+  }
 
   const projectDir = process.env.CLAUDE_PROJECT_DIR ?? input.cwd ?? process.cwd();
   const branch = readCurrentBranch({ projectDir });
