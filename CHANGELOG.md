@@ -2,6 +2,24 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.10.0] - 2026-07-08
+
+업계 실무 방법론 조사(Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례, 3인 적대 검증 통과 22건)를 반영한 방법론 정합화 릴리스. 신규 파일 없이 기존 references·훅·스킬을 보강한다.
+
+### Added
+
+- **실행 모드에 "단일 우선" 에스컬레이션 사다리** (`execution-modes.md` §1) — 멀티에이전트를 기본값으로 고르지 않는다. 근거: 멀티에이전트는 채팅 대비 ~15배 토큰이며 성능 이득의 80%가 토큰 사용량 자체로 설명됨(Anthropic), 대부분의 코딩 작업은 부적합, "단일 능력 소진 후에만 멀티에이전트"(OpenAI). 사다리(직접 실행→서브1→루프→Workflow→팀)와 기계적 상향 트리거 2종(로직 과다·도구 유사도 과부하), manager/decentralized 패턴 선택 규칙 추가. 결정 트리에 단일 우선 게이트 삽입
+- **대량 마이그레이션 실행 모드** (`execution-modes.md` §7) — 기계적 대량 변환 패턴(Workflow pipeline + 파일 단위 상태머신 + per-item 재시도 예산). 근거: Airbnb Enzyme→RTL 3,500파일 18개월→6주(>10배), 무식한 재시도 루프가 정교한 프롬프트를 이김(단순 ~10회·롱테일 50~100회)
+- **컨텍스트 경제 예외 조항** (`context-economy.md` §3.1) — 대량 기계적 변환은 "최소 고신호 토큰"의 예외. Airbnb는 프롬프트를 4만~10만 토큰까지 불려 성공(관련 파일 50개·few-shot). 추론 작업과 기계 변환 작업의 판별 기준 명시
+- **도구 위험 3등급 가드레일** (`hooks-and-permissions.md`) — allow/block 이분법 대신 low(allowlist)/medium(기본)/high(deny·훅·확인) 분류(OpenAI). 기존 훅 3종(git·시크릿·브랜치)을 high 등급 사례로 재배치, 새 도메인은 high 도구(결제·배포·프로덕션 DB) 재분류. SKILL.md Phase 2·allowlist 선정 기준 연동
+- **검증 수단 신뢰도 서열** (`agent-design.md` QA 가이드 + `loop` 스킬) — 규칙 기반(종료 코드) > 시각·실행 피드백 > LLM 판정 순. LLM 판정은 "robust하지 않음"(Anthropic)이라 단독 종료 판정 금지 — loop 자기평가 금지와 동일 원리로 명문화
+- **검증자 게이트 막힘 판정** (`verifierGate.mjs` `stuckAfter`) — 같은 실패 시그니처(검증 이름+출력 첫 줄, 숫자 정규화)가 N연속이면 예산 소진 전에 막힘으로 보고 후 종료. 루프 명세의 "막힘 판정"을 config로 강제하는 수단(Google ADK의 하드 예산+품질 조기탈출 dual-exit). 세션 상태 스키마를 {iterations,signature,streak}로 확장(구 숫자 스키마 호환), 성공 시 상태 정리. 회귀 테스트 3종 추가(41→43)
+
+### Changed
+
+- **병렬성 분리 축을 breadth-first로 정밀화** (`agent-design.md`) — 멀티에이전트의 본질은 협업이 아니라 토큰 예산(컨텍스트 창 용량) 병렬 확장(Anthropic, 이득의 80%가 토큰). 순차 의존 작업을 여러 에이전트로 짜면 토큰만 15배 쓰는 안티패턴임을 명시
+- **핸드오프를 명시적 계약으로 규정** (`orchestrator-template.md` §4) — 에이전트 간 인계는 자유 서술이 아니라 약속된 상태 키(경로+형식)로. Google ADK output_key→state 원리, 흐릿한 계약이 경계면 버그의 근원
+
 ## [1.9.0] - 2026-07-07
 
 ### Added

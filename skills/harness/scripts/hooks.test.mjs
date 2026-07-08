@@ -6,7 +6,12 @@ import { join } from 'node:path';
 
 import { isGitMutation } from '../assets/hooks/blockGitMutation.mjs';
 import { referencesSecret } from '../assets/hooks/blockSecretAccess.mjs';
-import { decide, runChecks, sumTranscriptTokens } from '../assets/hooks/verifierGate.mjs';
+import {
+  decide,
+  failureSignature,
+  runChecks,
+  sumTranscriptTokens,
+} from '../assets/hooks/verifierGate.mjs';
 import {
   DEFAULT_PROTECTED_BRANCHES,
   isProtectedBranch,
@@ -186,6 +191,46 @@ test('검증자 게이트 — 최대 반복 도달이면 보고 후 종료를 �
   });
   assert.equal(decision.action, 'wrapup');
   assert.ok(decision.reason.includes('최대 반복'));
+});
+
+test('검증자 게이트 — 같은 실패 N연속(stuckAfter)이면 막힘으로 보고 후 종료', () => {
+  const stuck = decide({
+    config: { stuckAfter: 3, maxIterations: 100 },
+    iterations: 4,
+    tokensUsed: 0,
+    failures: [{ name: 'test', output: 'AssertionError' }],
+    sameFailureStreak: 3,
+  });
+  assert.equal(stuck.action, 'wrapup');
+  assert.ok(stuck.reason.includes('막힘'));
+
+  // 아직 임계 미만이면 계속 차단한다
+  const notYet = decide({
+    config: { stuckAfter: 3, maxIterations: 100 },
+    iterations: 2,
+    tokensUsed: 0,
+    failures: [{ name: 'test', output: 'AssertionError' }],
+    sameFailureStreak: 2,
+  });
+  assert.equal(notYet.action, 'block');
+});
+
+test('실패 시그니처 — 이름+첫 줄이 같으면 동일, 숫자 변동은 무시한다', () => {
+  const a = failureSignature([{ name: 'test', output: 'FAIL at line 42\n  detail' }]);
+  const b = failureSignature([{ name: 'test', output: 'FAIL at line 99\n  other' }]);
+  const c = failureSignature([{ name: 'test', output: 'TypeError: x is undefined' }]);
+  assert.equal(a, b, '줄 번호만 다른 같은 에러는 같은 시그니처');
+  assert.notEqual(a, c, '다른 에러는 다른 시그니처');
+  // 실패 순서가 달라도 정렬되어 같은 시그니처
+  const twoAB = failureSignature([
+    { name: 'test', output: 'X' },
+    { name: 'lint', output: 'Y' },
+  ]);
+  const twoBA = failureSignature([
+    { name: 'lint', output: 'Y' },
+    { name: 'test', output: 'X' },
+  ]);
+  assert.equal(twoAB, twoBA);
 });
 
 test('검증자 게이트 — transcript 토큰 사용량을 합산한다 (손상 줄은 무시)', () => {
