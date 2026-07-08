@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.10.2] - 2026-07-08
+
+전체 하네스 정책 정합성 감사(정책 일관성 + 동작↔문서 대조, 병렬 감사 2종)에서 확인된 11건 수정. 동작 버그 0건 — 규칙↔강제 공백과 문서 누락 계열.
+
+### Fixed
+
+- **git restore·clean 차단 추가** (`blockGitMutation.mjs`) — checkout을 "파일 복원 기능 때문에 전체 차단"하면서 같은 워킹트리 파괴 계열인 restore·clean은 통과하던 규칙↔강제 공백 봉합. 차단 테스트 2종 추가
+- **오케스트레이터 골격 절대 규칙 7종 완성** (`orchestrator-template.md`) — 골격이 5종만 담아 "절대 규칙 7종 반영" 체크리스트를 통과할 수 없던 누락(규칙 3 파일 기반·규칙 5 QA 교차검증) 보충. 에이전트 정의 템플릿의 규칙 열거도 7종으로 완성 (agent-design)
+- **validateHarness에 blockSecretAccess 미등록 경고 추가** — 문서가 요구하는 훅 3종 중 1종의 누락이 감사에서 침묵 통과되던 공백. 테스트·testing-guide 목록 갱신
+- **루프를 실행 모드 열거에 반영** — harness SKILL.md description(상시 로딩 표면)과 오케스트레이터 골격의 실행 모드 필드에 루프 누락 수정, §3에 루프 골격(명세·게이트 포인터) 추가
+- **retro↔harness 트리거 경계 명문화** — '하네스 보완/업데이트' 류 발화가 두 스킬에 모두 매칭되던 모호성: retro description에 "구조 점검·동기화·직접 수정은 harness 스킬 대상" 구분 문장 추가
+- **loop-spec 템플릿에 stuckAfter 미러링 안내** — 막힘 판정 값을 명세에만 적으면 기계적으로 강제되지 않는다는 안내가 템플릿 단계에 없던 공백
+- **문서 표기 동기화** — README 차단 플래그에 `-d` 추가·`restore`/`clean` 반영, branchGuard 매처 표기를 Edit/Write/NotebookEdit로 통일 (README·hooks-and-permissions §3)
+
 ## [1.10.1] - 2026-07-08
 
 v1.7.0~v1.10.0 전 범위 코드 리뷰(파인더 7앵글 + 실행 검증)에서 확인된 10건 수정.

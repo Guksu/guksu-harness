@@ -137,8 +137,8 @@
 ```
 
 - **확인 없이 전환하지 않는다** — 이름은 제안(기존 브랜치 패턴 우선, 없으면 `{type}/{slug}`), 결정은 사용자
-- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`--detach`)와 `checkout`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
-- **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
+- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`-d`/`--detach`)와 `checkout`·`restore`·`clean`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
+- **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write/NotebookEdit)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
 - 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담
 
 ## 생성되는 모든 하네스에 내장되는 절대 규칙

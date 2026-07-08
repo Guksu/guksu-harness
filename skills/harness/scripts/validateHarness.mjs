@@ -242,6 +242,14 @@ const validateEnforcement = async ({ rootDir, issues }) => {
         'git 차단 훅(blockGitMutation)이 구성되지 않았다 — 절대 규칙 1의 기계적 강제가 없다 (hooks-and-permissions.md)',
     });
   }
+  if (!preToolUseCommands.includes('blockSecretAccess')) {
+    issues.push({
+      level: 'warn',
+      path: settingsPath,
+      message:
+        '시크릿 Bash 차단 훅(blockSecretAccess)이 구성되지 않았다 — deny는 Read 도구만 막아 cat .env 우회가 열린다 (hooks-and-permissions.md)',
+    });
+  }
   if (!preToolUseCommands.includes('branchGuard')) {
     issues.push({
       level: 'warn',

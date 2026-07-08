@@ -74,7 +74,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 절대 규칙 1(git 작업은 사용자 전담)을 강제한다.
 
-**차단 범위 원칙:** 변경 명령만 막는다. `git status`·`diff`·`log`·`show`·`blame` 같은 읽기 명령은 에이전트의 작업 파악에 필요하므로 허용한다. **switch는 예외로 허용된다** — 순수 브랜치 전환(`git switch <b>`·`-c <b>`)은 작업 내용을 파괴하지 않으며(충돌 시 git이 거부), `branch` 스킬이 사용자 확인 후에만 사용한다. 단 파괴·이탈 플래그(`-f`/`--force`·`--discard-changes`·`-C`/`--force-create`·`--orphan`(워킹트리 비움)·`-d`/`--detach`(detached HEAD — branchGuard 무력화))와 `checkout`(파일 복원 기능 포함)은 계속 차단한다. 판정은 토큰 단위다 — git의 번들(`-fc`)·값 붙임(`-Cmain`)·따옴표(`"-f"`) 형태까지 잡는다.
+**차단 범위 원칙:** 변경 명령만 막는다. `git status`·`diff`·`log`·`show`·`blame` 같은 읽기 명령은 에이전트의 작업 파악에 필요하므로 허용한다. **switch는 예외로 허용된다** — 순수 브랜치 전환(`git switch <b>`·`-c <b>`)은 작업 내용을 파괴하지 않으며(충돌 시 git이 거부), `branch` 스킬이 사용자 확인 후에만 사용한다. 단 파괴·이탈 플래그(`-f`/`--force`·`--discard-changes`·`-C`/`--force-create`·`--orphan`(워킹트리 비움)·`-d`/`--detach`(detached HEAD — branchGuard 무력화))와 `checkout`(파일 복원 기능 포함)·`restore`·`clean`(워킹트리 파괴 계열)은 계속 차단한다. 판정은 토큰 단위다 — git의 번들(`-fc`)·값 붙임(`-Cmain`)·따옴표(`"-f"`) 형태까지 잡는다.
 
 **우회 방지:** 판정 정규식은 서브커맨드 앞의 전역 플래그를 건너뛴다. `-C <path>`·`-c <k=v>`·`--git-dir <path>`처럼 **값을 별도 인자로 받는 플래그**를 처리하지 않으면 `git -C /repo commit` 같은 우회가 생긴다 — 패턴을 수정할 때는 반드시 `scripts/hooks.test.mjs`의 차단/허용 케이스를 함께 갱신하고 통과를 확인한다.
 
@@ -89,7 +89,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 { "protectedBranches": ["main", "master"] }
 ```
 
-- **한계:** Edit/Write 도구만 막는다 — Bash 경유 파일 쓰기(`echo > file`)는 걸러지지 않으므로, 에이전트 정의의 작업 원칙("파일 변경 작업 시작 전 branch 스킬로 브랜치 확인")과 병행한다. 보호 브랜치에서 의도적으로 계속하려면 사용자가 직접 config를 수정한다 — 에이전트가 대신 수정하지 않는다.
+- **한계:** Edit/Write/NotebookEdit 도구만 막는다 — Bash 경유 파일 쓰기(`echo > file`)는 걸러지지 않으므로, 에이전트 정의의 작업 원칙("파일 변경 작업 시작 전 branch 스킬로 브랜치 확인")과 병행한다. 보호 브랜치에서 의도적으로 계속하려면 사용자가 직접 config를 수정한다 — 에이전트가 대신 수정하지 않는다.
 
 ## 4. 시크릿 차단 — deny + 훅의 2중 방어
 

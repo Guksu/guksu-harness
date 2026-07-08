@@ -30,6 +30,8 @@ test('git 변경 명령을 차단한다', () => {
     'git --git-dir=.git push',
     'git checkout -b feature',
     'git checkout main',
+    'git restore src/app.ts', // checkout과 같은 워킹트리 파괴 계열
+    'git clean -fd',
     'git branch -D old',
     'git stash',
     'git worktree add ../wt',
