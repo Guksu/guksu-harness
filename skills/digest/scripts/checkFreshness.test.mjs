@@ -1,10 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { hashContent, parseSources, checkFreshness } from './checkFreshness.mjs';
+
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), 'checkFreshness.mjs');
 
 const makeFixture = async ({ files }) => {
   const rootDir = await mkdtemp(join(tmpdir(), 'guksu-digest-'));
@@ -108,6 +112,35 @@ test('소스 파일이 사라지면 missing으로 판정한다', async () => {
   });
   assert.equal(ok, false);
   assert.deepEqual(results.map((result) => result.status), ['missing']);
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('CLI — --root 없이도 cwd 기준으로 check가 동작한다 (usage의 [--root]는 선택)', async () => {
+  const sourceContent = 'export const answer = 42;\n';
+  const rootDir = await makeFixture({
+    files: {
+      'src/foo.ts': sourceContent,
+      'docs/digests/foo.md': makeDigest({
+        sources: [{ path: 'src/foo.ts', hash: hashContent({ content: sourceContent }) }],
+      }),
+    },
+  });
+  const noRoot = spawnSync(
+    process.execPath,
+    [CLI_PATH, 'check', 'docs/digests/foo.md'], // --root 생략 — 크래시 회귀 케이스
+    { cwd: rootDir, encoding: 'utf8' },
+  );
+  assert.equal(noRoot.status, 0, `fresh여야 한다 — stderr: ${noRoot.stderr}`);
+  assert.ok(noRoot.stdout.includes('fresh'));
+
+  // --root에 값이 없으면 크래시 대신 명확한 에러
+  const danglingRoot = spawnSync(
+    process.execPath,
+    [CLI_PATH, 'check', 'docs/digests/foo.md', '--root'],
+    { cwd: rootDir, encoding: 'utf8' },
+  );
+  assert.equal(danglingRoot.status, 1);
+  assert.ok(danglingRoot.stderr.includes('--root'));
   await rm(rootDir, { recursive: true, force: true });
 });
 

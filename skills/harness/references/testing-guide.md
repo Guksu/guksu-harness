@@ -20,7 +20,8 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 - description: 후속 작업 키워드(다시·재실행·수정·보완 등) 누락 시 경고
 - CLAUDE.md: 하네스(에이전트/스킬)가 존재하는데 포인터 섹션(`## 하네스:`)이 없으면 경고
 - 에이전트: frontmatter `name`/`description` 존재
-- 훅·권한: 하네스가 존재하는데 `.claude/settings.json`에 git 차단 훅·시크릿 deny가 없으면 경고 (`hooks-and-permissions.md`)
+- 훅·권한: 하네스가 존재하는데 `.claude/settings.json`에 git 차단 훅(blockGitMutation)·브랜치 가드 훅(branchGuard)·시크릿 deny가 없으면 각각 경고 (`hooks-and-permissions.md`)
+- 공통 템플릿: 하네스가 존재하는데 `docs/templates/`에 5종(worklog·retro·handoff·loop-spec·digest) 중 없는 것이 있으면 템플릿별 경고
 - 오케스트레이터: name에 `orchestrator`가 포함된 스킬에 `## 테스트 시나리오` 섹션이 없으면 경고
 - `.claude/commands/`: 파일이 존재하면 경고 (하네스는 여기에 아무것도 생성하지 않는다)
 - 플러그인 repo: plugin.json ↔ marketplace.json 버전 일치

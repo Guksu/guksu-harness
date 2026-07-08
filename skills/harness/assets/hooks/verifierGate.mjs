@@ -52,20 +52,21 @@ export const runChecks = ({ checks, cwd }) => {
   return failures;
 };
 
-// 실패 시그니처 — "같은 에러가 반복되는가"를 판정하는 지문. 실패한 검증 이름 + 출력의
-// 첫 비어있지 않은 줄(정규화)로 만든다. 출력 전체를 쓰면 타임스탬프·경로 등 매번 바뀌는
-// 값 때문에 같은 에러도 다른 시그니처가 되어 막힘을 놓친다.
+// 실패 시그니처 — "같은 에러가 반복되는가"를 판정하는 지문. 실패한 검증 이름 + 출력 전체를
+// 정규화(숫자→#, 공백 압축)해 만든다. 첫 줄만 쓰면 안 된다 — npm의 "> pkg@1.0.0 test" 배너처럼
+// 고정된 첫 줄이 모든 실패를 동일 시그니처로 만들어, 수렴 중인 루프를 막힘으로 오판한다.
+// 전체 출력이어야 실패한 테스트 목록의 변화(= 진전)가 시그니처 변화로 감지된다.
+// 숫자 정규화는 줄 번호·소요 시간 변동에 시그니처가 흔들리지 않게 하기 위함이다.
 export const failureSignature = (failures) =>
   failures
-    .map((failure) => {
-      const firstLine =
-        (failure.output ?? '')
-          .split('\n')
-          .map((line) => line.trim())
-          .find((line) => line.length > 0) ?? '';
-      // 숫자(줄 번호·소요 시간·카운트)를 지워 사소한 변동에 시그니처가 흔들리지 않게 한다
-      return `${failure.name}:${firstLine.replace(/\d+/g, '#')}`;
-    })
+    .map(
+      (failure) =>
+        `${failure.name}:${(failure.output ?? '')
+          .replace(/\d+/g, '#')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 500)}`,
+    )
     .sort()
     .join('|');
 
@@ -120,30 +121,46 @@ if (isDirectRun) {
   }
 
   const statePath = join(hookDir, 'verifierGate.state.json');
-  const rawState = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : {};
+  const readState = () => {
+    try {
+      return existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : {};
+    } catch {
+      return {}; // 손상된 상태 파일은 초기화 — 안전장치 카운터는 근사치여도 충분하다
+    }
+  };
+  // 자기 세션 키만 갱신하되 쓰기 직전에 파일을 다시 읽는다 — 상태 파일은 session_id 키로
+  // 동시 세션을 전제하므로, 훅 시작 시점 스냅숏을 그대로 되쓰면 그 사이 다른 세션이 올린
+  // 카운터를 낡은 값으로 되감는다(완전한 락은 아니지만 경쟁 창을 훅 실행 시간 → 쓰기
+  // 직전으로 좁힌다).
+  const writeSessionState = (value) => {
+    const fresh = readState();
+    fresh[input.session_id] = value;
+    writeFileSync(statePath, JSON.stringify(fresh));
+  };
   // 이전 스키마(값이 숫자)와의 호환: 세션별 상태를 {iterations, signature, streak} 객체로 정규화.
-  const prior = rawState[input.session_id];
-  const sessionState =
-    typeof prior === 'number' ? { iterations: prior, signature: null, streak: 0 } : prior ?? {};
+  const prior = readState()[input.session_id];
+  const sessionState = typeof prior === 'number' ? { iterations: prior } : prior ?? {};
   const iterations = sessionState.iterations ?? 0;
 
   const failures = runChecks({ checks: config.checks ?? [], cwd: input.cwd });
   const signature = failureSignature(failures);
   const sameFailureStreak =
     failures.length > 0 && signature === sessionState.signature
-      ? (sessionState.streak ?? 1) + 1
+      ? (sessionState.streak ?? 0) + 1
       : 1;
 
   const decision = decide({ config, iterations, tokensUsed, failures, sameFailureStreak });
   if (decision.action === 'allow') {
-    // 수렴 성공 — 세션 상태를 정리해 다음 루프가 깨끗하게 시작하게 한다
-    delete rawState[input.session_id];
-    writeFileSync(statePath, JSON.stringify(rawState));
+    // iterations는 문서화된 의미(세션별 누적 차단 횟수)라 통과했다고 리셋하지 않는다 —
+    // 리셋하면 flaky 체크가 한 번 통과할 때마다 maxIterations가 초기화되어 세션당 총
+    // 차단 횟수를 상한하지 못한다. 막힘 추적(signature/streak)만 통과 시점에 끊는다.
+    if (sessionState.signature != null || (sessionState.streak ?? 0) !== 0) {
+      writeSessionState({ iterations, signature: null, streak: 0 });
+    }
     process.exit(0);
   }
 
-  rawState[input.session_id] = { iterations: iterations + 1, signature, streak: sameFailureStreak };
-  writeFileSync(statePath, JSON.stringify(rawState));
+  writeSessionState({ iterations: iterations + 1, signature, streak: sameFailureStreak });
   console.error(decision.reason);
   process.exit(2);
 }
