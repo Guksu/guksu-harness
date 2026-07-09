@@ -19,6 +19,7 @@
 | 컨텍스트 비용 | 통제 없음 | **컨텍스트 경제 내장** — 상시/조건부 로딩 분리, CLAUDE.md ~200줄, 대량 읽기 서브 에이전트 격리 (절대 규칙 7) |
 | 세션 간 재사용 | 없음 (매 세션 재분석) | **`digest` 스킬** — 분석 요약을 내용 해시 검증 캐시(`docs/digests/`)로 저장, 다음 세션이 원문 대신 소비 |
 | 브랜치 위생 | 없음 (main 위에서 그대로 작업) | **`branch` 스킬 + branchGuard 훅** — 작업 시작 시 브랜치 확인·승인 후 전환, 보호 브랜치 편집은 기계적 차단 |
+| 종료 보고 | 채팅 장문 텍스트 (스크롤에 묻힘) | **`report` 스킬** — 요약·검증·검토 필요·후속 조치를 담은 HTML 보고서를 `docs/reports/`에 히스토리로 누적, 채팅엔 요약만 |
 | 방법론 근거 | 저자 경험 | **업계 검증 반영** — Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례로 실행 모드·가드레일·검증 서열을 정합 |
 | 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
 | 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 46종) |
@@ -67,7 +68,7 @@
 > 이번 작업 워크로그 남겨줘 / 아까 기록 보완해줘
 ```
 
-- 템플릿은 `skills/docs/assets/templates/`에 실물 파일로 번들(worklog + retro + handoff + loop-spec + digest 5종) — 프로젝트 `docs/templates/` 사본이 있으면 그것이 단일 출처
+- 템플릿은 `skills/docs/assets/templates/`에 실물 파일로 번들(worklog + retro + handoff + loop-spec + digest + report 6종) — 프로젝트 `docs/templates/` 사본이 있으면 그것이 단일 출처
 - 기록 위치: `docs/worklog/{YYYY-MM-DD}-{slug}.md` (병렬 에이전트는 `-{agent}` 접미사로 각자 파일)
 - 하네스가 생성하는 프로젝트에는 Phase 2에서 템플릿이 자동 배포되고, 각 에이전트 정의에 "작업 완료 시 워크로그 기록"이 명시된다
 
@@ -141,6 +142,20 @@
 - **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write/NotebookEdit)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
 - 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담
 
+## report 스킬 — 작업 종료 HTML 보고서
+
+작업 종료 보고를 채팅 장문 텍스트 대신 **파일로 남는 HTML 문서**로 전환하는 독립 스킬. 채팅 보고는 스크롤에 묻히고 세션과 함께 사라진다 — 보고서는 `docs/reports/{YYYY-MM-DD}-{slug}.html`로 누적되어 스프린트 문서처럼 히스토리가 된다.
+
+```
+/guksu-harness:report 이번 작업 보고서 만들어줘
+> 결과 HTML로 정리해줘 / 보고서 갱신해줘
+```
+
+- **5개 고정 섹션** — 1.요약 / 2.작업 내용 / 3.검증 결과 / **4.사용자 검토 필요**(결정 대기 항목 — 선택지·영향·기본 동작 병기) / **5.후속 조치**(트리거·담당 명시)
+- **중립 테마 고정** — 백지·슬레이트·표준 상태색(완료=녹색·검토=호박색·후속=청색)의 문서 스타일. 형식이 통일되어야 히스토리로 소비된다
+- **채팅 보고는 요약으로 축소** — 3~5문장 + 보고서 경로 + 검토 항목 수만. 상세는 전부 보고서로
+- 워크로그(md)가 정본 기록이고 보고서는 검토용 뷰 — slug를 워크로그와 맞춰 쌍으로 추적, 삭제하지 않고 누적(감사 추적)
+
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
 
 1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 변경 명령을 절대 수행하지 않는다. (유일한 예외: 사용자 확인된 브랜치 전환 — `branch` 스킬이 `git switch(-c)`로만 수행)
@@ -167,9 +182,12 @@ guksu-harness/
 │       ├── retro.md                  # 공통 회고 템플릿 (retro 스킬이 사용)
 │       ├── handoff.md                # 공통 인계 템플릿 (handoff 스킬이 사용)
 │       ├── loop-spec.md              # 공통 루프 명세 템플릿 (loop 스킬이 사용)
-│       └── digest.md                 # 공통 다이제스트 템플릿 (digest 스킬이 사용)
+│       ├── digest.md                 # 공통 다이제스트 템플릿 (digest 스킬이 사용)
+│       └── report.html               # 공통 HTML 보고서 템플릿 (report 스킬이 사용)
 ├── skills/branch/
 │   └── SKILL.md                      # 작업 브랜치 확인 (사용자 승인 후 git switch)
+├── skills/report/
+│   └── SKILL.md                      # 작업 종료 HTML 보고서 (요약·검토 필요·후속 조치)
 ├── skills/digest/
 │   ├── SKILL.md                      # 세션 간 지식 캐시 (작성·갱신 / 소비 두 모드)
 │   └── scripts/
