@@ -86,7 +86,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 2. **스킬 생성** — `프로젝트/.claude/skills/{name}/SKILL.md`. description은 적극적(pushy)으로, 본문은 Why 중심·명령형·500줄 이내로 → `references/skill-authoring.md`
 3. **오케스트레이터** — 실행 모드별 골격·데이터 전달 프로토콜·에러 핸들링·후속 작업(부분 재실행) 지원: `references/orchestrator-template.md`. 기존 확장이면 새로 만들지 말고 기존 오케스트레이터를 수정한다.
 4. **훅·권한 구성** — 도구·명령을 위험 3등급(low=allowlist / medium=기본 / high=deny·훅·확인)으로 분류한 뒤 등급에 맞는 강제 수단을 붙인다. 절대 규칙 1(git)·6(시크릿)과 보호 브랜치는 high 등급의 사례다: 이 스킬의 `assets/hooks/` 훅 3종(git 변경 차단 + Bash 경유 시크릿 접근 차단 + 보호 브랜치 편집 차단(branchGuard — `branch` 스킬과 한 쌍))을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. 새 도메인은 그 도메인의 high 등급 도구(결제·배포·프로덕션 DB 등)를 재분류해 훅·deny를 추가한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 검증자 게이트(Stop 훅 — 검증 명령 통과까지 턴 종료 차단 + 토큰 예산·최대 반복 안전장치, TDD 게이트의 일반화)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
-5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 5종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`·`handoff.md`·`loop-spec.md`·`digest.md`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인 + 대형 분석 완료 시 다이제스트 기록(`digest` 스킬 — 절대 규칙 7의 세션 간 실행 수단)"을, 오케스트레이터 종료 절차에 "회고 제안(`retro` 스킬)"을, 에러 핸들링에 "세션 중단 시 인계 문서 작성(`handoff` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro`·`handoff`·`loop`·`digest` 스킬 참조.
+5. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `docs` 스킬의 템플릿 6종(이 스킬 기준 `../docs/assets/templates/`의 `worklog.md`·`retro.md`·`handoff.md`·`loop-spec.md`·`digest.md`·`report.html`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다. 에이전트 정의에 "작업 완료 시 워크로그 기록"을, 리서치·분석 에이전트 정의에 "착수 전 `docs/digests/` 확인 + 대형 분석 완료 시 다이제스트 기록(`digest` 스킬 — 절대 규칙 7의 세션 간 실행 수단)"을, 오케스트레이터 종료 절차에 "HTML 보고서 생성(`report` 스킬 — 채팅에는 요약·경로·검토 항목 수만) + 회고 제안(`retro` 스킬)"을, 에러 핸들링에 "세션 중단 시 인계 문서 작성(`handoff` 스킬)"을 명시한다. 절차 상세는 `docs`·`retro`·`handoff`·`loop`·`digest`·`report` 스킬 참조.
 
 ### Phase 3: 검증
 
@@ -124,7 +124,7 @@ description: "하네스를 구성한다. 도메인/프로젝트 요청을 실행
 - [ ] 오케스트레이터 1개 — 실행 모드 명시 + 데이터 흐름 + 에러 핸들링 + Phase 0 컨텍스트 확인(초기/부분 재실행) + 테스트 시나리오
 - [ ] 절대 규칙 7종이 오케스트레이터·에이전트 정의에 반영됨
 - [ ] 훅 3종(git·시크릿·브랜치 가드)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
-- [ ] 공통 템플릿 5종(worklog·retro·handoff·loop-spec·digest)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 회고 제안(종료)·인계(중단) 명시
+- [ ] 공통 템플릿 6종(worklog·retro·handoff·loop-spec·digest·report)이 `docs/templates/`로 복사되고 에이전트 정의에 기록 규칙, 오케스트레이터에 HTML 보고서(종료)·회고 제안(종료)·인계(중단) 명시
 - [ ] (루프 모드) 4요소·안전장치(토큰 예산 포함)가 사용자 확인을 거쳐 `docs/loops/` 명세로 기록되고, 검증자 게이트 config와 일치
 - [ ] (Workflow 모드) 반복 실행 스크립트를 `.claude/workflows/{name}.mjs`로 저장하고 오케스트레이터가 이름으로 호출
 - [ ] 컨텍스트 경제 — CLAUDE.md 포인터 ~200줄, 파일 한정 지침은 `.claude/rules/`+`paths:`, 대량 읽기는 서브 에이전트 격리 (규칙 7)
