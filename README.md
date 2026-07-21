@@ -19,10 +19,11 @@
 | 컨텍스트 비용 | 통제 없음 | **컨텍스트 경제 내장** — 상시/조건부 로딩 분리, CLAUDE.md ~200줄, 대량 읽기 서브 에이전트 격리 (절대 규칙 7) |
 | 세션 간 재사용 | 없음 (매 세션 재분석) | **`digest` 스킬** — 분석 요약을 내용 해시 검증 캐시(`docs/digests/`)로 저장, 다음 세션이 원문 대신 소비 |
 | 브랜치 위생 | 없음 (main 위에서 그대로 작업) | **`branch` 스킬 + branchGuard 훅** — 작업 시작 시 브랜치 확인·승인 후 전환, 보호 브랜치 편집은 기계적 차단 |
+| 커밋·PR | 없음 (전부 수동) 또는 통제 없는 자동 커밋 | **`pr` 스킬 + 훅 옵트인** — 사용자 명시 요청 시에만 커밋·PR 업로드(git-flow: main·dev·feat, 베이스는 dev), Claude 작성 표기가 든 커밋은 기계적 차단 |
 | 종료 보고 | 채팅 장문 텍스트 (스크롤에 묻힘) | **`report` 스킬** — 요약·검증·검토 필요·후속 조치를 담은 HTML 보고서를 `docs/reports/`에 히스토리로 누적, 채팅엔 요약만 |
 | 방법론 근거 | 저자 경험 | **업계 검증 반영** — Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례로 실행 모드·가드레일·검증 서열을 정합 |
 | 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
-| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 46종) |
+| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 50종) |
 
 ## 설치
 
@@ -140,7 +141,22 @@
 - **확인 없이 전환하지 않는다** — 이름은 제안(기존 브랜치 패턴 우선, 없으면 `{type}/{slug}`), 결정은 사용자
 - **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`-d`/`--detach`)와 `checkout`·`restore`·`clean`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
 - **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write/NotebookEdit)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
-- 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담
+- 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담 (사용자 명시 요청 시의 커밋·PR 업로드는 `pr` 스킬)
+
+## pr 스킬 — 커밋·PR 업로드 (사용자 명시 요청 시)
+
+기본값은 여전히 "git은 사용자 전담"이다. 이 스킬은 사용자가 **명시적으로 요청한 경우에만** 에이전트가 커밋 메시지를 작성해 commit·push하고 PR을 생성하는, 절대 규칙 1의 두 번째 예외다.
+
+```
+/guksu-harness:pr 커밋하고 PR 올려줘
+> 이 작업 커밋해줘 / dev로 PR 만들어줘
+```
+
+- **명시 요청 없이는 발동하지 않는다** — 작업이 끝났다고 알아서 커밋하지 않는다
+- **커밋 메시지·PR 본문에 Claude 작성 표기 절대 금지** — `Co-Authored-By: Claude`·`🤖 Generated with [Claude Code]`·`Claude-Session` 등 어떤 형태든 제거한다. 훅이 표기가 든 커밋을 기계적으로 차단한다
+- **git-flow: main ← dev ← feat** — 작업은 `feat/{slug}`에서, PR 베이스는 `dev`. `dev → main`(릴리스)·머지는 사용자 전담
+- **훅 옵트인과 한 쌍** — `blockGitMutation.config.json`의 `{ "allowCommitPush": true }`가 있어야 commit·push가 열린다(하네스 구축 시 사용자 확인 후 구성). 활성 상태에서도 merge·rebase·reset·force/delete push·`--amend`·간접 메시지 플래그(`-F`/`-t`/`-c`/`-C`)는 계속 차단
+- 커밋은 Conventional Commits(`{type}: {요약}`), 메시지는 `-m` 인라인으로만 — 훅이 메시지를 검사할 수 있는 유일한 형태다
 
 ## report 스킬 — 작업 종료 HTML 보고서
 
@@ -158,7 +174,7 @@
 
 ## 생성되는 모든 하네스에 내장되는 절대 규칙
 
-1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 변경 명령을 절대 수행하지 않는다. (유일한 예외: 사용자 확인된 브랜치 전환 — `branch` 스킬이 `git switch(-c)`로만 수행)
+1. **git 작업은 사용자 전담** — 에이전트는 commit·push 등 git 변경 명령을 절대 수행하지 않는다. (예외 ①: 사용자 확인된 브랜치 전환 — `branch` 스킬이 `git switch(-c)`로만 수행. 예외 ②: 사용자가 명시 요청한 커밋·PR 업로드 — `pr` 스킬이 git-flow(main·dev·feat)로 수행하며, 커밋 메시지·PR 본문에 Claude 작성 표기는 절대 넣지 않는다)
 2. **코드 생성 하네스는 TDD 기본** — 인수조건 = 테스트 케이스 (Red→Green→Refactor).
 3. **산출물은 파일 기반** — 중간 산출물 보존, 감사 추적 가능.
 4. **단일 출처 문서 준수** — 설계·컨벤션 문서와 어긋나면 사용자에게 확인.
@@ -166,7 +182,7 @@
 6. **시크릿 읽기·기록 금지** — `.env`·credential을 읽지 않고 산출물에 토큰/키를 남기지 않는다.
 7. **컨텍스트 절약형 설계** — 상시 로딩(CLAUDE.md·description)은 포인터 수준, 파일 한정 지침은 `.claude/rules/`+`paths:`로, 대량 읽기는 서브 에이전트 격리. 플랫폼이 자동으로 하는 것(프롬프트 캐시·지연 로딩)은 재구현하지 않는다.
 
-규칙 1(git)·6(시크릿)과 브랜치 위생은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 3종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단, 보호 브랜치 편집 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 안전장치(토큰 예산·최대 반복·막힘 판정) 도달 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
+규칙 1(git)·6(시크릿)과 브랜치 위생은 지침에 그치지 않고 **기계적으로 강제**된다 — `assets/hooks/`의 PreToolUse 훅 3종(git 변경 차단, `cat .env` 같은 Bash 경유 시크릿 접근 차단, 보호 브랜치 편집 차단)이 생성되는 하네스의 `.claude/hooks/`로 복사되고, Read 도구 측은 permissions deny가 막는다. git 차단 훅의 commit·push 예외는 `blockGitMutation.config.json`(`allowCommitPush`) 옵트인으로만 열리며, 열린 상태에서도 Claude 작성 표기가 든 커밋·검사 불가 커밋 형태·force/delete push·나머지 변경 명령은 계속 차단된다. 코드 생성·루프 하네스에는 검증자 게이트(Stop 훅, `verifierGate.mjs`)를 선택 적용할 수 있다 — 검증 명령(테스트·타입체크·린트 등 조합) 통과까지 턴 종료를 차단하고, 안전장치(토큰 예산·최대 반복·막힘 판정) 도달 시엔 반대로 자동 중단시켜 보고 후 종료하게 한다.
 
 ## 구조
 
@@ -186,6 +202,8 @@ guksu-harness/
 │       └── report.html               # 공통 HTML 보고서 템플릿 (report 스킬이 사용)
 ├── skills/branch/
 │   └── SKILL.md                      # 작업 브랜치 확인 (사용자 승인 후 git switch)
+├── skills/pr/
+│   └── SKILL.md                      # 커밋·PR 업로드 (사용자 명시 요청 시, git-flow: main·dev·feat)
 ├── skills/report/
 │   └── SKILL.md                      # 작업 종료 HTML 보고서 (요약·검토 필요·후속 조치)
 ├── skills/digest/
@@ -210,7 +228,7 @@ guksu-harness/
     │   ├── context-economy.md        # 토큰 절약 설계 (상시/조건부 로딩, 캐시, digest 연동)
     │   └── testing-guide.md          # 구조·트리거·실행 테스트
     ├── assets/hooks/
-    │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (생성 하네스로 복사됨)
+    │   ├── blockGitMutation.mjs      # git 변경 차단 훅 (commit·push 예외는 config 옵트인 — pr 스킬과 한 쌍)
     │   ├── blockSecretAccess.mjs     # Bash 경유 시크릿 접근 차단 훅
     │   ├── branchGuard.mjs           # 보호 브랜치 편집 차단 훅 (branch 스킬과 한 쌍)
     │   └── verifierGate.mjs          # 검증자 게이트 Stop 훅 (종료 규칙 + 토큰 예산 강제)

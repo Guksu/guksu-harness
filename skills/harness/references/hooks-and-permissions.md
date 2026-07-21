@@ -78,6 +78,21 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 
 **우회 방지:** 판정 정규식은 서브커맨드 앞의 전역 플래그를 건너뛴다. `-C <path>`·`-c <k=v>`·`--git-dir <path>`처럼 **값을 별도 인자로 받는 플래그**를 처리하지 않으면 `git -C /repo commit` 같은 우회가 생긴다 — 패턴을 수정할 때는 반드시 `scripts/hooks.test.mjs`의 차단/허용 케이스를 함께 갱신하고 통과를 확인한다.
 
+**commit·push 예외 (allowCommitPush, 옵트인):** 절대 규칙 1 예외 ②(사용자 명시 요청 커밋·PR 업로드 — `pr` 스킬)의 강제 수단이다. 스크립트 옆 `blockGitMutation.config.json`으로 켠다 — config가 없으면 예외는 비활성(기본 차단)이고, 파싱에 실패하면 fail-closed로 예외를 끈다:
+
+```json
+{ "allowCommitPush": true }
+```
+
+활성 상태에서도 다음은 계속 차단된다:
+
+- **Claude 작성 표기가 든 커밋** — `Co-Authored-By: ... Claude`·`Generated with ... Claude`·`Claude-Session:`·`noreply@anthropic.com` 패턴을 명령 전체(heredoc 메시지 본문 포함)에서 검사한다. 커밋 메시지에서 Claude 흔적 제거는 절대 규칙이다. 단순 "claude" 단어는 오탐하지 않는다.
+- **메시지를 검사할 수 없는 커밋 형태** — `-F`/`-t`/`-c`/`-C`(메시지가 명령문 밖)와 `--amend`/`--fixup`/`--squash`(히스토리 재작성). 메시지는 `-m` 인라인으로만 작성한다.
+- **force/delete push** — `-f`/`--force(-with-lease)`·`--delete`·`--mirror`·`--prune`. 일반 push(`-u` 포함)만 허용한다.
+- **commit·push 외의 변경 명령** — merge·rebase·reset·checkout 등은 예외 모드에서도 전부 차단이다.
+
+구축 시 사용자 승인 없이 config를 만들지 않는다(옵트인 — SKILL.md Phase 2). git-flow(main·dev·feat) 채택 시 §3의 `protectedBranches`에 `dev`를 추가해 작업이 항상 `feat/*`에서 일어나게 한다.
+
 ## 3. 브랜치 가드 (branchGuard)
 
 "작업 시작 전에 작업 브랜치부터 확인"(`branch` 스킬)을 기계적으로 강제한다. matcher `Edit|Write|NotebookEdit`로 등록되어(§1) 보호 브랜치 위에서의 파일 편집 시도를 차단하고, branch 스킬로 사용자 확인을 받으라는 피드백을 전달한다.
