@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.12.0] - 2026-07-21
+
+### Added
+
+- **`pr` 스킬 (신규)** — 사용자가 **명시적으로 요청한 경우에만** 에이전트가 커밋 메시지를 작성해 commit·push하고 PR을 생성하는 아홉 번째 스킬. 절대 규칙 1("git 작업은 사용자 전담")의 두 번째 예외(① 브랜치 전환에 이어)로, 요청 없는 선제 커밋은 계속 금지다. git-flow(main ← dev ← feat) 기준: 작업은 `feat/{slug}`에서, PR 베이스는 `dev`, `dev → main`(릴리스)·머지는 사용자 전담. 커밋은 Conventional Commits + `-m` 인라인 메시지만, 스테이징은 `git add .`가 아니라 경로 명시
+- **커밋 메시지 Claude 작성 표기 절대 금지 — 기계적 강제** — `Co-Authored-By: Claude`·`🤖 Generated with [Claude Code]`·`Claude-Session:`·`noreply@anthropic.com` 패턴이 든 커밋을 훅이 명령 전체(heredoc 메시지 본문 포함)에서 검사해 차단한다. PR 제목·본문도 동일 규칙(지침 강제). 단순 "claude" 단어는 오탐하지 않는다
+- **`blockGitMutation` 훅에 commit·push 옵트인 예외** — 스크립트 옆 `blockGitMutation.config.json`의 `{ "allowCommitPush": true }`일 때만 commit·push가 열린다(구축 시 사용자 확인 후 구성, config 없음/파싱 실패는 fail-closed로 기본 차단 유지). 열린 상태에서도 계속 차단: Claude 표기 커밋, 메시지 검사 불가 형태(`-F`/`-t`/`-c`/`-C`·`--amend`/`--fixup`/`--squash`), force/delete/mirror/prune push, commit·push 외 모든 변경 명령(merge·rebase·reset·checkout 등). 판정은 `judgeGitCommand(command, {allowCommitPush})`로 사유별(rule) 안내 메시지 제공
+- **회귀 테스트 4종 추가(46→50)** — 예외 모드 허용/차단 경계(heredoc 커밋·복합 명령 포함), Claude 표기 차단·오탐 방지, 검사 불가 커밋 플래그·force/delete push(따옴표·번들 형태), CLI 경로(config 옵트인·표기 차단·파싱 실패 fail-closed)
+
+### Changed
+
+- **절대 규칙 1을 예외 2종 체제로 개정** — "유일한 예외(브랜치 전환)"에서 "예외 ① 브랜치 전환(branch 스킬) + 예외 ② 사용자 명시 요청 커밋·PR 업로드(pr 스킬)"로. SKILL.md·README·orchestrator-template 골격·agent-design 에이전트 정의 템플릿의 규칙 열거 동기화
+- **git-flow(main·dev·feat) 반영** — branch 스킬의 이름 제안에 "git-flow 프로젝트면 `feat/{slug}`를 dev에서 분기(`git switch -c feat/<slug> dev`)" 추가, git-flow 채택 시 branchGuard `protectedBranches`에 `dev` 포함(작업은 항상 feat/*에서). harness Phase 2 훅 구성·산출물 체크리스트에 PR 플로우 옵트인 절차 추가 (hooks-and-permissions §2)
+
 ## [1.11.0] - 2026-07-08
 
 ### Added
