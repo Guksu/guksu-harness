@@ -2,6 +2,24 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.12.1] - 2026-07-31
+
+Claude 5(Fable 5·Opus 5) 세대 플랫폼 현행화 점검에서 확인된 수정. 핵심 정책(모델 세션 상속·단일 우선 사다리·파일 기반 산출물)은 변경 없음 — 세대 교체를 무사 통과했다.
+
+### Fixed
+
+- **훅 4종 공통 fail-open 봉합** (`blockGitMutation`·`branchGuard`·`blockSecretAccess`·`verifierGate`) — CLI 직접실행 판정(`process.argv[1] === fileURLToPath(import.meta.url)`)이 심링크가 낀 호출 경로에서 어긋나(ESM URL은 realpath, argv[1]은 원문) 훅이 아무것도 안 하고 exit 0으로 통과하던 결함. macOS `/tmp`·`/var` 하위나 심링크된 프로젝트 경로에서 git 차단·시크릿 차단·브랜치 가드·검증자 게이트 전체가 조용히 무력화됐다. 양쪽을 `realpathSync`로 정규화해 비교하도록 수정, 심링크 경유 호출 회귀 테스트 추가(50→51종)
+- **"유일한 예외" 잔존 표기 정정** — v1.12.0에서 절대 규칙 1이 예외 2종 체제가 됐는데 branch 스킬·README에 "유일한 예외"가 남아 있던 표기를 "예외 ①"로 동기화
+- **loop 실행 수단에서 구 `/goal` 제거** — 현행 환경에 없는 명령이라 매핑이 실행 불가였다. 조건 충족까지 반복은 검증자 게이트(Stop 훅)가 담당하고, `/loop`은 간격 지정·자율 페이스(간격 생략) 양쪽을 흡수, cron 예약 실행(`schedule` 류)을 선택지로 추가. "빌트인 명령은 세션·버전마다 다르므로 매핑 전에 존재를 확인한다" 원칙 명문화 (loop SKILL.md·execution-modes §6·harness SKILL.md·README·loop-spec 템플릿)
+
+### Changed
+
+- **서브 에이전트 백그라운드 기본값 반영** — Agent 도구는 이제 기본이 백그라운드 실행(완료는 통지로 도착, 동기 실행은 `run_in_background: false`). 통지 전 결과 추측 금지 명시 (execution-modes §5·orchestrator-template §3)
+- **컨텍스트 요약·이월 현행화** — "~80% 자동 컴팩션" 서술을 "긴 대화는 자동 요약되어 다음 컨텍스트 창으로 이월"로 교체. 한계 임박은 더 이상 인계 사유가 아니며 handoff의 초점은 **세션 경계**(다음 세션·다른 담당자)임을 명시 — 유실되면 안 되는 결정·시도 기록의 파일 이관 가치는 유지 (context-economy §1·handoff SKILL.md·orchestrator-template §5)
+- **Workflow 신규 제약 반영** — 세션 기본 규모 가이드라인(에이전트 ~15개 등)·수명당 1000 에이전트 캡·호출당 항목 4096 상한, 스킬·슬래시 명령 지시의 옵트인 인정과 ultracode 상시 옵트인 세션 (execution-modes §3)
+- **플랫폼 영구 메모리와의 경계 명시** — 레포가 기록하는 것(워크로그·다이제스트·CLAUDE.md)은 메모리에 중복 저장하지 않는다: 레포 파일은 팀 공유·감사 추적, 메모리는 세션 사용자 전용 (context-economy §1)
+- **report 전달 수단에 Artifact 병용 언급** — HTML 게시 도구가 있으면 열람 수단으로 쓸 수 있되 정본은 `docs/reports/` 파일, 게시는 사용자 의사 확인 후 (report SKILL.md)
+
 ## [1.12.0] - 2026-07-21
 
 ### Added
