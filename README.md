@@ -23,7 +23,7 @@
 | 종료 보고 | 채팅 장문 텍스트 (스크롤에 묻힘) | **`report` 스킬** — 요약·검증·검토 필요·후속 조치를 담은 HTML 보고서를 `docs/reports/`에 히스토리로 누적, 채팅엔 요약만 |
 | 방법론 근거 | 저자 경험 | **업계 검증 반영** — Anthropic·OpenAI·Google 공식 가이드 + Airbnb·Shopify 프로덕션 사례로 실행 모드·가드레일·검증 서열을 정합 |
 | 본문 크기 | SKILL.md 458줄 | **~150줄** — 세부는 references/ 7종으로 분리 (Progressive Disclosure) |
-| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 50종) |
+| 구조 검증 | 수동 체크리스트 | **`validateHarness.mjs`** — frontmatter·참조 링크·훅/템플릿 구성·버전 정합성 자동 검사 (회귀 테스트 51종) |
 
 ## 설치
 
@@ -103,7 +103,7 @@
 
 ## loop 스킬 — 루프 설계
 
-"~할 때까지 반복해줘/알아서 계속 고쳐줘" 같은 반복·수렴형 요청을 **루프 명세**(트리거/실행 단위/검증자/종료 규칙 + 안전장치)로 설계하고 실행 수단(`/goal`·`/loop`·검증자 게이트·Workflow 반복)에 매핑하는 독립 스킬. 프롬프트가 아니라 루프를 설계한다.
+"~할 때까지 반복해줘/알아서 계속 고쳐줘" 같은 반복·수렴형 요청을 **루프 명세**(트리거/실행 단위/검증자/종료 규칙 + 안전장치)로 설계하고 실행 수단(검증자 게이트·`/loop`·Workflow 반복·예약 실행)에 매핑하는 독립 스킬. 프롬프트가 아니라 루프를 설계한다.
 
 ```
 /guksu-harness:loop 테스트 전부 통과할 때까지 고치는 루프 만들어줘
@@ -139,7 +139,7 @@
 ```
 
 - **확인 없이 전환하지 않는다** — 이름은 제안(기존 브랜치 패턴 우선, 없으면 `{type}/{slug}`), 결정은 사용자
-- **`git switch(-c)`만 사용** — 절대 규칙 1의 유일한 예외. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`-d`/`--detach`)와 `checkout`·`restore`·`clean`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
+- **`git switch(-c)`만 사용** — 절대 규칙 1의 예외 ①. switch는 로컬 변경과 충돌하면 스스로 거부하므로 작업 내용을 파괴하지 않는다. 파괴·이탈 플래그(`-f`·`--discard-changes`·`-C`·`--orphan`·`-d`/`--detach`)와 `checkout`·`restore`·`clean`은 훅이 계속 차단(번들 `-fc`·붙임 `-Cmain`·따옴표 형태 포함)
 - **branchGuard 훅**(`assets/hooks/branchGuard.mjs`)이 보호 브랜치 위 파일 편집(Edit/Write/NotebookEdit)을 기계적으로 차단 — `.git/HEAD` 직접 판독(worktree 지원), `branchGuard.config.json`의 `protectedBranches`로 설정(기본 main·master)
 - 커밋·푸시·병합·브랜치 삭제는 여전히 사용자 전담 (사용자 명시 요청 시의 커밋·PR 업로드는 `pr` 스킬)
 
