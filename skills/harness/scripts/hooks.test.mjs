@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, copyFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, copyFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -312,6 +312,25 @@ test('git 훅 CLI — allowCommitPush 옵트인으로 커밋이 열리고, 표�
   });
   assert.equal(broken.status, 2, '설정 파싱 실패면 예외를 끄고 차단한다(fail-closed)');
   assert.ok(broken.stderr.includes('파싱 실패'));
+});
+
+// macOS의 /var→/private/var처럼 호출 경로에 심링크가 끼면 ESM 모듈 URL은 realpath로,
+// argv[1]은 원문으로 남아 어긋난다 — 직접실행 판정이 단순 문자열 비교면 훅이 조용히 fail-open된다.
+test('훅 CLI — 심링크 경로로 호출해도 직접실행으로 판정해 차단한다(fail-open 방지)', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'guksu-symlink-'));
+  const realDir = join(rootDir, 'real');
+  await mkdir(realDir, { recursive: true });
+  await symlink(realDir, join(rootDir, 'linked'), 'dir');
+  await copyFile(
+    join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'hooks', 'blockGitMutation.mjs'),
+    join(realDir, 'blockGitMutation.mjs'),
+  );
+  const result = spawnSync(process.execPath, [join(rootDir, 'linked', 'blockGitMutation.mjs')], {
+    input: JSON.stringify({ tool_input: { command: 'git commit -m "feat: x"' } }),
+    encoding: 'utf8',
+  });
+  await rm(rootDir, { recursive: true, force: true });
+  assert.equal(result.status, 2, '심링크 경유 호출에서도 차단되어야 한다');
 });
 
 test('브랜치 가드 — 보호 브랜치 판정 (기본 main·master)', () => {

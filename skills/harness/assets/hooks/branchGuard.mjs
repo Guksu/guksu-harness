@@ -6,7 +6,7 @@
 // 설정 파일(스크립트 옆 branchGuard.config.json):
 //   { "protectedBranches": ["main", "master"] }
 // 설정 파일이 없으면 기본값(main·master)으로 동작한다.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +36,11 @@ export const readCurrentBranch = ({ projectDir }) => {
 export const isProtectedBranch = ({ branch, protectedBranches }) =>
   branch != null && protectedBranches.includes(branch);
 
-const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+// 심링크 경로 호출 시 ESM URL(realpath) ↔ argv[1](원문) 불일치로 fail-open이 되지 않게
+// 양쪽을 realpath로 정규화해 비교한다.
+const toRealPath = (p) => { try { return realpathSync(p); } catch { return p; } };
+const isDirectRun = process.argv[1] != null
+  && toRealPath(process.argv[1]) === toRealPath(fileURLToPath(import.meta.url));
 if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);

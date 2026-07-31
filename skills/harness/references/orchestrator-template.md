@@ -106,8 +106,9 @@ Phase 0에서 작업 목록(work-list)을 확정 → Workflow({name: "{domain}-{
 ### 서브 에이전트
 
 ```
-Agent(agent-1, run_in_background: true)   ← 독립 작업은 병렬
-Agent(agent-2, run_in_background: true)
+Agent(agent-1)   ← 기본이 백그라운드 실행 — 독립 작업은 한 메시지에 병렬 스폰
+Agent(agent-2)
+→ 완료 통지 대기 (통지 전 결과 추측 금지. 결과가 다음 단계의 입력이면 run_in_background: false로 동기 실행)
 → 결과 수집 → 통합 산출물 생성 → 사용자 보고
 ```
 
@@ -149,7 +150,7 @@ Agent(agent-2, run_in_background: true)
 | 검증 루프 무한 반복 | 2~3회 초과 시 잔여 이슈를 "미해결"로 기록, 사용자에게 판단 요청 |
 | 산출물 간 충돌 | 삭제하지 않고 출처 병기, 사용자에게 확인 |
 | 작업이 범위보다 큼 | 분할 제안, 첫 조각만 진행 |
-| 세션 중단·컨텍스트 한계 임박 | handoff 스킬로 인계 문서(`docs/handoff/{slug}.md`)를 작성·갱신한 뒤 중단 — 다음 세션이 이어받는다 |
+| 세션 중단·작업 넘김(다음 세션·다른 담당자) | handoff 스킬로 인계 문서(`docs/handoff/{slug}.md`)를 작성·갱신한 뒤 중단 — 세션 내 컨텍스트 이월은 플랫폼이 자동 처리하므로 한계 임박만으로 서두르지 않는다 |
 | git 명령 시도 | 1차 방어는 PreToolUse 훅(자동 차단, `hooks-and-permissions.md`) — 훅이 없는 환경이면 즉시 중단하고 사용자 전담임을 재고지 |
 
 ## 6. 실전 예시 — muklog 스프린트 오케스트레이터

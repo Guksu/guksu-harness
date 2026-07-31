@@ -12,7 +12,7 @@
 // stuckAfter: 같은 실패 시그니처가 N연속이면 반복을 계속하지 않고 보고 후 종료(막힘 판정).
 //   루프 명세(docs/loops/)의 "막힘 판정"과 게이트를 일치시키는 수단이다. 생략하면 비활성.
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -102,7 +102,11 @@ export const decide = ({ config, iterations, tokensUsed, failures, sameFailureSt
   };
 };
 
-const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+// 심링크 경로 호출 시 ESM URL(realpath) ↔ argv[1](원문) 불일치로 fail-open이 되지 않게
+// 양쪽을 realpath로 정규화해 비교한다.
+const toRealPath = (p) => { try { return realpathSync(p); } catch { return p; } };
+const isDirectRun = process.argv[1] != null
+  && toRealPath(process.argv[1]) === toRealPath(fileURLToPath(import.meta.url));
 if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);

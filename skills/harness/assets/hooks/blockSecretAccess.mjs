@@ -2,6 +2,7 @@
 // PreToolUse 훅 (matcher: Bash) — 시크릿 파일에 접근하는 셸 명령을 차단한다 (절대 규칙 6).
 // permissions.deny의 Read(...) 패턴은 Read 도구만 막는다 — `cat .env`·`grep KEY .env` 같은
 // Bash 경유 읽기는 deny로 막히지 않으므로 이 훅이 그 우회 경로를 닫는다.
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // permissions.deny 패턴(.env / .env.* / credentials* / *.pem / secrets/**)과 짝을 맞춘다.
@@ -19,7 +20,11 @@ export const referencesSecret = (command) => {
   });
 };
 
-const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+// 심링크 경로 호출 시 ESM URL(realpath) ↔ argv[1](원문) 불일치로 fail-open이 되지 않게
+// 양쪽을 realpath로 정규화해 비교한다.
+const toRealPath = (p) => { try { return realpathSync(p); } catch { return p; } };
+const isDirectRun = process.argv[1] != null
+  && toRealPath(process.argv[1]) === toRealPath(fileURLToPath(import.meta.url));
 if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
