@@ -7,7 +7,9 @@ import { readdirSync, readFileSync, realpathSync, existsSync } from 'node:fs';
 import { join, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SCAN_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+const JS_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+const CSS_EXTENSIONS = new Set(['.css', '.scss', '.sass', '.less']);
+const SCAN_EXTENSIONS = new Set([...JS_EXTENSIONS, ...CSS_EXTENSIONS]);
 const EXCLUDED_DIRS = new Set([
   'node_modules', '.next', '.git', 'dist', 'build', 'out', 'coverage', 'public', '_workspace',
 ]);
@@ -51,6 +53,21 @@ export const scanSource = (source, { file, isNext = false } = {}) => {
   const findings = [];
   const push = (rule, severity, line, message) => findings.push({ rule, severity, file, line, message });
   const jsx = /\.(jsx|tsx)$/.test(file ?? '');
+  const isCss = CSS_EXTENSIONS.has(extname(file ?? ''));
+
+  // CSS 파일은 CSS 규칙만 적용한다 (JS 규칙은 주석·문자열에 오탐한다)
+  if (isCss) {
+    source.split('\n').forEach((text, i) => {
+      if (/\b100vh\b/.test(text)) {
+        push('vh-100', 'warn', i + 1, '100vh — iOS Safari에서 주소창 높이가 포함돼 하단이 잘린다. dvh 검토');
+      }
+    });
+    if (/@font-face/.test(source) && !/font-display/.test(source)) {
+      push('font-display-missing', 'warn', lineOf(source, source.search(/@font-face/)),
+        '@font-face에 font-display 없음 — Safari는 폰트 로드까지 텍스트를 무기한 감춘다(FOIT)');
+    }
+    return findings;
+  }
 
   // 파일 단위 휴리스틱 — 등록만 있고 해제 수단(짝 함수·AbortController)이 전혀 없는 파일
   if (/\baddEventListener\s*\(/.test(source)
@@ -68,6 +85,16 @@ export const scanSource = (source, { file, isNext = false } = {}) => {
       push('effect-no-cleanup', 'warn', block.line,
         'useEffect가 리스너·타이머·구독을 등록하는데 클린업 return이 없다 — 언마운트 누수 후보');
     }
+  }
+  if (/\bfetch\s*\(/.test(source) && !/\.ok\b/.test(source)) {
+    push('fetch-no-ok-check', 'warn', lineOf(source, source.search(/\bfetch\s*\(/)),
+      'fetch를 쓰는데 response.ok 검사가 없다 — fetch는 4xx/5xx에서도 resolve되므로 에러 응답이 성공 경로로 흐른다');
+  }
+  if (/onKeyDown|keydown|onKeyPress|keypress/.test(source)
+    && /['"`]Enter['"`]|keyCode\s*===?\s*13/.test(source)
+    && !/isComposing|229/.test(source)) {
+    push('ime-enter-no-composing', 'warn', lineOf(source, source.search(/['"`]Enter['"`]|keyCode\s*===?\s*13/)),
+      'Enter 처리에 isComposing 검사가 없다 — 한글 IME 조합 중 keydown이 중복 발생해 제출이 2회 나간다');
   }
 
   // 라인 단위
@@ -91,6 +118,22 @@ export const scanSource = (source, { file, isNext = false } = {}) => {
     }
     if (isNext && jsx && /<img[\s/>]/.test(text)) {
       push('next-img-tag', 'warn', i + 1, 'Next.js에서 <img> 태그 — next/image 사용 검토(최적화·CLS)');
+    }
+    if (/addEventListener\(\s*['"`]unload['"`]/.test(text) || /\bonunload\s*=/.test(text)) {
+      push('unload-listener', 'warn', i + 1,
+        'unload 리스너 — bfcache를 비활성화해 뒤로가기가 전면 재로딩된다. pagehide로 교체');
+    }
+    if ((/target\s*=\s*[{"']+_blank/.test(text) && !/noopener|noreferrer/.test(text))
+      || (/window\.open\s*\(/.test(text) && !/noopener/.test(text))) {
+      push('blank-no-noopener', 'warn', i + 1,
+        'target="_blank"/window.open에 noopener 없음 — 열린 페이지가 window.opener로 원래 탭을 조작할 수 있다(tabnabbing)');
+    }
+    if (/\.toLocale(?:Date|Time)?String\(\s*\)/.test(text) || /new\s+Intl\.DateTimeFormat\(\s*\)/.test(text)) {
+      push('date-locale-implicit', 'warn', i + 1,
+        '무인자 로케일 포맷팅 — 런타임 로케일·시스템 타임존에 따라 결과가 갈리고 SSR hydration mismatch를 유발한다');
+    }
+    if (/\b100vh\b/.test(text)) {
+      push('vh-100', 'warn', i + 1, '100vh — iOS Safari에서 주소창 높이가 포함돼 하단이 잘린다. dvh 검토');
     }
   });
 

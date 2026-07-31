@@ -36,7 +36,7 @@ description: "프론트엔드 배포 전 점검 — 정적 게이트(빌드·린
 | 기존 테스트·e2e | `test`·e2e 스위트 | 전체 통과 (blocker) |
 | 정적 스캔 | `node {이 스킬 경로}/scripts/staticScan.mjs <루트> --json` | blocker 0건(debugger·시크릿 리터럴), warn은 후보 목록으로 기록 |
 
-정적 스캔은 휴리스틱이다 — warn(리스너/타이머/useEffect 클린업 누락 후보, console.log, dangerouslySetInnerHTML, Next `<img>`·비공개 env)은 확정 버그가 아니라 Phase 2에서 우선 검증할 대상과 사용자 확인 목록의 입력이다.
+정적 스캔은 휴리스틱이다 — warn(클린업 누락 후보, console.log, dangerouslySetInnerHTML, Next `<img>`·비공개 env, fetch `response.ok` 누락, IME `isComposing` 누락, unload 리스너, noopener 누락, 100vh, 무인자 로케일 포맷, font-display 누락)은 확정 버그가 아니라 Phase 2에서 우선 검증할 대상과 사용자 확인 목록의 입력이다.
 
 ### Phase 2: 런타임 계측 — 브라우저에서 숫자로
 
@@ -44,17 +44,19 @@ description: "프론트엔드 배포 전 점검 — 정적 게이트(빌드·린
 
 | 카테고리 | 대표 항목 | 상세 |
 |---------|----------|------|
-| 인터랙션 안정성 | 버튼 연타 → API 1회, pending 상태, debounce, 언마운트 후 setState, 폼 검증, 뒤로가기 중복 제출 | `references/interaction.md` |
+| 인터랙션 안정성 | 버튼 연타 → API 1회, pending 상태, debounce, 언마운트 후 setState, 폼 검증, 뒤로가기 중복 제출, IME 중복 제출, 퍼널 히스토리, 무한스크롤 복원 | `references/interaction.md` |
 | 메모리·리소스 | 마운트↔언마운트 반복 후 리스너·타이머 순증가 0, 구독·소켓 해제, fetch 취소 | `references/memory.md` |
 | 네트워크 경계 | 4xx/5xx 에러 UI(무한 로딩 금지), 로딩 표시, 401 처리, stale 응답 무시 | `references/interaction.md` |
+| 복원력·세션 | 배포 버전 스큐(ChunkLoadError), fetch ok 판정, Error Boundary 흰 화면, 서드파티 SPOF, 오프라인, bfcache, 토큰 리프레시 동시성, 멀티탭 로그아웃, 폴리필 갭, hydration mismatch | `references/resilience.md` |
 
 ### Phase 3: 성능·시각 스윕
 
 | 카테고리 | 대표 항목 | 상세 |
 |---------|----------|------|
-| 성능 | Core Web Vitals(lighthouse), 번들 크기, 이미지 최적화, 과잉 리렌더 | `references/performance.md` |
-| 품질 기본기 | 콘솔 에러 0건, 뷰포트 3종 레이아웃, 키보드·포커스, alt/aria | `references/quality.md` |
-| 배포 설정 | console.log·소스맵·메타 태그 (정적 스캔 결과와 병합) | `references/quality.md` |
+| 성능 | Core Web Vitals(lighthouse), 번들 크기, 이미지·폰트 최적화, CLS 유발 요소, 과잉 리렌더 | `references/performance.md` |
+| 품질 기본기 | 콘솔 에러 0건, 뷰포트 3종 레이아웃, 키보드·포커스, alt/aria, 색 대비·lang, reduced-motion | `references/quality.md` |
+| 모바일·웹뷰 | iOS input 확대·100vh/safe-area·안드로이드 백버튼×모달·자동재생·터치 타깃 (실기기 필요 항목은 skip 분류) | `references/mobile-web.md` |
+| 배포 설정·보안 | console.log·소스맵·메타 태그·CSP·XSS 싱크·noopener·업로드 검증·autocomplete·날짜/타임존 | `references/quality.md` |
 
 시각 판단이 필요한 항목(레이아웃 깨짐, 디자인 이상)은 스크린샷을 근거로 남기되 pass/fail을 단정하지 말고 체크리스트의 "사용자 검토" 항목으로 분류한다.
 
