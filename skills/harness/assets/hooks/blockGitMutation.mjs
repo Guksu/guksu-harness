@@ -8,7 +8,7 @@
 //      허용되는 옵트인(pr 스킬 — 사용자가 명시 요청한 커밋·PR 업로드). 이때도 Claude 작성 표기가
 //      든 커밋 메시지, 메시지를 검사할 수 없는 커밋 형태(-F/-t/-c/-C/--amend 등), force/delete
 //      push는 계속 차단한다. config가 없거나 파싱에 실패하면 예외는 비활성(기본 차단)이다.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,7 +105,12 @@ export const judgeGitCommand = (command, { allowCommitPush = false } = {}) => {
   return { blocked: false };
 };
 
-const isDirectRun = process.argv[1] === fileURLToPath(import.meta.url);
+// 심링크 경로로 호출되면 ESM 모듈 URL은 realpath로 해석되고 argv[1]은 원문 그대로라
+// 단순 문자열 비교는 어긋난다 — 그러면 훅이 아무것도 안 하고 exit 0(fail-open)이 된다.
+// 양쪽을 realpath로 정규화해 비교한다.
+const toRealPath = (p) => { try { return realpathSync(p); } catch { return p; } };
+const isDirectRun = process.argv[1] != null
+  && toRealPath(process.argv[1]) === toRealPath(fileURLToPath(import.meta.url));
 if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
