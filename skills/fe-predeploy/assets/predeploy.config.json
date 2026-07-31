@@ -5,7 +5,8 @@
     "cls": 0.1,
     "inpMs": 200,
     "lighthousePerformance": 80,
-    "lighthouseAccessibility": 90
+    "lighthouseAccessibility": 90,
+    "touchTargetPx": 48
   },
   "viewports": [
     { "name": "mobile", "width": 390, "height": 844 },

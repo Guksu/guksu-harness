@@ -34,3 +34,16 @@
 - **왜**: 수천 행을 그대로 그리면 DOM 노드 수가 INP·메모리를 무너뜨린다.
 - **방법**: 대량 목록 화면에서 `document.querySelectorAll('*').length` 또는 목록 컨테이너의 자식 수 판독 → 스크롤 후 재판독.
 - **판정**: 화면 밖 항목이 DOM에 전부 존재하지 않는다(가상화·페이지네이션·무한스크롤 중 하나가 있다). 해당 화면이 없으면 skip.
+- **가상화 사용 시 추가 시나리오**: 깊게 스크롤한 뒤 맨 위/맨 아래로 급격히 이동 — 높이 추정 오차가 누적되면 빈 공간·점프가 생긴다(오늘의집이 겪은 함정: 높이가 제각각인 카드를 평균으로 근사하면 오차가 쌓임).
+
+## D6. 웹폰트 — font-display·폰트 CLS (warn)
+
+- **왜**: `font-display` 미지정 시 Chrome은 최대 3초, **Safari는 무기한** 텍스트를 감춘다(FOIT — web.dev/font-best-practices). 폰트 교체 순간의 메트릭 차이는 CLS를 만든다.
+- **방법**: 정적 스캔 `font-display-missing` + 코드·설정 리뷰(WOFF2 사용, `<head>` 폰트 선언, 외부 폰트 도메인 preconnect, fallback `size-adjust`). Next.js는 `next/font` 사용 여부.
+- **판정**: 모든 @font-face에 font-display 명시(성능 우선이면 optional, 텍스트 즉시 노출이면 swap), 폰트 로드 시점 시프트가 관찰되지 않는다.
+
+## D7. CLS 유발 요소 점검 (warn)
+
+- **왜**: 실무 CLS의 주범은 정해져 있다 — 치수 없는 img/video, 공간 미예약 광고·임베드, **사용자 조작 없이 나중에 끼어드는 쿠키·공지 배너**, top/left 애니메이션(web.dev/optimize-cls).
+- **방법**: DevTools Performance의 Layout Shift 레코드로 시프트 유발 엘리먼트 특정(D1의 CLS 수치가 기준 초과일 때 원인 분석 절차).
+- **판정**: 동적 삽입 요소에 공간이 예약돼 있고(aspect-ratio·min-height), 애니메이션은 transform 기반이다.
