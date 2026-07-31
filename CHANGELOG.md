@@ -2,6 +2,21 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.13.0] - 2026-07-31
+
+### Added
+
+- **`fe-predeploy` 스킬 (신규)** — 프론트엔드(퓨어 JS·React·Next.js) 배포 전 점검을 담당하는 열 번째 스킬. "본 것 같다"가 아니라 측정으로 판정한다: 정적 게이트(빌드·린트·테스트·정적 스캔) → **실제 브라우저 런타임 계측**(버튼 5연타 → API 1회, 마운트 N사이클 → 리스너·타이머 순증가 0, 언마운트 후 setState, 4xx/5xx 무한 로딩 금지, stale 응답) → 성능(Core Web Vitals — lighthouse, 번들·이미지·가상화) → 시각·UX 스윕(뷰포트 3종·접근성·콘솔 에러 0건·소스맵/시크릿 노출). 판정은 pass/fail/skip 3분류(skip 사유 필수), blocker fail이면 "배포 불가". 점검과 수정 분리(수정은 제안까지 — "통과까지"는 loop 스킬 결합), 프로덕션 빌드 검증 원칙, 스크립트화된 e2e 우선(검증 수단 서열), 운영 환경 부수효과 금지. 결과는 `docs/predeploy/{YYYY-MM-DD}-{slug}.md` 갱신형 체크리스트로 누적
+- **런타임 계측 스니펫** (`skills/fe-predeploy/scripts/instrument.js`) — claude-in-chrome `javascript_tool`로 주입하는 플레인 스크립트. addEventListener/removeEventListener(once 제외)·setInterval/clearInterval·setTimeout(발화 시 자동 제외)·fetch·XHR(axios 브라우저 어댑터)·console.error를 패치해 `__fePredeploy.report()`/`countRequests()`로 잔존·요청 수를 숫자로 판독. 멱등 주입, Node에서도 동작해 단위 테스트 5종 포함
+- **정적 스캔** (`skills/fe-predeploy/scripts/staticScan.mjs`) — 휴리스틱 후보 발견기: 리스너/타이머/useEffect 클린업 누락, console.log(warn)·debugger(blocker), 시크릿 리터럴 패턴(blocker — 값은 기록하지 않음), dangerouslySetInnerHTML, Next 전용(`<img>` 태그, 'use client'의 비공개 process.env). node_modules·빌드 산출물·테스트 파일 제외, `--json` 출력, blocker 시 exit 1. CLI 진입 판정은 훅과 동일한 realpath 정규화. 회귀 테스트 10종
+- **기준치 config** (`assets/predeploy.config.json`) — Web Vitals 표준 기본값(LCP 2.5s·CLS 0.1·INP 200ms·lighthouse 80/90), 뷰포트 3종, 연타·마운트 사이클 횟수. 프로젝트 `.claude/predeploy.config.json` 사본이 단일 출처
+- **배포 전 점검 템플릿** (`skills/docs/assets/templates/predeploy.md`) — 공통 6종 + 도메인 1종 체제. 점검 범위/정적 게이트/런타임·성능·품질(심각도·근거 수치)/사용자 검토 필요/재실행 이력 5섹션. 재점검은 새 파일이 아니라 판정 갱신
+- **references 5종** — interaction(연타·debounce·폼·stale)·memory(반복 마운트 계측 절차)·performance(lighthouse·번들)·quality(반응형·접근성·소스맵)·browser-recipes(도구 일괄 로딩·주입·요청 2중 카운트·다이얼로그 회피)
+
+### Changed
+
+- **하네스 내장** — 프론트엔드(웹 UI) 도메인 하네스 구축 시 predeploy 템플릿을 함께 배포하고 오케스트레이터 종료 절차에 fe-predeploy 배포 게이트를 명시 (harness SKILL.md Phase 2·orchestrator-template 골격·docs 스킬 템플릿 표). 회귀 테스트 51→66종
+
 ## [1.12.1] - 2026-07-31
 
 Claude 5(Fable 5·Opus 5) 세대 플랫폼 현행화 점검에서 확인된 수정. 핵심 정책(모델 세션 상속·단일 우선 사다리·파일 기반 산출물)은 변경 없음 — 세대 교체를 무사 통과했다.

@@ -20,6 +20,7 @@
 | 에이전트·스킬 추가 | `/guksu-harness:harness QA 에이전트 추가` |
 | 작업 기록 남기기 | `/guksu-harness:docs 오늘 작업 기록해줘` |
 | 작업 결과 보고서 | `/guksu-harness:report 이번 작업 보고서 만들어줘` |
+| 프론트 배포 전 점검 | `/guksu-harness:fe-predeploy 배포 전 점검 돌려줘` |
 | 테스트 통과까지 반복 | `/guksu-harness:loop 테스트 전부 통과할 때까지 고쳐줘` |
 | 세션 넘기기 / 이어받기 | `/guksu-harness:handoff 인계 문서 작성해줘` |
 | 커밋하고 PR 올리기 | `/guksu-harness:pr 커밋하고 PR 올려줘` |
@@ -81,7 +82,7 @@
 | `branchGuard` | Edit·Write·NotebookEdit 전 | 보호 브랜치(기본 main·master, config로 조정) 위 파일 편집 → `branch` 스킬로 확인받으라고 피드백 |
 | `verifierGate` (선택) | 턴 종료(Stop) | 검증 명령(테스트·타입체크 등) 실패 상태의 턴 종료를 차단. 안전장치(`maxTokens`·`maxIterations`·`stuckAfter`) 도달 시엔 반대로 "보고 후 종료"를 지시 |
 
-## 스킬 9종
+## 스킬 10종
 
 | 스킬 | 한 줄 요약 |
 |---|---|
@@ -92,6 +93,7 @@
 | `loop` | 반복·수렴형 작업을 루프 명세로 설계하고 안전장치와 함께 실행 |
 | `handoff` | 진행 중 작업을 인계 문서로 옮겨 세션 경계를 넘긴다 |
 | `report` | 작업 종료 시 HTML 보고서 생성 — 채팅에는 요약만 |
+| `fe-predeploy` | 프론트엔드 배포 전 점검 — 정적 게이트·브라우저 계측·성능 측정으로 배포 가능 판정 |
 | `retro` | 산출물 근거 회고로 하네스 정의를 개선 (제안→승인→적용) |
 | `pr` | 사용자가 명시 요청한 경우에만 커밋·push·PR 생성 |
 
@@ -99,7 +101,7 @@
 
 - `/harness 구축·점검·추가·해체` 인자로 Phase 0 분기를 선결정, 어떤 경우든 감사부터 시작한다
 - 실행 모드는 사다리로 판별하고, 모델은 하드코딩하지 않는다(세션 상속) — 모델 세대가 바뀌어도 하네스가 늙지 않는다
-- `validateHarness.mjs`가 frontmatter·참조 링크·훅/템플릿 구성·버전 정합성을 자동 검사한다 (회귀 테스트 51종)
+- `validateHarness.mjs`가 frontmatter·참조 링크·훅/템플릿 구성·버전 정합성을 자동 검사한다 (회귀 테스트 66종)
 
 ### branch — 작업 브랜치 확인
 
@@ -138,6 +140,14 @@
 - 5개 고정 섹션: 요약 / 작업 내용 / 검증 결과 / **사용자 검토 필요** / **후속 조치**. 채팅에는 3~5문장 요약만
 - 워크로그(md)가 정본, 보고서는 검토용 뷰 — slug를 맞춰 쌍으로 추적한다
 
+### fe-predeploy — 프론트엔드 배포 전 점검
+
+- "본 것 같다"가 아니라 **측정** — 버튼 5연타 → POST 요청 1건, 마운트 5사이클 → 리스너 순증가 0처럼 숫자로 판정 (퓨어 JS·React·Next.js)
+- 4단계: 정적 게이트(빌드·린트·테스트·정적 스캔) → 브라우저 런타임 계측(claude-in-chrome — 중복 클릭·메모리 누수·네트워크 경계) → 성능(Core Web Vitals, lighthouse) → 시각·UX 스윕(뷰포트 3종·접근성)
+- 번들 스크립트: `staticScan.mjs`(클린업 누락·debugger·시크릿 리터럴 휴리스틱), `instrument.js`(리스너·타이머·요청 카운터 주입)
+- 판정은 pass/fail/skip 3분류(skip 사유 필수), blocker fail 있으면 "배포 불가" — 결과는 `docs/predeploy/` 체크리스트로 누적, 기준치는 config로 조정
+- 점검과 수정을 분리한다 — 수정은 제안까지, "통과까지 고쳐줘"는 loop 스킬과 결합
+
 ### retro — 회고 기반 진화
 
 - 기억이 아니라 파일이 근거다 — 워크로그·qa-report·이전 회고에서 잘된 점과 반복 문제를 추출
@@ -165,13 +175,14 @@ flowchart LR
     W -. 중단 시 .-> H["handoff<br/>세션 인계"]
     W -. 반복형 작업 .-> L["loop<br/>루프 설계"]
     W -. 대형 분석 .-> G["digest<br/>지식 캐시"]
+    W -. 프론트 배포 전 .-> F["fe-predeploy<br/>배포 점검"]
 ```
 
 1. **시작** — 파일 변경 전에 `branch`가 브랜치를 확인받는다 (보호 브랜치 편집은 branchGuard가 차단)
 2. **실행** — 오케스트레이터가 선택된 실행 모드로 진행. 코드 생성은 TDD, 모듈 완성 직후마다 경계면 QA
 3. **기록** — 작업한 에이전트가 `docs` 워크로그를 남기고, 종료 시 `report`가 HTML 보고서를 생성 (채팅엔 요약만)
 4. **진화** — 종료 시 `retro`를 제안(강요하지 않음), 승인된 개선안만 하네스 정의에 반영
-5. **예외 경로** — 세션을 넘길 땐 `handoff`, "될 때까지" 작업은 `loop`, 커밋·PR은 사용자가 요청할 때만 `pr`
+5. **예외 경로** — 세션을 넘길 땐 `handoff`, "될 때까지" 작업은 `loop`, 프론트엔드 배포 앞에선 `fe-predeploy` 게이트, 커밋·PR은 사용자가 요청할 때만 `pr`
 
 ## 하네스 구축 시 프로젝트에 생성되는 것
 
@@ -202,7 +213,8 @@ guksu-harness/
     │   │                            #   · 훅/권한 · 컨텍스트 경제 · 테스트 가이드 (7종)
     │   ├── assets/hooks/            # 훅 실물 4종 (프로젝트로 복사됨)
     │   └── scripts/                 # validateHarness + 회귀 테스트
-    ├── docs/                        # 워크로그 스킬 + 공통 템플릿 6종 번들
+    ├── docs/                        # 워크로그 스킬 + 템플릿 번들 (공통 6종 + predeploy)
+    ├── fe-predeploy/                # 프론트 배포 전 점검 (references 5종 + 계측·스캔 스크립트)
     ├── branch/ pr/ loop/ digest/    # 독립 스킬들 (각 SKILL.md)
     └── handoff/ report/ retro/
 ```
@@ -210,8 +222,8 @@ guksu-harness/
 ## 개발
 
 ```bash
-# 검증기 + 훅 + 다이제스트 신선도 회귀 테스트 (51종)
-node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs skills/digest/scripts/checkFreshness.test.mjs
+# 검증기 + 훅 + 다이제스트 신선도 + 배포 전 점검 회귀 테스트 (66종)
+node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs skills/digest/scripts/checkFreshness.test.mjs skills/fe-predeploy/scripts/staticScan.test.mjs skills/fe-predeploy/scripts/instrument.test.mjs
 
 # 이 repo 자체를 검증 (셀프 호스팅 — 하네스가 자기 규칙을 통과해야 한다)
 node skills/harness/scripts/validateHarness.mjs .

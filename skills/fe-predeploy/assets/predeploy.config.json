@@ -1,0 +1,21 @@
+{
+  "$comment": "fe-predeploy 기준치 기본값 — 프로젝트 .claude/predeploy.config.json으로 복사해 조정한다. 없으면 이 기본값을 쓴다.",
+  "thresholds": {
+    "lcpMs": 2500,
+    "cls": 0.1,
+    "inpMs": 200,
+    "lighthousePerformance": 80,
+    "lighthouseAccessibility": 90
+  },
+  "viewports": [
+    { "name": "mobile", "width": 390, "height": 844 },
+    { "name": "tablet", "width": 768, "height": 1024 },
+    { "name": "desktop", "width": 1440, "height": 900 }
+  ],
+  "interaction": {
+    "repeatClicks": 5,
+    "mountCycles": 5,
+    "debounceTypingChars": 10
+  },
+  "skipChecks": []
+}
