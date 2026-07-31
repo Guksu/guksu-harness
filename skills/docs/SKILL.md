@@ -9,7 +9,7 @@ description: "작업 내용을 공통 워크로그 템플릿(1.개요 / 2.작업
 
 ## 템플릿 — 단일 출처 규칙
 
-이 스킬은 공통 템플릿 6종을 `assets/templates/`에 번들한다:
+이 스킬은 공통 템플릿 6종 + 도메인 템플릿 1종을 `assets/templates/`에 번들한다:
 
 | 템플릿 | 용도 | 기록 위치 |
 |--------|------|----------|
@@ -19,6 +19,7 @@ description: "작업 내용을 공통 워크로그 템플릿(1.개요 / 2.작업
 | `loop-spec.md` | 루프 명세 (`loop` 스킬이 사용) | `docs/loops/` |
 | `digest.md` | 지식 다이제스트 (`digest` 스킬이 사용) | `docs/digests/` |
 | `report.html` | 작업 종료 HTML 보고서 (`report` 스킬이 사용) | `docs/reports/` |
+| `predeploy.md` | 배포 전 점검 (`fe-predeploy` 스킬이 사용 — 프론트엔드 도메인일 때만 배포) | `docs/predeploy/` |
 
 1. **프로젝트에 `docs/templates/{템플릿명}.md`가 있으면 그것이 단일 출처다.** 그대로 사용한다.
 2. 없으면 이 스킬의 `assets/templates/{템플릿명}.md`를 프로젝트 `docs/templates/`로 **복사한 뒤** 사용한다. 베껴 쓰지 않고 복사한다 — 복사가 결정적이어야 프로젝트마다 미묘하게 다른 사본이 생기지 않는다.
