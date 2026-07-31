@@ -101,7 +101,7 @@
 
 - `/harness 구축·점검·추가·해체` 인자로 Phase 0 분기를 선결정, 어떤 경우든 감사부터 시작한다
 - 실행 모드는 사다리로 판별하고, 모델은 하드코딩하지 않는다(세션 상속) — 모델 세대가 바뀌어도 하네스가 늙지 않는다
-- `validateHarness.mjs`가 frontmatter·참조 링크·훅/템플릿 구성·버전 정합성을 자동 검사한다 (회귀 테스트 66종)
+- `validateHarness.mjs`가 frontmatter·참조 링크·훅/템플릿 구성·버전 정합성을 자동 검사한다 (회귀 테스트 73종)
 
 ### branch — 작업 브랜치 확인
 
@@ -144,7 +144,8 @@
 
 - "본 것 같다"가 아니라 **측정** — 버튼 5연타 → POST 요청 1건, 마운트 5사이클 → 리스너 순증가 0처럼 숫자로 판정 (퓨어 JS·React·Next.js)
 - 4단계: 정적 게이트(빌드·린트·테스트·정적 스캔) → 브라우저 런타임 계측(claude-in-chrome — 중복 클릭·메모리 누수·네트워크 경계) → 성능(Core Web Vitals, lighthouse) → 시각·UX 스윕(뷰포트 3종·접근성)
-- 번들 스크립트: `staticScan.mjs`(클린업 누락·debugger·시크릿 리터럴 휴리스틱), `instrument.js`(리스너·타이머·요청 카운터 주입)
+- 체크리스트 59항목 — 실무 장애 사례 기반(우아한형제들·토스·오늘의집 기술블로그, web.dev·OWASP·Next.js 공식): 복원력(ChunkLoadError·bfcache·토큰 리프레시 동시성·폴리필 갭·hydration)과 모바일·웹뷰(iOS input 확대·100vh·안드로이드 백버튼×모달) 카테고리 포함
+- 번들 스크립트: `staticScan.mjs`(휴리스틱 17규칙 — 클린업 누락·debugger·시크릿·IME isComposing·response.ok·noopener·100vh 등, CSS 포함), `instrument.js`(리스너·타이머·요청 카운터 주입)
 - 판정은 pass/fail/skip 3분류(skip 사유 필수), blocker fail 있으면 "배포 불가" — 결과는 `docs/predeploy/` 체크리스트로 누적, 기준치는 config로 조정
 - 점검과 수정을 분리한다 — 수정은 제안까지, "통과까지 고쳐줘"는 loop 스킬과 결합
 
@@ -214,7 +215,7 @@ guksu-harness/
     │   ├── assets/hooks/            # 훅 실물 4종 (프로젝트로 복사됨)
     │   └── scripts/                 # validateHarness + 회귀 테스트
     ├── docs/                        # 워크로그 스킬 + 템플릿 번들 (공통 6종 + predeploy)
-    ├── fe-predeploy/                # 프론트 배포 전 점검 (references 5종 + 계측·스캔 스크립트)
+    ├── fe-predeploy/                # 프론트 배포 전 점검 (references 7종 + 계측·스캔 스크립트)
     ├── branch/ pr/ loop/ digest/    # 독립 스킬들 (각 SKILL.md)
     └── handoff/ report/ retro/
 ```
@@ -222,7 +223,7 @@ guksu-harness/
 ## 개발
 
 ```bash
-# 검증기 + 훅 + 다이제스트 신선도 + 배포 전 점검 회귀 테스트 (66종)
+# 검증기 + 훅 + 다이제스트 신선도 + 배포 전 점검 회귀 테스트 (73종)
 node --test skills/harness/scripts/validateHarness.test.mjs skills/harness/scripts/hooks.test.mjs skills/digest/scripts/checkFreshness.test.mjs skills/fe-predeploy/scripts/staticScan.test.mjs skills/fe-predeploy/scripts/instrument.test.mjs
 
 # 이 repo 자체를 검증 (셀프 호스팅 — 하네스가 자기 규칙을 통과해야 한다)

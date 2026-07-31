@@ -2,6 +2,21 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [1.14.0] - 2026-07-31
+
+fe-predeploy 체크리스트 확장 릴리스. 국내 기업 기술블로그(우아한형제들·토스·오늘의집·비브로스 — 실제 장애 사례)와 해외 공식 소스(web.dev·react.dev·Next.js·OWASP·MDN)를 병렬 리서치해 검증된 항목만 반영했다(출처 병기). 체크리스트 28 → 59항목(신규 31).
+
+### Added
+
+- **`references/resilience.md` (신규)** — 복원력·세션 카테고리 11항목: 배포 버전 스큐(ChunkLoadError — 우아한형제들 Sentry 운영 사례), fetch `response.ok` 판정(4xx에서도 resolve), Error Boundary 부재 흰 화면 + 커스텀 404, 서드파티 스크립트 SPOF(도메인 차단 후 생존 확인), 오프라인·저속 네트워크, bfcache 복원 상태·차단 요인, **토큰 리프레시 동시성**(중복 리프레시 → 전체 로그아웃), 멀티탭 로그아웃 전파, **브라우저 타깃·폴리필 갭**(배민 장바구니 백지 화면 사례), 에러 모니터링 노이즈(rate limit로 장애 로그 유실), hydration mismatch(Next SSR)
+- **`references/mobile-web.md` (신규)** — 모바일·웹뷰 카테고리 7항목: iOS input 16px 미만 자동 확대, 100vh·safe-area(dvh), **안드로이드 물리 백버튼 × 모달·바텀시트**(작성 중 입력 소실), iOS 미디어 자동재생 정책, Safari blur·border-radius 함정, 터치 타깃 48px(config `touchTargetPx`), 웹뷰 디버깅 가능성. 에뮬레이션 판정 불가 항목은 skip(사유: 실기기 필요) 분류 원칙 명시
+- **기존 카테고리 확장** — interaction: **한글 IME 조합 중 Enter 중복 제출**(isComposing), 다단계 퍼널 히스토리 정합(토스페이먼츠 사례), 무한스크롤 뒤로가기 복원·offset 페이지네이션(오늘의집 사례) / performance: 웹폰트 font-display(Safari 무기한 FOIT)·CLS 유발 요소(동적 배너·top/left 애니메이션)·가상 리스트 높이 오차 시나리오 / quality: 접근성 확장(색 대비·lang·스킵 링크·라이브 리전, prefers-reduced-motion), 보안·데이터(CSP·DOM XSS 싱크·tabnabbing noopener·파일 업로드·폼 autocomplete·**날짜/로케일/타임존**)
+- **staticScan 규칙 10 → 17종** (TDD, 테스트 10 → 17종) — `fetch-no-ok-check`·`ime-enter-no-composing`·`unload-listener`·`blank-no-noopener`(window.open 포함)·`vh-100`·`date-locale-implicit`·`font-display-missing`. **CSS 파일(.css/.scss/.sass/.less) 스캔 지원** — CSS에는 CSS 규칙만 적용(JS 규칙 오탐 방지)
+
+### Changed
+
+- SKILL.md Phase 2·3 카테고리 표에 복원력·모바일 행 추가, 정적 게이트 규칙 열거 갱신. config에 `touchTargetPx: 48`. 회귀 테스트 66→73종
+
 ## [1.13.0] - 2026-07-31
 
 ### Added
