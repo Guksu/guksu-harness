@@ -174,6 +174,37 @@ test('description에 후속 작업 키워드가 없으면 경고', async () => {
   await rm(rootDir, { recursive: true, force: true });
 });
 
+test('description이 350자를 넘으면 경고', async () => {
+  const longDescription = `데모 스킬 업데이트. ${'트리거 표현을 길게 나열한다. '.repeat(25)}`;
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/skills/demo-skill/SKILL.md': VALID_SKILL.replace(
+        '데모 스킬. 데모 작업 요청 시 사용.',
+        longDescription,
+      ),
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('상시 로딩 비용')),
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('description이 350자 이내면 길이 경고가 없다', async () => {
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/skills/demo-skill/SKILL.md': VALID_SKILL.replace(
+        '데모 스킬. 데모 작업 요청 시 사용.',
+        '데모 스킬 업데이트. 데모 작업 요청 시 사용.',
+      ),
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(!issues.some((issue) => issue.message.includes('상시 로딩 비용')));
+  await rm(rootDir, { recursive: true, force: true });
+});
+
 test('하네스가 있는데 CLAUDE.md 하네스 포인터가 없으면 경고', async () => {
   const rootDir = await makeFixture({
     files: { '.claude/agents/demo-agent.md': VALID_AGENT },
