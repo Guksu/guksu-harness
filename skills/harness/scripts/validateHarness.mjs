@@ -16,6 +16,8 @@ const BUILTIN_AGENT_TYPES = new Set([
   'statusline-setup',
 ]);
 const FOLLOW_UP_KEYWORDS = ['다시', '재실행', '재구성', '수정', '보완', '업데이트', '개선'];
+// description은 모든 세션에 상시 로딩된다 — 트리거에 필요한 것만 남기고 초과분은 본문으로 내린다.
+const DESCRIPTION_MAX_CHARS = 350;
 
 const exists = async ({ path }) => {
   try {
@@ -87,12 +89,21 @@ const validateSkillFile = async ({ skillDir, dirName, agentNames, issues }) => {
     }
     if (!frontmatter.description) {
       issues.push({ level: 'error', path: skillPath, message: 'frontmatter에 description이 없다' });
-    } else if (!FOLLOW_UP_KEYWORDS.some((keyword) => frontmatter.description.includes(keyword))) {
-      issues.push({
-        level: 'warn',
-        path: skillPath,
-        message: `description에 후속 작업 키워드(${FOLLOW_UP_KEYWORDS.join('·')} 등)가 없다 — 재실행·수정 요청이 트리거되지 않는다`,
-      });
+    } else {
+      if (!FOLLOW_UP_KEYWORDS.some((keyword) => frontmatter.description.includes(keyword))) {
+        issues.push({
+          level: 'warn',
+          path: skillPath,
+          message: `description에 후속 작업 키워드(${FOLLOW_UP_KEYWORDS.join('·')} 등)가 없다 — 재실행·수정 요청이 트리거되지 않는다`,
+        });
+      }
+      if (frontmatter.description.length > DESCRIPTION_MAX_CHARS) {
+        issues.push({
+          level: 'warn',
+          path: skillPath,
+          message: `description이 ${frontmatter.description.length}자 — ${DESCRIPTION_MAX_CHARS}자 초과분은 상시 로딩 비용이다. 트리거 표현만 남기고 본문으로 내려라`,
+        });
+      }
     }
   }
 
