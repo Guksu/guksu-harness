@@ -2,6 +2,17 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [Unreleased]
+
+### Added
+
+- **`fe-craft` 스킬 (신규, 11번째)** — 프론트엔드 제작 품질: "동작하는" 화면과 "완성도 있는" 화면 사이를 메운다. fe-predeploy(배포 직전 1회 게이트·판정)와 달리 제작·수정 중 반복 루프(개선)를 담당. 외부 공개 자료 3종을 라이선스 검토 후 접목:
+  - `references/design-principles.md` — 디자인 8원칙(대비·위계·정렬·근접·반복·균형·여백·통일) 스크린샷 비평 프레임워크. 원칙별 정의·AI 산출물의 흔한 위반·비평 질문 + 비평 루프 운영 규칙(렌더→원칙 이름으로 비평→상위 2~3개만 수정→재렌더 비교→수렴, 무난함≠완성). 고전 디자인 이론의 자체 서술이며 Expo 블로그 글(©650 Industries, 라이선스 없음 — 본문 비복제)은 아이디어 영감으로만 명시
+  - `references/animation.md` — 모션 리뷰 기준: 결정 프레임워크 4질문(필요성·빈도별 모션 예산·이징 선택·요소별 지속시간 예산), 비타협 기준 10(UI ease-in 금지·300ms 이하·scale(0) 금지·transform-origin·중단 가능성·GPU 속성·reduced-motion·비대칭 타이밍 등), 즉시 플래그 트리거 14종, 개선 서열 9단계(삭제가 1순위), Block/Approve 판정. Emil Kowalski skills 저장소(MIT) 증류
+  - `references/react-performance.md` — React/Next.js 성능 규칙 70종 우선순위 인덱스(워터폴·번들 CRITICAL부터 8카테고리), 상세는 업스트림 rules/ 참조 방식. Vercel react-best-practices(SKILL.md frontmatter MIT 선언) 증류
+  - `LICENSES.md` — 원천별 라이선스 고지(Emil MIT 전문·Vercel frontmatter 선언 근거·Expo 비복제 확인). 스냅샷 날짜 명시, 충돌 시 업스트림 우선
+- harness 스킬 Phase 2-6: 프론트엔드 도메인 하네스에 fe-craft 연결(제작 품질) 명시 — fe-predeploy(배포 게이트)와 역할 분담
+
 ## [1.15.0] - 2026-08-05
 
 하네스 다이어트 릴리스 — "페르소나보다 작업별 스킬, 산문 지침보다 기계적 강제"로 재정렬. 현행 모델은 정체성 부여·세부 작업 지시 없이 작업 명세(입출력 계약)만으로 잘 수행한다는 전제를 반영해, 스캐폴딩·복제·의례를 규모에 비례하게 줄였다.
