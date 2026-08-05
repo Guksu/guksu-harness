@@ -2,7 +2,7 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
-## [Unreleased]
+## [1.16.0] - 2026-08-05
 
 ### Added
 
