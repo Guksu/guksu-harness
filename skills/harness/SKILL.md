@@ -102,7 +102,7 @@ description: "하네스를 구성한다 — 도메인/프로젝트 요청을 실
 3. **에이전트 정의** (풀 티어만) — `프로젝트/.claude/agents/{name}.md`. 파일화 조건: 팀 모드 팀원이거나, 세션 간 재사용되거나, Workflow `agentType`으로 연결될 때. 그 외 단발 위임은 정의 파일 없이 작업 프롬프트 + 스킬 포인터로 충분하다. 템플릿은 페르소나가 아니라 계약(입출력·에러 핸들링) 중심: `references/agent-design.md`
 4. **오케스트레이터** (풀 티어만) — 실행 모드별 골격·데이터 전달 프로토콜·에러 핸들링·후속 작업(부분 재실행) 지원: `references/orchestrator-template.md`. 기존 확장이면 새로 만들지 말고 기존 오케스트레이터를 수정한다.
 5. **훅·권한 구성** — 도구·명령을 위험 3등급(low=allowlist / medium=기본 / high=deny·훅·확인)으로 분류한 뒤 등급에 맞는 강제 수단을 붙인다. 절대 규칙 1(git)·6(시크릿)과 보호 브랜치는 high 등급의 사례다: 이 스킬의 `assets/hooks/` 훅 3종(git 변경 차단 + Bash 경유 시크릿 접근 차단 + 보호 브랜치 편집 차단(branchGuard — `branch` 스킬과 한 쌍))을 프로젝트 `.claude/hooks/`로 복사해 PreToolUse에 등록하고, permissions deny(Read 도구 측)와 함께 2중 방어를 구성한다. **PR 플로우(규칙 1 예외 ②)는 옵트인이다** — 사용자에게 활성화 여부를 확인받고, 승인 시에만 `blockGitMutation.config.json`에 `{ "allowCommitPush": true }`를 쓰고 git-flow 채택 시 branchGuard의 `protectedBranches`에 `dev`를 추가한다(`pr` 스킬 참조). 이 옵트인을 켜면 **기록 게이트**(`docs/history/` 변경 없는 push 차단 — 절대 규칙 3의 기계적 강제)가 함께 켜진다: 끄려면 같은 config에 `requireHistoryDoc: false`, PR 베이스가 `dev`가 아니면 `historyBase`를 명시한다. 새 도메인은 그 도메인의 high 등급 도구(결제·배포·프로덕션 DB 등)를 재분류해 훅·deny를 추가한다. 에이전트가 반복 실행할 테스트·빌드 명령은 allowlist로 사전 허용해 자율 실행이 권한 프롬프트에 끊기지 않게 한다. 코드 생성 하네스면 검증자 게이트(Stop 훅 — 검증 명령 통과까지 턴 종료 차단 + 토큰 예산·최대 반복 안전장치, TDD 게이트의 일반화)를 사용자 확인 후 선택 적용 → `references/hooks-and-permissions.md`
-6. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `history` 스킬의 템플릿(이 스킬 기준 `../history/assets/templates/`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). **라이트 티어는 `history.md`·`handoff.md` 2종만**, 풀 티어는 4종(`history.md`·`handoff.md`·`retro.md`·`loop-spec.md`)을 복사한다. 설계서 템플릿(`design.md`)은 설계 문답을 거쳤다면 Phase 1에서 이미 복사되어 있다. **프론트엔드(웹 UI) 도메인이면** `predeploy.md`도 함께 복사하고 네 시점(설계 판정·구현·제작 품질·배포 게이트)의 스킬을 배선한다 → `references/frontend-domain.md`. 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다.
+6. **공통 템플릿 배포** — 절대 규칙 3의 기록 형식을 구체화한다: 이 플러그인 `history` 스킬의 템플릿(이 스킬 기준 `../history/assets/templates/`)을 프로젝트 `docs/templates/`로 복사한다(이미 있으면 보존 — 프로젝트 사본이 단일 출처). **라이트 티어는 `history.md`·`handoff.md` 2종만**, 풀 티어는 4종(`history.md`·`handoff.md`·`retro.md`·`loop-spec.md`)을 복사한다. 설계서 템플릿(`design.md`)은 설계 문답을 거쳤다면 Phase 1에서 이미 복사되어 있다. **프론트엔드(웹 UI) 도메인이면** `predeploy.md`도 함께 복사하고, `scripts/feSkills.mjs`(fe-skills 라이브러리 클라이언트)를 프로젝트 `.claude/scripts/`로 복사한 뒤 네 시점(설계 판정·구현·제작 품질·배포 게이트)을 배선한다 → `references/frontend-domain.md`. 훅과 같은 이유로 베껴 쓰지 않고 그대로 복사한다.
 
    **`_workspace/`를 gitignore에 추가한다** — 역할 간 작업 산출물이 커밋에 섞이면 규칙 3의 구분(휘발성 산출물 vs 보존 기록)이 무너진다.
 
@@ -147,7 +147,7 @@ description: "하네스를 구성한다 — 도메인/프로젝트 요청을 실
 - [ ] `.claude/skills/` 스킬 (SKILL.md ≤500줄, 세부는 references/)
 - [ ] 훅 3종(git·시크릿·브랜치 가드)이 `assets/hooks/`에서 `.claude/hooks/`로 복사되고 settings.json에 등록됨 + 시크릿 deny 권한 구성 (기존 설정은 병합)
 - [ ] (PR 플로우 옵트인 시) `blockGitMutation.config.json`의 `allowCommitPush` 활성 + 기록 게이트(`requireHistoryDoc`, 베이스가 `dev`가 아니면 `historyBase`) 확인 + git-flow면 `protectedBranches`에 `dev` 추가 + "커밋·PR은 사용자 명시 요청 시 `pr` 스킬, Claude 작성 표기 금지" 명시
-- [ ] (프론트엔드 도메인) fe-ui·fe-system 설치 여부를 확인받고, 설치한 것만 도메인 스킬·에이전트 정의에 배선됨 — 없는 스킬을 가리키는 포인터 없음
+- [ ] (프론트엔드 도메인) `feSkills.mjs`가 `.claude/scripts/`로 복사되고, 도메인 스킬·에이전트 정의에 "UI 패턴 구현·화면 설계 전 라이브러리 먼저 조회"가 **완료 기준과 함께** 명시됨 (사용자 요청 없이도 발동해야 한다)
 - [ ] 공통 템플릿이 티어에 맞게 `docs/templates/`로 복사됨(라이트 2종 / 풀 4종) + `_workspace/`가 gitignore에 있음 + "작업 산출물은 `_workspace/`, 완료 시 `docs/history/` 기록 1건"·"중단 시 인계" 규칙 명시 — 회고는 조건부(트리거 충족 시)
 - [ ] 컨텍스트 경제 — CLAUDE.md 포인터 ~200줄, 파일 한정 지침은 `.claude/rules/`+`paths:`, 대량 읽기는 서브 에이전트 격리 (핵심 원칙 4)
 - [ ] 모델 하드코딩 없음 (오버라이드 시 이유 명시)
@@ -173,8 +173,9 @@ description: "하네스를 구성한다 — 도메인/프로젝트 요청을 실
 | `references/agent-design.md` | 에이전트 분리·정의·QA 에이전트 설계 시 |
 | `references/skill-authoring.md` | 스킬 작성 시 |
 | `references/orchestrator-template.md` | 오케스트레이터 작성·수정 시 |
-| `references/frontend-domain.md` | Phase 2에서 프론트엔드(웹 UI) 도메인일 때 — fe-system·fe-ui·fe-craft·fe-predeploy 배선 |
+| `references/frontend-domain.md` | Phase 2에서 프론트엔드(웹 UI) 도메인일 때 — fe-skills 라이브러리 배선, fe-craft·fe-predeploy 연결 |
 | `references/hooks-and-permissions.md` | Phase 2 훅·권한 구성 시, 해체 시 정리 대상 확인 |
 | `references/context-economy.md` | 절대 규칙 7 적용 시 — CLAUDE.md 다이어트·rules 분리·대량 읽기 격리, Phase 3 점검 |
 | `references/testing-guide.md` | Phase 3 검증 시 |
 | `scripts/validateHarness.mjs` | Phase 0 감사·Phase 3 구조 검증 시 실행 (로딩 불필요) |
+| `scripts/feSkills.mjs` | 프론트엔드 UI 패턴·화면 설계가 필요할 때 실행 — fe-skills 라이브러리 조회·가져오기 (로딩 불필요) |
