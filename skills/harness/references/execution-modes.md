@@ -71,49 +71,14 @@
 - 산출물 스키마 강제: `schema` 옵션으로 JSON Schema 검증된 구조화 출력을 받아야 할 때
 - 적대적 검증: 발견 1건당 반박 에이전트 N명 투표 같은 품질 패턴
 
-**핵심 API (스크립트 안에서 사용):**
+**API·스크립트 작성법은 플랫폼의 `workflow-authoring` 스킬이 정본이다** — 스크립트를 쓰기 직전에 그 스킬을 읽는다. 여기 옮겨 적으면 플랫폼이 API를 바꾸는 순간 이 문서가 거짓말이 된다. 아래는 하네스가 쓰는 판단 기준만 남긴 것이다.
 
-| 함수 | 역할 |
-|------|------|
-| `agent(prompt, opts)` | 서브 에이전트 1개 스폰. `opts.schema`(JSON Schema)로 구조화 출력 강제, `opts.agentType`으로 `.claude/agents/`의 커스텀 에이전트 사용, `opts.isolation: 'worktree'`로 병렬 파일 수정 격리 |
-| `pipeline(items, ...stages)` | 항목별로 단계를 독립 진행(단계 간 배리어 없음). **다단계 작업의 기본값** |
-| `parallel(thunks)` | 전부 끝날 때까지 대기(배리어). 전체 결과가 동시에 필요할 때만(중복 제거, 0건 조기 종료) |
-| `phase(title)` / `log(msg)` | 진행 상황 그룹핑/표시 |
-| `budget` | 토큰 버짓 조회 — 버짓 기반 반복 깊이 조절 |
-| `workflow(nameOrRef, args)` | 저장된 워크플로우 또는 스크립트 파일을 하위 단계로 실행 (1단계 중첩만 허용) |
+**하네스가 활용할 3가지:**
+- **저장 워크플로우**: 반복 실행할 스크립트는 `프로젝트/.claude/workflows/{name}.mjs`에 저장하고 `Workflow({name})`으로 호출한다 — Workflow 모드 하네스의 산출물이다. 오케스트레이터 스킬 본문에 골격 텍스트로만 두면 실행마다 재작성되어 결정성이 깨진다.
+- **`resumeFromRunId` 재개**: 완료된 단계는 캐시로 즉시 반환되고 수정·추가분만 실제 실행된다 — 오케스트레이터의 **부분 재실행**(Phase 0 컨텍스트 확인)을 Workflow 모드에서 구현하는 기본 수단이다. 이를 위해 실행 후 runId를 작업 산출물에 기록해 둔다.
+- **커스텀 에이전트 연결**: `opts.agentType`으로 `.claude/agents/`의 정의를 쓴다. 정의 파일은 이 연결이 필요한 것만 만든다 — 기본 서브 에이전트로 충분한 단계는 프롬프트 계약만으로 호출한다(agent-design.md §3).
 
-**스크립트 골격 예시 (찾기→검증 파이프라인):**
-
-```js
-export const meta = {
-  name: 'review-chapters',
-  description: '챕터별 검수 후 발견사항 적대적 검증',
-  phases: [{ title: '검수' }, { title: '검증' }],
-}
-const results = await pipeline(
-  args.chapters,
-  (ch) => agent(`${ch} 검수...`, { phase: '검수', schema: FINDINGS_SCHEMA }),
-  (review) => parallel(review.findings.map((f) => () =>
-    agent(`반박 시도: ${f.title}`, { phase: '검증', schema: VERDICT_SCHEMA })
-      .then((v) => ({ ...f, verdict: v })))),
-)
-return results.flat().filter(Boolean).filter((f) => f.verdict?.isReal)
-```
-
-**재사용과 재개 — 하네스가 활용할 핵심 기능:**
-- **저장 워크플로우**: 반복 실행할 스크립트는 `프로젝트/.claude/workflows/{name}.mjs`에 저장하고 `Workflow({name})` 또는 스크립트 안에서 `workflow(name, args)`로 호출한다. 오케스트레이터 스킬 본문에 골격 텍스트로만 두는 것보다 재사용·버전 관리·`args` 파라미터화가 깔끔하다 — Workflow 모드 하네스의 산출물로 남긴다.
-- **`scriptPath` 반복 수정**: 모든 실행은 스크립트를 세션 디렉토리에 파일로 남긴다. 수정 재실행 시 스크립트 전문을 재전송하지 말고 그 파일을 Edit 후 `Workflow({scriptPath})`로 재호출한다.
-- **`resumeFromRunId` 재개**: 이전 실행의 완료된 `agent()` 호출은 캐시로 즉시 반환되고, 수정·추가된 호출부터만 실제 실행된다. 오케스트레이터의 **부분 재실행**(Phase 0 컨텍스트 확인)을 Workflow 모드에서 구현하는 기본 수단이다.
-- **`opts.effort`**: 모델 정책과 같은 원칙 — 기본은 세션 상속(생략). 기계적 단계만 `low`로 낮추고, 최난도 검증·심판 단계만 상향하며 이유를 주석으로 남긴다.
-
-**주의사항:**
-- 스크립트는 순수 JS(TS 문법 불가), `Date.now()`/`Math.random()` 사용 불가(재개 기능이 깨짐) — 타임스탬프는 `args`로 주입
-- `meta`는 순수 리터럴이어야 한다
-- 모델 오버라이드(`opts.model`)는 기본 생략 — 세션 모델 상속이 원칙
-- Workflow는 사용자가 멀티 에이전트 오케스트레이션을 명시적으로 요청한 맥락에서 실행된다. 하네스의 오케스트레이터 스킬이 Workflow를 실행 수단으로 쓰는 경우, 그 사실을 스킬 description과 본문에 명시해 사용자가 스킬 호출로 이미 옵트인했음을 분명히 한다(현행 플랫폼은 스킬·슬래시 명령의 지시를 옵트인으로 인정한다. 사용자가 ultracode를 켠 세션은 옵트인이 상시 적용된다)
-- 규모 상한을 존중한다 — 세션에 기본 워크플로우 규모 가이드라인(예: 에이전트 ~15개 이하)이 있을 수 있고, 워크플로우 수명당 총 1000 에이전트 캡·`parallel`/`pipeline` 호출당 항목 4096 상한이 있다. 이를 넘는 대량 작업은 조각으로 나눠 여러 워크플로우로 돌린다
-- 에이전트 정의 파일(`.claude/agents/`)은 `agentType`으로 연결할 커스텀 에이전트만 만든다 — 기본 워크플로우 서브 에이전트로 충분한 단계는 프롬프트 계약만으로 호출한다(agent-design.md §3 파일화 조건)
-- 결과가 비었거나 이상하면 추측하지 말고 transcript 디렉토리의 `journal.jsonl`을 읽는다 — 각 `agent()`의 실제 반환값이 기록되어 있다
+**모델·effort는 기본 생략(세션 상속)**, 규모 상한(세션 가이드라인·에이전트 캡·항목 상한)은 존중해 초과분은 여러 워크플로우로 나눈다. 하네스의 오케스트레이터가 Workflow를 실행 수단으로 쓰면 그 사실을 스킬 description과 본문에 명시한다 — 사용자가 스킬 호출로 이미 멀티에이전트에 옵트인했음을 분명히 하기 위해서다.
 
 ## 4. 에이전트 팀
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isGitMutation, judgeGitCommand } from '../assets/hooks/blockGitMutation.mjs';
+import { isGitMutation, judgeGitCommand, hasHistoryChange } from '../assets/hooks/blockGitMutation.mjs';
 import { referencesSecret } from '../assets/hooks/blockSecretAccess.mjs';
 import {
   decide,
@@ -153,6 +153,41 @@ test('commit·push 예외 — 검사 불가 커밋 형태·force/delete push는 
     assert.equal(verdict.rule, 'push-flags');
   }
   assert.equal(judgeGitCommand('git push -u origin feat/login', opt).blocked, false);
+});
+
+test('기록 게이트 — docs/history 변경 없는 push를 차단한다', () => {
+  const opt = { allowCommitPush: true, requireHistoryDoc: true };
+  const push = 'git push -u origin feat/login';
+
+  const missing = judgeGitCommand(push, { ...opt, historyChanged: false });
+  assert.equal(missing.blocked, true);
+  assert.equal(missing.rule, 'history-missing');
+
+  assert.equal(judgeGitCommand(push, { ...opt, historyChanged: true }).blocked, false);
+  // 판정 불가(base 브랜치를 못 찾는 환경)는 통과시킨다 — 문서 위생 게이트는 fail-open이다
+  assert.equal(judgeGitCommand(push, { ...opt, historyChanged: null }).blocked, false);
+  // 게이트를 끈 하네스에서는 기록이 없어도 통과한다
+  assert.equal(
+    judgeGitCommand(push, { allowCommitPush: true, historyChanged: false }).blocked,
+    false,
+  );
+  // 커밋은 게이트 대상이 아니다 — PR 단위(push)에서만 기록을 요구한다
+  assert.equal(
+    judgeGitCommand('git commit -m "feat: x"', { ...opt, historyChanged: false }).blocked,
+    false,
+  );
+  // force push는 기록 유무와 무관하게 먼저 차단된다
+  const forced = judgeGitCommand('git push -f origin feat/login', { ...opt, historyChanged: true });
+  assert.equal(forced.rule, 'push-flags');
+});
+
+test('기록 게이트 — 변경 경로에서 기록 문서를 식별한다', () => {
+  assert.equal(hasHistoryChange(['docs/history/2026-08-29-login.md']), true);
+  assert.equal(hasHistoryChange(['src/app.ts', 'docs/history/2026-08-29-login.md']), true);
+  assert.equal(hasHistoryChange(['src/app.ts', 'docs/design/2026-08-29-login.md']), false);
+  // 디렉토리만 만들고 기록을 안 쓴 경우, 다른 확장자는 기록이 아니다
+  assert.equal(hasHistoryChange(['docs/history/.gitkeep']), false);
+  assert.equal(hasHistoryChange([]), false);
 });
 
 test('git 읽기 명령은 허용한다', () => {

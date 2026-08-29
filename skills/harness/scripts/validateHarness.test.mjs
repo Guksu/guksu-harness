@@ -234,7 +234,7 @@ test('하네스가 있는데 공통 템플릿이 없으면 템플릿별로 경�
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(
-    issues.some((issue) => issue.level === 'warn' && issue.message.includes('worklog.md')),
+    issues.some((issue) => issue.level === 'warn' && issue.message.includes('history.md')),
   );
   assert.ok(
     issues.some((issue) => issue.level === 'warn' && issue.message.includes('retro.md')),
@@ -245,12 +245,6 @@ test('하네스가 있는데 공통 템플릿이 없으면 템플릿별로 경�
   assert.ok(
     issues.some((issue) => issue.level === 'warn' && issue.message.includes('loop-spec.md')),
   );
-  assert.ok(
-    issues.some((issue) => issue.level === 'warn' && issue.message.includes('digest.md')),
-  );
-  assert.ok(
-    issues.some((issue) => issue.level === 'warn' && issue.message.includes('report.html')),
-  );
   await rm(rootDir, { recursive: true, force: true });
 });
 
@@ -258,12 +252,11 @@ test('공통 템플릿이 모두 있으면 경고가 없다', async () => {
   const rootDir = await makeFixture({
     files: {
       '.claude/agents/demo-agent.md': VALID_AGENT,
-      'docs/templates/worklog.md': '# {작업명}\n\n## 1. 개요\n\n## 2. 작업내용\n\n## 3. 주의사항\n',
+      'docs/templates/history.md':
+        '# {작업명}\n\n## 1. 개요\n\n## 2. 작업 내용\n\n## 3. 검증 결과\n\n## 4. 확인 필요 · 후속\n\n## 5. 주의사항\n',
       'docs/templates/retro.md': '# 회고: {대상}\n\n## 1. 잘된 점\n\n## 2. 반복 문제\n\n## 3. 개선안\n\n## 4. 적용 결과\n',
       'docs/templates/handoff.md': '# 인계: {작업 흐름}\n\n## 1. 목표\n\n## 2. 진행 상황\n\n## 3. 시도와 결과\n\n## 4. 다음 단계\n\n## 5. 미해결 질문\n',
       'docs/templates/loop-spec.md': '# 루프: {이름}\n\n## 1. 목표\n\n## 2. 루프 설계\n\n## 3. 안전장치\n\n## 4. 실행 기록\n\n## 5. 종료 보고\n',
-      'docs/templates/digest.md': '---\nsources:\n  - path: {경로}\n    hash: {해시}\n---\n\n# 다이제스트: {대상}\n\n## 1. 책임\n\n## 2. 공개 인터페이스\n\n## 3. 의존과 데이터 흐름\n\n## 4. 불변식과 함정\n',
-      'docs/templates/report.html': '<!doctype html>\n<html lang="ko"><head><title>작업 보고서 — {작업명}</title></head><body>\n<h2>1. 요약</h2><h2>2. 작업 내용</h2><h2>3. 검증 결과</h2><h2>4. 사용자 검토 필요</h2><h2>5. 후속 조치</h2>\n</body></html>\n',
     },
   });
   const issues = await validateHarness({ rootDir });
