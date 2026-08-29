@@ -2,7 +2,7 @@
 
 > Claude Code에게 **"이 프로젝트에 하네스 구축해줘"** 한 문장만 말하면, 그 프로젝트 전용 작업 체계(역할 분담 · 작업 절차 · 안전장치 · 기록 양식)를 자동으로 만들어 주는 Claude Code 플러그인입니다.
 
-현재 버전 **v2.0.0** · 스킬 9종 · 안전 훅 4종 · 회귀 테스트 69종 · MIT
+현재 버전 **v2.1.0** · 스킬 9종 · 안전 훅 4종 · 회귀 테스트 69종 · MIT
 
 ---
 
@@ -183,6 +183,27 @@ ls .claude/agents/       # (풀 티어) 역할별 정의 파일들
 | [`retro`](#retro--회고-기반-진화) | 실제 산출물을 근거로 하네스 자체를 개선 | `docs/retro/` |
 | [`pr`](#pr--커밋pr-업로드) | 명시 요청이 있을 때만 커밋·push·PR 생성 | GitHub |
 
+### 5-1. 프론트엔드는 마켓플레이스가 하나 더 있습니다
+
+프론트엔드 작업은 **설계 → 구현 → 제작 품질 → 배포 가부**의 네 시점이 뚜렷하고, 이 플러그인은 뒤의 둘만 담당합니다. 앞의 둘은 별도 마켓플레이스 [`Guksu/fe-skills`](https://github.com/Guksu/fe-skills)에 있습니다.
+
+| 시점 | 스킬 | 어디에 |
+|---|---|---|
+| 코드 **전** — 설계 판정 | `list-filter-detail` · `infinite-feed` | **fe-system** (fe-skills) |
+| 구현 | UI 패턴 29종 (바텀시트·핀치줌·캐러셀 …) | **fe-ui** (fe-skills) |
+| 제작 **중** — 품질 | `fe-craft` | 이 플러그인 |
+| 배포 **직전** — 게이트 | `fe-predeploy` | 이 플러그인 |
+
+```
+/plugin marketplace add Guksu/fe-skills
+/plugin install fe-ui@fe-skills        # UI·애니메이션 구현 패턴
+/plugin install fe-system@fe-skills    # 화면 설계 판정
+```
+
+**왜 합치지 않았나** — `fe-ui` 29종의 description은 설치한 **모든 프로젝트의 모든 턴**에 로딩됩니다. 백엔드·CLI 프로젝트에는 순수 비용이라, 프론트엔드 프로젝트만 설치하는 편이 옳습니다(§8-4).
+
+하네스가 프론트엔드 도메인을 감지하면 설치 여부를 확인한 뒤, **설치한 것만** 생성하는 에이전트 정의·도메인 스킬에 배선합니다 — 없는 스킬을 가리키는 포인터는 만들지 않습니다.
+
 ---
 
 ### `harness` — 하네스 아키텍트 (메타 스킬)
@@ -338,6 +359,8 @@ ls .claude/agents/       # (풀 티어) 역할별 정의 파일들
 
 **fe-predeploy와 뭐가 다른가** — fe-predeploy는 배포 직전 1회 게이트("배포해도 되는가"를 판정), fe-craft는 제작 중 반복 루프("더 좋게 만들 수 있는가"를 개선)입니다.
 
+**fe-ui가 있으면 먼저 찾아봅니다** — 바텀시트·핀치줌처럼 이름이 붙은 UI 패턴은 직접 짜서 비평하는 것보다, [fe-skills](https://github.com/Guksu/fe-skills)의 `fe-ui` 정본 코드에서 출발하는 편이 비평 루프를 몇 바퀴 줄입니다(아래 §5-1).
+
 **세 영역** — 필요한 것만 로드됩니다:
 
 | 영역 | 내용 | 원천 |
@@ -412,6 +435,7 @@ flowchart LR
     D -. 명시 요청 시 .-> P["pr<br/>커밋 · PR"]
     W -. 중단 시 .-> H["handoff<br/>세션 인계"]
     W -. 반복형 작업 .-> L["loop<br/>루프 설계"]
+    W -. UI 패턴 구현 .-> U["fe-ui · fe-system<br/>(별도 마켓플레이스)"]
     W -. UI 제작·수정 중 .-> C["fe-craft<br/>제작 품질"]
     W -. 프론트 배포 전 .-> F["fe-predeploy<br/>배포 점검"]
 ```
@@ -428,6 +452,7 @@ flowchart LR
 
 - 세션을 넘길 때 → `handoff`
 - "될 때까지" 형태의 작업 → `loop`
+- 프론트 화면 설계·UI 패턴 구현 → `fe-system`·`fe-ui` (별도 마켓플레이스, §5-1)
 - 프론트 UI를 만들거나 다듬는 중 → `fe-craft` (디자인 비평·모션 리뷰·성능 패턴)
 - 프론트엔드 배포 직전 → `fe-predeploy` 게이트
 - 사용자가 요청했을 때만 → `pr`
@@ -583,6 +608,9 @@ flowchart LR
 **Q. 스킬이 자동으로 안 뜹니다.**
 슬래시 명령으로 명시 호출하는 게 가장 확실합니다: `/guksu-harness:{스킬이름}`. 자연어 트리거가 자주 실패한다면 `retro` 스킬로 description을 개선할 수 있습니다.
 
+**Q. 프론트엔드 UI 패턴(바텀시트 등)은 왜 이 플러그인에 없나요?**
+별도 마켓플레이스 [`Guksu/fe-skills`](https://github.com/Guksu/fe-skills)의 `fe-ui`에 29종이 있습니다(§5-1). 합치지 않은 이유는 상시 로딩 비용입니다 — description 29개가 백엔드 프로젝트에서도 매 턴 로딩되면 순수 낭비입니다. 프론트 프로젝트에서 두 마켓플레이스를 함께 설치하면 네 시점이 이어집니다.
+
 **Q. push가 "작업 기록이 없다"며 막힙니다.**
 정상 동작입니다. PR 하나에는 `docs/history/` 문서 하나가 있어야 합니다 — `/guksu-harness:history 이번 작업 기록해줘`로 쓰고 커밋한 뒤 다시 push하세요. PR 베이스가 `dev`가 아니면 `blockGitMutation.config.json`에 `historyBase`를 지정해야 게이트가 올바른 구간을 봅니다. 이 게이트를 끄려면 같은 파일에 `requireHistoryDoc: false`를 넣습니다.
 
@@ -616,7 +644,8 @@ guksu-harness/
     ├── harness/                     # 메타 스킬 — 핵심 워크플로우
     │   ├── SKILL.md
     │   ├── references/              # 실행 모드 · 설계 문답 · 에이전트 설계 · 스킬 작성
-    │   │                            #   · 오케스트레이터 · 훅/권한 · 컨텍스트 경제 · 테스트 가이드 (8종)
+    │   │                            #   · 오케스트레이터 · 훅/권한 · 컨텍스트 경제 · 프론트엔드 배선
+    │   │                            #   · 테스트 가이드 (9종)
     │   ├── assets/hooks/            # 훅 실물 4종 (프로젝트로 복사됨)
     │   └── scripts/                 # validateHarness + 회귀 테스트
     ├── history/                     # 작업 기록 스킬 + 템플릿 번들 6종 (공통 4종 + design·predeploy)

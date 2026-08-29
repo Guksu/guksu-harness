@@ -5,10 +5,13 @@
 //   {
 //     "checks": [{ "name": "test", "command": "npm test" }],
 //     "maxIterations": 10,
-//     "maxTokens": 500000,
+//     "maxTokens": 20000000,
 //     "stuckAfter": 3
 //   }
 // 설정 파일이 없으면 게이트는 비활성(무해)이다.
+// maxTokens는 세션 transcript 누적 합계 기준이다(루프 1회분 예산이 아니다) — 매 턴의 input_tokens에
+//   대화 전체가 다시 들어가므로 세션이 길수록 초선형으로 커진다. "이 세션을 여기서 끊는다"는 상한으로
+//   잡는다. 작업 1건의 예상 토큰으로 잡으면 정상 작업 중에 매 턴 발동한다.
 // stuckAfter: 같은 실패 시그니처가 N연속이면 반복을 계속하지 않고 보고 후 종료(막힘 판정).
 //   루프 명세(docs/loops/)의 "막힘 판정"과 게이트를 일치시키는 수단이다. 생략하면 비활성.
 import { execSync } from 'node:child_process';
