@@ -4,7 +4,7 @@
 |------|------|
 | 날짜 | 2026-08-29 |
 | 브랜치 | claude/harness-improvement-analysis-mjzm3h |
-| PR | (아래 보고 참조) |
+| PR | https://github.com/Guksu/guksu-harness/pull/16 |
 | 관련 경로 | `skills/`, `README.md`, `CHANGELOG.md`, `.claude-plugin/` |
 
 ## 1. 개요
