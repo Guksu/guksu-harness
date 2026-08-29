@@ -4,7 +4,7 @@
 |------|------|
 | 날짜 | 2026-08-29 |
 | 브랜치 | claude/harness-improvement-analysis-mjzm3h |
-| PR | 미생성 |
+| PR | (아래 보고 참조) |
 | 관련 경로 | `skills/`, `README.md`, `CHANGELOG.md`, `.claude-plugin/` |
 
 ## 1. 개요
@@ -24,6 +24,7 @@
 - **`references/execution-modes.md`** — Workflow API 표·예시 제거(219→184줄). 플랫폼 `workflow-authoring` 스킬이 정본이며, 옮겨 적으면 API 변경 시 거짓말이 된다. 하네스가 쓰는 3가지와 판단 기준만 남김
 - **`scripts/validateHarness.mjs`** — 템플릿 검사 6종 → 4종(history·retro·handoff·loop-spec)
 - **문서 동기화** — README(스킬 11→9종, 기록 체계·규칙표·디렉토리 트리), CHANGELOG v2.0.0(마이그레이션 절차 포함), plugin.json·marketplace.json v2.0.0
+- **README 정합성 2차 패스** — 1차 동기화에서 남은 불일치 제거: 사라진 `docs` 스킬 호출 예시 중복 행, 설계 문답의 "보통 30분~1시간"·"최소 3회" 잔존 표현 3곳(수렴 조건으로 교체), 템플릿 수 6종→4종 2곳, 작업 사이클의 "보고" 단계. `pr` 절에 기록 선행 규칙, FAQ·문제 해결에 기록 게이트 항목, **§8-4 "일부러 하지 않는 것"**(다이어트 원리 6항목) 신설. 내부 앵커 링크 전수 검증
 
 ## 3. 검증 결과
 
@@ -35,6 +36,7 @@
 | 셀프 호스팅 | `node skills/harness/scripts/validateHarness.mjs .` | error 0건, warn 0건 |
 | 기록 게이트 실동작 | 임시 저장소에서 훅 직접 실행 | 기록 없는 push 차단(exit 2), 기록 있는 push·커밋·저장소 밖 통과 |
 | 죽은 참조 | 제거 대상 경로 전체 grep | 0건 (CHANGELOG 이력 제외) |
+| README 앵커 | 내부 링크 ↔ 헤딩 대조 (GitHub slug 규칙) | 깨진 앵커 0건 |
 
 ## 4. 확인 필요 · 후속
 
