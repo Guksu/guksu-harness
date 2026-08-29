@@ -2,7 +2,7 @@
 
 > Claude Code에게 **"이 프로젝트에 하네스 구축해줘"** 한 문장만 말하면, 그 프로젝트 전용 작업 체계(역할 분담 · 작업 절차 · 안전장치 · 기록 양식)를 자동으로 만들어 주는 Claude Code 플러그인입니다.
 
-현재 버전 **v2.0.0** · 스킬 9종 · 안전 훅 4종 · 회귀 테스트 69종 · MIT
+현재 버전 **v2.1.0** · 스킬 9종 · 안전 훅 4종 · 회귀 테스트 74종 · MIT
 
 ---
 
@@ -183,6 +183,31 @@ ls .claude/agents/       # (풀 티어) 역할별 정의 파일들
 | [`retro`](#retro--회고-기반-진화) | 실제 산출물을 근거로 하네스 자체를 개선 | `docs/retro/` |
 | [`pr`](#pr--커밋pr-업로드) | 명시 요청이 있을 때만 커밋·push·PR 생성 | GitHub |
 
+### 5-1. 프론트엔드는 라이브러리를 하나 더 씁니다
+
+프론트엔드 작업은 **설계 → 구현 → 제작 품질 → 배포 가부**의 네 시점이 뚜렷하고, 이 플러그인은 뒤의 둘만 담당합니다. 앞의 둘은 [`Guksu/fe-skills`](https://github.com/Guksu/fe-skills)에 있습니다 — UI 패턴 29종의 **실행 가능한 정본 코드**(의존성 0 코어 + CSS + React 래퍼)와 화면 설계 판정 2종입니다.
+
+| 시점 | 담당 | 어디에 |
+|---|---|---|
+| 코드 **전** — 화면 설계 판정 | `list-filter-detail` · `infinite-feed` | **fe-skills 라이브러리** |
+| 구현 | UI 패턴 29종 (바텀시트·핀치줌·캐러셀 …) | **fe-skills 라이브러리** |
+| 제작 **중** — 품질 | `fe-craft` | 이 플러그인 |
+| 배포 **직전** — 게이트 | `fe-predeploy` | 이 플러그인 |
+
+**설치하지 않습니다.** 플러그인으로 설치하면 description 31개가 모든 프로젝트의 모든 턴에 로딩됩니다. 대신 **필요한 하나만 가져다 씁니다** — npm에서 쓸 패키지만 받는 것과 같습니다. 상시 로딩 비용은 0입니다.
+
+```bash
+node .claude/scripts/feSkills.mjs find "바텀시트로 메뉴 고르게 해줘"
+#  bottom-sheet  [fe-ui]  아래에서 올라오는 바텀시트(드래그로 끌어내려 닫기·백드롭·Esc) 구현.
+
+node .claude/scripts/feSkills.mjs get bottom-sheet --into src/components/BottomSheet
+#  SKILL.md 경로 + 정본 코드 3개 복사 + 출처 표기
+```
+
+**사용자가 요청하지 않아도 동작합니다.** 이게 핵심입니다 — 사용자는 "fe-skills 써줘"라고 말하지 않고 "바텀시트로 메뉴 고르게 해줘"라고 말합니다. 그래서 하네스는 프론트엔드 프로젝트의 에이전트 정의·도메인 스킬에 **"UI 패턴을 구현하기 전에 라이브러리를 먼저 조회한다"** 규칙을 완료 기준과 함께 심습니다. 요청은 평소처럼 하면 됩니다.
+
+라이브러리에 없는 패턴이거나(후보 0건) 네트워크가 없으면 **작업을 멈추지 않고** 직접 구현한 뒤, 그 사실을 작업 기록에 남깁니다. 첫 조회에서 얕은 클론을 캐시에 받아두고 이후에는 캐시를 쓰며, 갱신에 실패해도 캐시가 있으면 그것으로 진행합니다 — 낡은 라이브러리가 없는 라이브러리보다 낫습니다.
+
 ---
 
 ### `harness` — 하네스 아키텍트 (메타 스킬)
@@ -338,6 +363,8 @@ ls .claude/agents/       # (풀 티어) 역할별 정의 파일들
 
 **fe-predeploy와 뭐가 다른가** — fe-predeploy는 배포 직전 1회 게이트("배포해도 되는가"를 판정), fe-craft는 제작 중 반복 루프("더 좋게 만들 수 있는가"를 개선)입니다.
 
+**새 패턴은 라이브러리를 먼저 조회합니다** — 바텀시트·핀치줌처럼 이름이 붙은 UI 패턴은 직접 짜서 비평하는 것보다, [fe-skills](https://github.com/Guksu/fe-skills)의 정본 코드에서 출발하는 편이 비평 루프를 몇 바퀴 줄입니다(위 §5-1).
+
 **세 영역** — 필요한 것만 로드됩니다:
 
 | 영역 | 내용 | 원천 |
@@ -412,6 +439,7 @@ flowchart LR
     D -. 명시 요청 시 .-> P["pr<br/>커밋 · PR"]
     W -. 중단 시 .-> H["handoff<br/>세션 인계"]
     W -. 반복형 작업 .-> L["loop<br/>루프 설계"]
+    W -. UI 패턴·화면 설계 .-> U["fe-skills 라이브러리<br/>(요청 없이 먼저 조회)"]
     W -. UI 제작·수정 중 .-> C["fe-craft<br/>제작 품질"]
     W -. 프론트 배포 전 .-> F["fe-predeploy<br/>배포 점검"]
 ```
@@ -428,6 +456,7 @@ flowchart LR
 
 - 세션을 넘길 때 → `handoff`
 - "될 때까지" 형태의 작업 → `loop`
+- 프론트 화면 설계·UI 패턴 구현 → fe-skills 라이브러리 자동 조회 (§5-1)
 - 프론트 UI를 만들거나 다듬는 중 → `fe-craft` (디자인 비평·모션 리뷰·성능 패턴)
 - 프론트엔드 배포 직전 → `fe-predeploy` 게이트
 - 사용자가 요청했을 때만 → `pr`
@@ -583,6 +612,12 @@ flowchart LR
 **Q. 스킬이 자동으로 안 뜹니다.**
 슬래시 명령으로 명시 호출하는 게 가장 확실합니다: `/guksu-harness:{스킬이름}`. 자연어 트리거가 자주 실패한다면 `retro` 스킬로 description을 개선할 수 있습니다.
 
+**Q. 프론트엔드 UI 패턴(바텀시트 등)은 왜 이 플러그인에 없나요?**
+[`Guksu/fe-skills`](https://github.com/Guksu/fe-skills)에 29종이 있고, **설치하는 대신 필요할 때 가져다 씁니다**(§5-1). 합치지 않은 이유는 상시 로딩 비용입니다 — description 29개가 백엔드 프로젝트에서도 매 턴 로딩되면 순수 낭비입니다. 라이브러리 방식은 그 비용이 0이면서 쓸 때는 정본 코드를 그대로 받습니다.
+
+**Q. 바텀시트를 만들어 달라고 했는데 fe-skills를 쓰라고 따로 말해야 하나요?**
+아닙니다. 프론트엔드 하네스가 구축된 프로젝트라면 에이전트 정의에 "UI 패턴 구현 전 라이브러리 먼저 조회"가 완료 기준과 함께 들어가 있어, 평소처럼 요청하면 알아서 조회합니다. 라이브러리에 없으면 직접 구현하고 그 사실을 기록에 남깁니다.
+
 **Q. push가 "작업 기록이 없다"며 막힙니다.**
 정상 동작입니다. PR 하나에는 `docs/history/` 문서 하나가 있어야 합니다 — `/guksu-harness:history 이번 작업 기록해줘`로 쓰고 커밋한 뒤 다시 push하세요. PR 베이스가 `dev`가 아니면 `blockGitMutation.config.json`에 `historyBase`를 지정해야 게이트가 올바른 구간을 봅니다. 이 게이트를 끄려면 같은 파일에 `requireHistoryDoc: false`를 넣습니다.
 
@@ -616,9 +651,10 @@ guksu-harness/
     ├── harness/                     # 메타 스킬 — 핵심 워크플로우
     │   ├── SKILL.md
     │   ├── references/              # 실행 모드 · 설계 문답 · 에이전트 설계 · 스킬 작성
-    │   │                            #   · 오케스트레이터 · 훅/권한 · 컨텍스트 경제 · 테스트 가이드 (8종)
+    │   │                            #   · 오케스트레이터 · 훅/권한 · 컨텍스트 경제 · 프론트엔드 배선
+    │   │                            #   · 테스트 가이드 (9종)
     │   ├── assets/hooks/            # 훅 실물 4종 (프로젝트로 복사됨)
-    │   └── scripts/                 # validateHarness + 회귀 테스트
+    │   └── scripts/                 # validateHarness · feSkills(라이브러리 클라이언트) + 테스트
     ├── history/                     # 작업 기록 스킬 + 템플릿 번들 6종 (공통 4종 + design·predeploy)
     ├── fe-predeploy/                # 프론트 배포 전 점검 (references 7종 + 계측·스캔 스크립트)
     ├── fe-craft/                    # 프론트 제작 품질 (디자인 8원칙·모션 리뷰·React 성능 + LICENSES.md)
@@ -629,10 +665,11 @@ guksu-harness/
 ### 테스트
 
 ```bash
-# 회귀 테스트 69종 — 검증기 + 훅 + 배포 전 점검
+# 회귀 테스트 74종 — 검증기 + 훅 + fe-skills 클라이언트 + 배포 전 점검
 node --test \
   skills/harness/scripts/validateHarness.test.mjs \
   skills/harness/scripts/hooks.test.mjs \
+  skills/harness/scripts/feSkills.test.mjs \
   skills/fe-predeploy/scripts/staticScan.test.mjs \
   skills/fe-predeploy/scripts/instrument.test.mjs
 ```
@@ -650,6 +687,10 @@ node skills/harness/scripts/validateHarness.mjs .
 ```bash
 # 프론트엔드 정적 스캔 (17규칙, JS/TS/CSS)
 node skills/fe-predeploy/scripts/staticScan.mjs <프로젝트루트> --json
+
+# fe-skills 라이브러리 조회 / 가져오기
+node skills/harness/scripts/feSkills.mjs find "<요청 문장>"
+node skills/harness/scripts/feSkills.mjs get <slug> --into <대상 디렉토리>
 ```
 
 ---

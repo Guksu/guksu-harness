@@ -149,7 +149,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
     { "name": "typecheck", "command": "npx tsc --noEmit" }
   ],
   "maxIterations": 10,
-  "maxTokens": 500000,
+  "maxTokens": 20000000,
   "stuckAfter": 3
 }
 ```
@@ -174,7 +174,7 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 **동작 (판정 순서가 규칙이다):**
 1. `checks` 전체 통과 → 종료 허용 (수렴 성공 — 예산과 무관). 막힘 추적(signature/streak)만 초기화한다 — `iterations`는 세션별 누적 상한이라 리셋하지 않는다(리셋하면 flaky 체크가 한 번 통과할 때마다 maxIterations가 무력화된다).
 2. 실패가 남았는데 **안전장치 도달** → 루프를 계속하지 않는다. "진행 상황·남은 실패·중단 사유를 보고하고 종료하라"를 지시하고, 그 보고 후 종료는 통과시킨다. 안전장치 3종:
-   - `maxTokens` — transcript 누적 토큰 초과 (토큰 예산 자동 중단)
+   - `maxTokens` — transcript 누적 토큰 초과 (토큰 예산 자동 중단). `maxTokens`는 **세션 transcript 누적 합계**를 본다 — 루프 1회분 예산이 아니다. 매 턴의 `input_tokens`에는 그때까지의 대화 전체가 다시 들어가므로 이 합계는 세션이 길어질수록 초선형으로 불어나고, 긴 세션은 수천만에 쉽게 도달한다. 따라서 값은 **"이 세션을 여기서 끊는다"는 상한**으로 잡는다 — 작업 1건의 예상 토큰으로 잡으면 정상 작업 중에 매 턴 발동한다(실사용 사례 `Guksu/fe-skills`는 20,000,000을 쓴다).
    - `maxIterations` — 세션별 차단 횟수 도달
    - `stuckAfter` — **같은 실패 시그니처가 N연속**(막힘 판정). 시그니처는 실패한 검증 이름 + 출력 전체(숫자·공백 정규화, 500자 캡)로 만든다 — 첫 줄만 쓰면 npm 배너 같은 고정 줄이 모든 실패를 동일하게 만들어 수렴 중인 루프를 오판한다. 진전 없이 같은 에러만 반복되면 예산을 소진하기 전에 중단시킨다. `docs/loops/` 명세의 "막힘 판정" 값과 일치시킨다.
 3. 실패 + 여력 있음 → exit 2로 종료를 차단하고 실패 출력을 피드백으로 전달한다.

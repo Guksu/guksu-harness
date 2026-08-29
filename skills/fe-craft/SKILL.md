@@ -17,6 +17,17 @@ description: "프론트엔드 제작 품질 — UI 디자인 8원칙 스크린�
 
 이 스킬은 판정하지 않고 개선한다. 배포 가부는 fe-predeploy 몫이다.
 
+## 새 패턴을 만들기 전에 — fe-skills 라이브러리를 먼저 조회한다
+
+이 스킬은 **비평하고 고치는** 쪽이고, [`Guksu/fe-skills`](https://github.com/Guksu/fe-skills)는 **패턴의 정본 코드**를 주는 쪽이다. 바텀시트·핀치줌·캐러셀처럼 이름이 붙은 UI 패턴을 새로 만들어야 하면, 사용자가 요청하지 않아도 직접 짜기 전에 라이브러리를 조회한다 — 이미 모션·접근성·`prefers-reduced-motion`이 정리된 코드에서 출발하면 비평 루프가 몇 바퀴 줄어든다.
+
+```bash
+node {harness 스킬 경로}/scripts/feSkills.mjs find "<사용자 요청 문장>"
+node {harness 스킬 경로}/scripts/feSkills.mjs get <slug> --into <대상 디렉토리>
+```
+
+하네스가 구축된 프로젝트면 스크립트가 `.claude/scripts/feSkills.mjs`에 복사되어 있다. 설치는 필요 없다 — 필요한 스킬 하나만 가져오는 라이브러리다. 후보가 0건이거나 라이브러리를 못 가져오면 직접 구현하고 그 사실을 작업 기록에 남긴다. 가져온 패턴은 출처를 기록에 적는다.
+
 ## 세 영역 — 필요한 reference만 로드한다
 
 | 영역 | 언제 읽나 | 파일 |
