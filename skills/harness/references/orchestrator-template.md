@@ -37,8 +37,8 @@ description: "{도메인} 작업을 조율하는 오케스트레이터. {트리�
 ### Phase 0: 컨텍스트 확인  ← 필수 (아래 §2)
 ### Phase 1~N: {도메인 흐름}
 ### 종료: (프론트엔드 도메인) 배포 게이트 — fe-predeploy 스킬로 배포 전 점검, blocker fail 있으면 배포 불가 보고
-###       → 워크로그 기록(매 실행) + "커밋은 직접 진행하세요" 안내
-###       → (대형 실행 — 멀티에이전트·스프린트 단위 — 또는 사용자 요청 시) HTML 보고서 생성(report 스킬 — docs/reports/에 누적, 채팅에는 요약·경로·검토 항목 수만)
+###       → 작업 기록 1건 — `_workspace/` 산출물을 종합해 docs/history/{YYYY-MM-DD}-{slug}.md (history 스킬), 채팅에는 요약·경로만
+###       → "커밋은 직접 진행하세요" 안내 (사용자가 명시 요청했으면 pr 스킬)
 ###       → (같은 피드백 2회·반복 실패 시에만) 회고 제안(retro 스킬 — 강요하지 않음)
 
 ## 데이터 흐름
@@ -134,8 +134,8 @@ Agent(agent-2)
 **파일 기반 규칙:**
 - 중간 산출물은 `_workspace/` 또는 `docs/{domain}/{slug}/`에 저장, 최종만 사용자 지정 경로로
 - 파일명 컨벤션: `{순번}_{agent}_{artifact}.{ext}` 또는 도메인 고정 이름(`plan.md`, `dev-notes.md`, `qa-report.md`)
-- 작업 기록은 `docs/templates/worklog.md` 공통 템플릿(1.개요/2.작업내용/3.주의사항)으로 `docs/worklog/{YYYY-MM-DD}-{slug}.md`에 남긴다 — 작업한 에이전트 본인이 기록하고, 병렬 에이전트는 `-{agent}` 접미사로 각자 파일을 만든다 (docs 스킬 참조)
-- 중간 산출물은 삭제하지 않는다 (사후 검증·감사 추적·부분 재실행의 입력)
+- **작업 산출물은 `_workspace/`(gitignore), 보존 기록은 `docs/history/` 하나다** — 역할 간 인계물은 이번 작업 동안만 살고, 종료 시 흐름을 끝까지 본 쪽이 그것들을 근거로 `docs/history/{YYYY-MM-DD}-{slug}.md` 한 건으로 종합한다(history 스킬). 역할별 병렬 기록을 만들지 않는다 — PR 하나 = 기록 하나
+- 작업이 끝나기 전에는 `_workspace/` 산출물을 삭제하지 않는다 (부분 재실행·기록 종합의 입력)
 
 ## 5. 에러 핸들링
 
@@ -155,8 +155,8 @@ Agent(agent-2)
 검증된 실전 구성(생성-검증 + 파이프라인, 에이전트 팀 모드)의 요약:
 
 - **팀**: sprint-planner(기획) → developer(구현) → qa-inspector(검증, general-purpose 타입)
-- **단위 규칙**: 1 스프린트 = 1 기능. 산출물은 `docs/sprint/sprint-{YYYYMMDD}-{name}/`에 `plan.md` / `dev-notes.md` / `qa-report.md`
+- **단위 규칙**: 1 스프린트 = 1 기능 = 1 PR = 기록 1건. 작업 산출물은 `_workspace/sprint-{YYYYMMDD}-{name}/`에 `plan.md` / `dev-notes.md` / `qa-report.md`
 - **TDD**: planner가 인수조건을 테스트 케이스로 정의 → developer가 실패 테스트 먼저 작성 → qa가 테스트 존재·의미·통과 검증. 종료 기준 = 테스트 전체 통과 + 타입체크
 - **incremental QA**: developer가 모듈 완성마다 qa에게 교차검증 요청(생산자/소비자 경로 명시), qa는 발견 즉시 파일:라인 + 수정 방법으로 회신
 - **dev-notes.md에 생산자↔소비자 매핑 명시** — QA가 경계면을 교차검증할 수 있는 입력이 된다
-- **종료**: qa-report 전 항목 통과 확인 → HTML 보고서 생성(report 스킬 — 스프린트는 대형 실행이므로 해당) → 채팅에 요약·경로 + "커밋은 직접 진행하세요" 안내 + 다음 후보 제시. 회고는 매 스프린트가 아니라 반복 문제가 감지될 때 제안(retro 스킬)
+- **종료**: qa-report 전 항목 통과 확인 → 세 산출물을 근거로 `docs/history/`에 기록 1건 종합(history 스킬) → 채팅에 요약·경로 + "커밋은 직접 진행하세요" 안내 + 다음 후보 제시. 회고는 매 스프린트가 아니라 반복 문제가 감지될 때 제안(retro 스킬)

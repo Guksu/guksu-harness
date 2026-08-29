@@ -90,6 +90,18 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
 - **메시지를 검사할 수 없는 커밋 형태** — `-F`/`-t`/`-c`/`-C`(메시지가 명령문 밖)와 `--amend`/`--fixup`/`--squash`(히스토리 재작성). 메시지는 `-m` 인라인으로만 작성한다.
 - **force/delete push** — `-f`/`--force(-with-lease)`·`--delete`·`--mirror`·`--prune`. 일반 push(`-u` 포함)만 허용한다.
 - **commit·push 외의 변경 명령** — merge·rebase·reset·checkout 등은 예외 모드에서도 전부 차단이다.
+- **기록 없는 push** — 아래 기록 게이트.
+
+**기록 게이트 (requireHistoryDoc):** 절대 규칙 3("PR 하나 = 기록 하나")의 강제 수단이다. commit·push 예외를 켜면 **함께 켜진다** — 베이스 브랜치와 HEAD 사이의 변경 경로에 `docs/history/*.md`가 없으면 push가 차단되고, `history` 스킬로 기록하라는 피드백이 전달된다. 종료 의례를 산문 지침으로만 두면 바쁜 실행에서 가장 먼저 생략되는 것이 기록이다.
+
+```json
+{ "allowCommitPush": true, "requireHistoryDoc": false, "historyBase": "develop" }
+```
+
+- 게이트 대상은 **push**다(커밋 단위가 아니라 PR 단위). PR 안에서 커밋을 논리 단위로 나누는 것은 그대로 가능하다.
+- 베이스는 `origin/dev`·`dev`·`origin/main`·`main`·`origin/master`·`master` 순으로 자동 탐색한다. 다른 이름이면 `historyBase`로 명시한다.
+- 베이스를 못 찾거나 git 호출이 실패하면 **통과시킨다.** 기록 게이트는 문서 위생 장치이므로, 판정 불가를 차단으로 처리하면 가드가 아니라 고장이 된다 — 시크릿·변경 명령 가드의 fail-closed와 다른 성격이다.
+- 끄려면 `requireHistoryDoc: false`. 사용자 확인 없이 끄지 않는다.
 
 구축 시 사용자 승인 없이 config를 만들지 않는다(옵트인 — SKILL.md Phase 2). git-flow(main·dev·feat) 채택 시 §3의 `protectedBranches`에 `dev`를 추가해 작업이 항상 `feat/*`에서 일어나게 한다.
 

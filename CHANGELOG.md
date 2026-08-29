@@ -2,6 +2,39 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [2.0.0] - 2026-08-29
+
+**하네스 다이어트 릴리스 (breaking)** — 과한 하네스를 덜어내고 남긴 것을 기계적 강제로 굳혔다. 핵심은 기록 체계의 통합이다: 기능 1건당 최대 9개까지 생산되던 보존 문서를 **작업 1건당 1개**로 줄이고, 그 하나를 훅으로 강제한다. 스킬 11종 → 9종, 절대 규칙 8종 → 7종, 템플릿 8종 → 6종.
+
+### Changed (breaking)
+
+- **기록 체계 재편 — 워크로그 N개 + 보고서 → `docs/history/` 문서 1개.** 절대 규칙 3이 "산출물은 파일 기반"에서 **"작업 산출물과 기록을 구분한다"**로 바뀌었다. 역할 간에 주고받는 인계물(계획서·구현 노트·QA 리포트)은 `_workspace/`(gitignore)에 두고 작업이 끝나면 버리며, 보존되는 기록은 흐름을 끝까지 본 쪽이 그 산출물을 근거로 종합한 `docs/history/{YYYY-MM-DD}-{slug}.md` **하나**다 — **PR 하나 = 문서 하나**. 역할마다 기록을 남기면 같은 작업이 여러 문서로 흩어져 어느 것이 전체인지 알 수 없다. 에이전트 구성(기획·구현·QA)은 그대로다
+- **`docs` 스킬 → `history` 스킬.** 기록 형식이 하나로 통일되면서 "템플릿 배포처"로만 남던 스킬을 기록 절차 스킬로 재편했다. 템플릿 `worklog.md` → `history.md`(1.개요 / 2.작업 내용 / **3.검증 결과** / **4.확인 필요·후속** / 5.주의사항 — 뒤 두 섹션은 제거된 report 스킬에서 흡수)
+- **절대 규칙 7(컨텍스트 절약) → `harness` 스킬 핵심 원칙 4로 이동.** `harness-rules.md`는 모든 에이전트가 매 작업 전에 읽는 가장 비싼 문서인데, 컨텍스트 경제는 "하네스를 설계하는 쪽"의 규칙이지 "작업하는 쪽"의 규칙이 아니다. 규칙 8(쉬운 출력)이 7로 당겨졌다
+- **설계 문답의 "최소 3라운드 · 30분~1시간" 하한 제거.** 수렴 조건 4가지(미해결 0 · 모순 0 · 침묵된 가정 0 · 승인)가 이미 정확한 종료 기준이다. 조건이 채워졌는데 라운드 수를 채우려 다시 묻는 것은 문답이 아니라 의례이며, 사용자를 지치게 해 뒤쪽 답변의 질을 떨어뜨린다
+
+### Added
+
+- **기록 게이트 (`blockGitMutation`의 `requireHistoryDoc`)** — 절대 규칙 3의 기계적 강제. PR 플로우(`allowCommitPush`)를 켜면 함께 켜지며, 베이스 브랜치와 HEAD 사이에 `docs/history/*.md` 변경이 없는 **push를 차단**한다. 게이트 대상은 커밋이 아니라 push다(PR 단위) — PR 안에서 커밋을 논리 단위로 나누는 것은 그대로 가능하다. 베이스는 `origin/dev`→`dev`→`main`→`master` 순 자동 탐색이며 `historyBase`로 지정할 수 있다. **베이스를 못 찾으면 통과시킨다** — 문서 위생 장치이므로 판정 불가를 차단으로 처리하면 가드가 아니라 고장이다(시크릿·git 가드의 fail-closed와 다른 성격). 끄려면 `requireHistoryDoc: false`
+- **"규칙은 늘리지 않는다" 원칙 (`harness` SKILL.md · `harness-rules.md`)** — 규칙 하나는 그 하네스의 모든 에이전트가 매 작업 전에 지불하는 고정비다. 새 제약은 먼저 훅·deny로 기계화할 수 있는지 보고, 도메인 한정이면 규칙이 아니라 도메인 스킬에 넣는다
+- **회귀 테스트 4종** — 기록 게이트 판정(없음/있음/판정 불가/게이트 off/커밋은 대상 아님/force push 우선순위)과 변경 경로에서의 기록 문서 식별
+
+### Removed
+
+- **`report` 스킬 + `report.html` 템플릿 + `docs/reports/`.** 이 스킬은 스스로 "워크로그가 정본이고 보고서는 뷰"라고 규정하고 있었다 — 스킬 하나와 110줄 템플릿이 섹션 2개("사용자 검토 필요"·"후속 조치")를 더하려고 존재했다. 두 섹션은 `history.md` 템플릿의 "4. 확인 필요·후속"으로 흡수했고, PR 단위 기록에서는 PR 본문이 이미 검토용 뷰다
+- **`digest` 스킬 + `checkFreshness.mjs` + `docs/digests/`.** 투기적 인프라였다. 스킬 본문이 규정한 세 제약(원문 대체 금지·수정 파일은 원문 필독·사용 전 해시 검증)을 다 지키면 다이제스트를 쓰는 비용이 원문을 읽는 비용에 근접하고, 틀린 캐시는 없는 캐시보다 나쁘다. `context-economy.md` §3.5는 "세션 간 코드 요약 캐시를 짓지 말고, 재현할 수 없는 것(결정·완결된 작업·진행 중 상태)만 파일로 남긴다"로 대체
+- **`execution-modes.md` §3의 Workflow API 표·스크립트 예시.** 플랫폼의 `workflow-authoring` 스킬이 정본이며, 옮겨 적으면 플랫폼이 API를 바꾸는 순간 이 문서가 거짓말이 된다. 하네스가 실제로 쓰는 3가지(저장 워크플로우 · `resumeFromRunId` 부분 재실행 · `agentType` 연결)와 판단 기준만 남겼다 (219줄 → 184줄)
+
+### Migration
+
+기존 하네스는 다음을 수동으로 옮긴다. 기존 `docs/worklog/`·`docs/reports/`·`docs/digests/`는 **삭제하지 않는다**(감사 추적).
+
+1. `docs/templates/worklog.md` → `history` 스킬의 `assets/templates/history.md`를 `docs/templates/history.md`로 복사
+2. 새 기록부터 `docs/history/`에 쓴다 — 과거 워크로그는 그 자리에 둔다
+3. `_workspace/`를 `.gitignore`에 추가하고, 에이전트 정의의 "작업 완료 시 워크로그 기록"을 "작업 산출물은 `_workspace/`, 완료 시 `docs/history/` 기록"으로 바꾼다
+4. `docs/harness-rules.md`를 `assets/harness-rules.md` 최신본으로 갱신
+5. PR 플로우를 쓴다면 기록 게이트가 자동으로 켜진다 — PR 베이스가 `dev`가 아니면 `blockGitMutation.config.json`에 `historyBase`를 명시한다
+
 ## [1.18.0] - 2026-08-21
 
 mattpocock/skills 증류 릴리스 — [mattpocock/skills](https://github.com/mattpocock/skills)를 분석해(`docs/analysis/2026-08-21-mattpocock-skills.md`) 설계 문답을 중심으로 8개 스킬·참조 문서에 원리를 이식했다. v1.17.0 설계 문답의 직접 연장선.
