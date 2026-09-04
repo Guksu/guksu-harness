@@ -4,7 +4,7 @@
 |------|------|
 | 날짜 | 2026-09-04 |
 | 브랜치 | feat/plain-output-v2 |
-| PR | 미생성 |
+| PR | https://github.com/Guksu/guksu-harness/pull/18 |
 | 관련 경로 | `skills/harness/assets/harness-rules.md`, `skills/harness/references/plain-output.md`, `skills/harness/scripts/validateHarness.mjs`, `skills/history/assets/templates/`, `README.md` |
 
 ## 1. 개요
