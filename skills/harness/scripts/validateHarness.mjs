@@ -3,7 +3,7 @@
 // 사용법: node scripts/validateHarness.mjs [하네스 루트 경로]
 
 import { readFile, readdir, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SKILL_BODY_MAX_LINES = 500;
@@ -230,6 +230,47 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
   }
 };
 
+// 절대 규칙 정본 — 하네스 구축 시 프로젝트 docs/harness-rules.md로 복사된다.
+// 정본에 규칙이 추가·개정되면 기존 프로젝트 사본은 조용히 구버전이 되므로 규칙 수를 비교해 경고한다.
+const RULES_ASSET_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'assets',
+  'harness-rules.md',
+);
+const countRules = ({ content }) =>
+  content.split('\n').filter((line) => /^\d+\.\s+\*\*/.test(line)).length;
+
+const validateRulesFile = async ({ rootDir, issues }) => {
+  if (!(await hasProjectHarness({ rootDir }))) return;
+
+  const rulesPath = join(rootDir, 'docs', 'harness-rules.md');
+  if (!(await exists({ path: rulesPath }))) {
+    issues.push({
+      level: 'warn',
+      path: rulesPath,
+      message:
+        '절대 규칙 파일(docs/harness-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. harness 스킬의 assets/harness-rules.md를 복사하라 (Phase 2)',
+    });
+    return;
+  }
+
+  let assetRuleCount;
+  try {
+    assetRuleCount = countRules({ content: await readFile(RULES_ASSET_PATH, 'utf8') });
+  } catch {
+    return; // 플러그인 정본을 찾지 못하면(비표준 설치) 비교를 생략한다
+  }
+  const projectRuleCount = countRules({ content: await readFile(rulesPath, 'utf8') });
+  if (projectRuleCount < assetRuleCount) {
+    issues.push({
+      level: 'warn',
+      path: rulesPath,
+      message: `절대 규칙 파일이 구버전이다 — 프로젝트 ${projectRuleCount}종 vs 플러그인 정본 ${assetRuleCount}종. 누락된 규칙만 추가하라 (프로젝트가 손본 문구는 보존)`,
+    });
+  }
+};
+
 const validateEnforcement = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
@@ -338,6 +379,7 @@ export const validateHarness = async ({ rootDir }) => {
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
   await validateClaudeMdPointer({ rootDir, issues });
   await validateCommonTemplates({ rootDir, issues });
+  await validateRulesFile({ rootDir, issues });
   await validateEnforcement({ rootDir, issues });
   await validateCommandsDir({ rootDir, issues });
   await validatePluginManifests({ rootDir, issues });
