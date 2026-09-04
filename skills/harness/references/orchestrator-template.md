@@ -38,7 +38,8 @@ description: "{도메인} 작업을 조율하는 오케스트레이터. {트리�
 ### Phase 1~N: {도메인 흐름}
 ### 종료: (프론트엔드 도메인) 배포 게이트 — fe-predeploy 스킬로 배포 전 점검, blocker fail 있으면 배포 불가 보고
 ###       (설계 판정·구현·제작 품질 스킬은 조율 대상이 아니라 작업하는 쪽의 판단이다 — frontend-domain.md §3)
-###       → 작업 기록 1건 — `_workspace/` 산출물을 종합해 docs/history/{YYYY-MM-DD}-{slug}.md (history 스킬), 채팅에는 요약·경로만
+###       → 작업 기록 1건 — `_workspace/` 산출물을 종합해 docs/history/{YYYY-MM-DD}-{slug}.md (history 스킬)
+###       → 채팅 보고: 결론 1문장 → 사용자가 할 일 → 근거 경로. 독자는 대화를 보지 못한 사람(절대 규칙 7, plain-output.md)
 ###       → "커밋은 직접 진행하세요" 안내 (사용자가 명시 요청했으면 pr 스킬)
 ###       → (같은 피드백 2회·반복 실패 시에만) 회고 제안(retro 스킬 — 강요하지 않음)
 

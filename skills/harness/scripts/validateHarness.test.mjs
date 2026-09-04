@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -387,5 +387,54 @@ test('plugin 형태 repo의 skills/ 디렉토리도 검사한다', async () => {
   assert.ok(
     issues.some((issue) => issue.level === 'error' && issue.message.includes('description')),
   );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('하네스가 있는데 절대 규칙 파일이 없으면 경고', async () => {
+  const rootDir = await makeFixture({
+    files: { '.claude/agents/demo-agent.md': VALID_AGENT },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(
+    issues.some(
+      (issue) =>
+        issue.level === 'warn' &&
+        issue.message.includes('절대 규칙 파일(docs/harness-rules.md)이 없다'),
+    ),
+  );
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('절대 규칙 파일의 규칙 수가 플러그인 정본보다 적으면 구버전 경고', async () => {
+  const staleRules = [
+    '# 하네스 절대 규칙',
+    '',
+    ...Array.from({ length: 3 }, (_, index) => `${index + 1}. **규칙 ${index + 1}.** 설명.`),
+    '',
+  ].join('\n');
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/agents/demo-agent.md': VALID_AGENT,
+      'docs/harness-rules.md': staleRules,
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(issues.some((issue) => issue.level === 'warn' && issue.message.includes('구버전')));
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('절대 규칙 파일이 플러그인 정본과 같으면 규칙 경고가 없다', async () => {
+  const canonicalRules = await readFile(
+    new URL('../assets/harness-rules.md', import.meta.url),
+    'utf8',
+  );
+  const rootDir = await makeFixture({
+    files: {
+      '.claude/agents/demo-agent.md': VALID_AGENT,
+      'docs/harness-rules.md': canonicalRules,
+    },
+  });
+  const issues = await validateHarness({ rootDir });
+  assert.ok(!issues.some((issue) => issue.message.includes('절대 규칙 파일')));
   await rm(rootDir, { recursive: true, force: true });
 });
