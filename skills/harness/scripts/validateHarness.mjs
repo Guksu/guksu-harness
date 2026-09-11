@@ -198,7 +198,7 @@ const validateClaudeMdPointer = async ({ rootDir, issues }) => {
     issues.push({
       level: 'warn',
       path: claudeMdPath,
-      message: 'CLAUDE.md가 없다 — 하네스 포인터(트리거 규칙 + 변경 이력)를 등록하라 (Phase 4)',
+      message: 'CLAUDE.md가 없다 — 하네스 포인터(목표·트리거·규칙 파일 포인터)를 등록하라 (Phase 4)',
     });
     return;
   }
@@ -218,7 +218,17 @@ const COMMON_TEMPLATES = ['history.md', 'retro.md', 'handoff.md', 'loop-spec.md'
 const validateCommonTemplates = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
-  for (const templateName of COMMON_TEMPLATES) {
+  let templates = COMMON_TEMPLATES;
+  const installPath = join(rootDir, '.claude', 'harness-install.json');
+  if (await exists({ path: installPath })) {
+    try {
+      const install = JSON.parse(await readFile(installPath, 'utf8'));
+      if (install.profile === 'basic') templates = ['history.md', 'handoff.md'];
+    } catch {
+      issues.push({ level: 'error', path: installPath, message: '설치 추적 JSON을 읽을 수 없다' });
+    }
+  }
+  for (const templateName of templates) {
     const templatePath = join(rootDir, 'docs', 'templates', templateName);
     if (!(await exists({ path: templatePath }))) {
       issues.push({

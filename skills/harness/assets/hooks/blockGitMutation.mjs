@@ -5,8 +5,8 @@
 // 예외는 2종이며 모두 사용자 승인 기반이다:
 //   1. switch — 순수 브랜치 전환은 branch 스킬이 사용자 확인 후 수행한다 (아래 주석).
 //   2. commit·push — 스크립트 옆 blockGitMutation.config.json이 { "allowCommitPush": true }일 때만
-//      허용되는 옵트인(pr 스킬 — 사용자가 명시 요청한 커밋·PR 업로드). 이때도 Claude 작성 표기가
-//      든 커밋 메시지, 메시지를 검사할 수 없는 커밋 형태(-F/-t/-c/-C/--amend 등), force/delete
+//      허용되는 옵트인(pr 스킬 — 사용자가 명시 요청한 커밋·PR 업로드). 작성 표기는
+//      blockAttribution으로 선택 차단한다. 메시지를 검사할 수 없는 커밋 형태(-F/-t/-c/-C/--amend 등), force/delete
 //      push는 계속 차단한다. config가 없거나 파싱에 실패하면 예외는 비활성(기본 차단)이다.
 //
 // 기록 게이트: 예외가 켜진 상태에서 push는 docs/history/ 변경을 요구한다 (history 스킬 —
@@ -73,7 +73,7 @@ const UNSAFE_COMMIT_SHORT = /[FCct]/;
 const UNSAFE_PUSH_LONG = /^--(?:force(?:-with-lease|-if-includes)?|delete|mirror|prune)(?:=|$)/;
 const UNSAFE_PUSH_SHORT = /[fd]/;
 
-// 절대 규칙: 커밋 메시지에 Claude 작성 표기를 남기지 않는다. 표준 footer 형태만 잡는다 —
+// 선택 정책(blockAttribution): 커밋 메시지의 Claude 작성 표기를 제한한다. 표준 footer 형태만 잡는다 —
 // 단순 "claude" 단어는 정상 메시지에 나올 수 있으므로 표기 패턴만 차단한다(오탐 방지).
 export const CLAUDE_ATTRIBUTION =
   /co-authored-by:[^\n]*\bclaude\b|generated with[^\n]*\bclaude\b|\bclaude-session:|noreply@anthropic\.com/i;
@@ -97,7 +97,7 @@ export const hasHistoryChange = (changedPaths) =>
 // base 브랜치를 못 찾는 환경에서 push를 막으면 가드가 아니라 고장이다)
 export const judgeGitCommand = (
   command,
-  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null } = {},
+  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null, blockAttribution = false } = {},
 ) => {
   if (!allowCommitPush) {
     return isGitMutation(command) ? { blocked: true, rule: 'mutation' } : { blocked: false };
@@ -109,7 +109,7 @@ export const judgeGitCommand = (
   const commits = [...command.matchAll(GIT_COMMIT)];
   if (commits.length > 0) {
     // 표기 검사는 명령 전체를 본다 — heredoc 메시지 본문은 개행을 포함해 꼬리 캡처 밖에 있다.
-    if (CLAUDE_ATTRIBUTION.test(command)) return { blocked: true, rule: 'attribution' };
+    if (blockAttribution && CLAUDE_ATTRIBUTION.test(command)) return { blocked: true, rule: 'attribution' };
     if (commits.some((m) => tailHasFlag(m[1], UNSAFE_COMMIT_LONG, UNSAFE_COMMIT_SHORT))) {
       return { blocked: true, rule: 'commit-flags' };
     }
@@ -180,6 +180,7 @@ if (isDirectRun) {
 
   const verdict = judgeGitCommand(command, {
     allowCommitPush,
+    blockAttribution: config.blockAttribution === true,
     requireHistoryDoc,
     historyChanged: changedPaths === null ? null : hasHistoryChange(changedPaths),
   });
@@ -192,7 +193,7 @@ if (isDirectRun) {
           '사용자가 커밋·PR 업로드를 명시 요청했다면 pr 스킬을 따르세요 — blockGitMutation.config.json의 allowCommitPush 옵트인이 필요합니다.',
       attribution:
         '커밋 메시지에 Claude 작성 표기(Co-Authored-By: Claude·Generated with Claude Code·Claude-Session 등)가 있습니다. ' +
-        '절대 규칙: 표기를 전부 제거한 메시지로 다시 커밋하세요 (pr 스킬).',
+        '프로젝트의 blockAttribution 정책에 맞게 메시지를 수정하세요 (pr 스킬).',
       'commit-flags':
         '메시지를 검사할 수 없는 커밋 형태입니다. --amend와 -F/-t/-c/-C/--fixup/--squash는 허용되지 않습니다 — 메시지는 -m으로 인라인 작성하세요.',
       'push-flags':

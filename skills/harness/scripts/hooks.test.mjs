@@ -107,8 +107,9 @@ test('commit·push 예외(allowCommitPush) — 평시 커밋·푸시는 허용, 
   assert.equal(judgeGitCommand('git push -u origin feat/x').blocked, true);
 });
 
-test('commit·push 예외 — Claude 작성 표기가 든 커밋 메시지는 차단한다 (절대 규칙)', () => {
-  const opt = { allowCommitPush: true };
+test('commit·push 예외 — 프로젝트가 선택한 작성 표기 제한을 따른다', () => {
+  const opt = { allowCommitPush: true, blockAttribution: true };
+  assert.equal(judgeGitCommand('git commit -m "Co-Authored-By: Claude"', { allowCommitPush: true }).blocked, false);
   const blocked = [
     'git commit -m "feat: x" -m "Co-Authored-By: Claude <noreply@anthropic.com>"',
     'git commit -m "$(cat <<\'EOF\'\nfeat: x\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\nEOF\n)"',
@@ -335,7 +336,7 @@ test('git 훅 CLI — allowCommitPush 옵트인으로 커밋이 열리고, 표�
   assert.equal(on.status, 0);
 
   const attribution = await runGitMutationCli({
-    config: '{ "allowCommitPush": true }',
+    config: '{ "allowCommitPush": true, "blockAttribution": true }',
     command: 'git commit -m "feat: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>"',
   });
   assert.equal(attribution.status, 2, 'Claude 작성 표기가 든 커밋은 옵트인 상태에서도 차단이다');
