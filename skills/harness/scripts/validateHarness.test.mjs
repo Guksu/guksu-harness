@@ -438,3 +438,15 @@ test('절대 규칙 파일이 플러그인 정본과 같으면 규칙 경고가 
   assert.ok(!issues.some((issue) => issue.message.includes('절대 규칙 파일')));
   await rm(rootDir, { recursive: true, force: true });
 });
+
+test('기본 구성에는 협업 템플릿을 요구하지 않는다', async t => {
+  const rootDir = await makeFixture({ files: {
+    '.claude/skills/demo-skill/SKILL.md': VALID_SKILL.replace('references/detail.md 참조.', '본문.'),
+    '.claude/harness-install.json': JSON.stringify({ profile: 'basic' }),
+    'docs/templates/history.md': '# History',
+    'docs/templates/handoff.md': '# Handoff',
+  } });
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const issues = await validateHarness({ rootDir });
+  assert.equal(issues.some(issue => issue.message.includes('공통 템플릿')), false);
+});

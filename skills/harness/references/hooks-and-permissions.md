@@ -1,43 +1,12 @@
-# 훅·권한 구성 — 절대 규칙의 기계적 강제
+# 보호 장치와 프로젝트 설정
 
-프롬프트 지침은 컨텍스트가 길어지면 무시될 수 있다. 절대 규칙 중 기계적으로 강제 가능한 것(git 금지, 시크릿 차단)은 생성하는 하네스의 `.claude/settings.json`에 훅·권한으로 내장한다. 지침은 "왜"를 전달하고, 훅은 어겨질 수 없게 만든다 — 둘 다 필요하다.
+훅은 Claude Code의 도구 실행·종료 이벤트에 연결되는 스크립트다. 등록된 경로에서 실수를 줄이지만 모든 셸 우회나 다른 앱까지 막는 보안 경계는 아니다. 사용자 승인 여부는 스킬이 대화에서 판단한다.
 
-## 위험 등급 — 가드레일의 조직 원리
+## 1. 설치와 기존 설정 보존
 
-가드레일은 allow/block 이분법이 아니라 **도구·명령의 위험 등급**으로 설계한다(OpenAI 가이드). Phase 2에서 하네스가 실행할 도구·명령을 인벤토리로 뽑고, 각각을 아래 3등급으로 분류해 등급에 맞는 강제 수단을 붙인다. 등급 기준은 **읽기 전용인가 / 가역적인가 / 권한 범위 / 재정적·외부 영향**이다.
+`harnessManager.mjs plan`으로 파일과 설정 변경을 확인하고 `apply`로 적용한다 → `installation.md`.
 
-| 등급 | 기준 | 강제 수단 | 이 문서 |
-|------|------|----------|---------|
-| **low** | 읽기 전용·가역적·부작용 없음 (테스트·타입체크·린트·빌드·status/diff) | allowlist로 사전 허용 — 자율 실행이 프롬프트에 끊기지 않게 | §6 |
-| **medium** | 쓰기지만 프로젝트 내부·가역적 (파일 편집, 로컬 파일 생성) | 기본 권한(사용자 확인 흐름). branchGuard는 보호 브랜치 편집만 medium→차단으로 승격 | §3 |
-| **high** | 비가역·외부 영향·파괴적 (git 변경, 시크릿 읽기, 배포·publish, `rm`, 자금 이동) | deny + PreToolUse 훅으로 차단하거나 사용자 확인 필수. allowlist에 절대 넣지 않는다 | §2·§4 |
-
-기존 훅 3종은 모두 **high 등급의 구현 사례**다: git 변경(§2)·시크릿 접근(§4)·보호 브랜치 편집(§3). 새 도메인의 하네스를 만들 때는 이 목록을 그대로 쓰지 말고, 그 도메인의 도구를 3등급으로 재분류해 high에 해당하는 것에 훅·deny를 붙인다 — 예: 결제 API 호출, 프로덕션 DB 마이그레이션, 외부 알림 발송. 판단이 애매하면 높은 등급으로 올린다(가드레일은 낙관적 실행과 병행되므로, 과한 차단이 놓친 차단보다 싸다).
-
-## 목차
-1. [훅 스크립트 설치 — assets/에서 복사](#1-훅-스크립트-설치--assets에서-복사)
-2. [git 차단 훅 (blockGitMutation)](#2-git-차단-훅-blockgitmutation)
-3. [브랜치 가드 (branchGuard)](#3-브랜치-가드-branchguard)
-4. [시크릿 차단 — deny + 훅의 2중 방어](#4-시크릿-차단--deny--훅의-2중-방어)
-5. [검증자 게이트 (Stop 훅, 선택)](#5-검증자-게이트-stop-훅-선택)
-6. [allowlist — 자율 실행 보장](#6-allowlist--자율-실행-보장)
-7. [기존 설정과의 병합 규칙](#7-기존-설정과의-병합-규칙)
-
-## 1. 훅 스크립트 설치 — assets/에서 복사
-
-훅 스크립트는 이 스킬의 `assets/hooks/`에 실물 파일로 번들되어 있다(회귀 테스트: `scripts/hooks.test.mjs`). 문서에서 베껴 쓰지 말고 그대로 복사한다 — 복사가 결정적이어야 프로젝트마다 미묘하게 다른 사본이 생기지 않는다.
-
-```bash
-mkdir -p "$PROJECT/.claude/hooks"
-cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
-   "{이 스킬 경로}/assets/hooks/blockSecretAccess.mjs" \
-   "{이 스킬 경로}/assets/hooks/branchGuard.mjs" \
-   "$PROJECT/.claude/hooks/"
-# 선택 — 검증자 게이트(§5)를 적용하는 하네스만:
-# cp "{이 스킬 경로}/assets/hooks/verifierGate.mjs" "$PROJECT/.claude/hooks/"
-```
-
-`프로젝트/.claude/settings.json`에 훅을 등록한다. PreToolUse 훅은 도구 실행 전에 호출되며, **exit code 2면 호출이 차단되고 stderr가 에이전트에게 피드백**으로 전달된다:
+기본 훅 3종은 `.claude/hooks/`에 복사하고 `.claude/settings.json`의 `PreToolUse`에 등록한다. 기본 등록 형태:
 
 ```json
 {
@@ -46,165 +15,97 @@ cp "{이 스킬 경로}/assets/hooks/blockGitMutation.mjs" \
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blockGitMutation.mjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blockSecretAccess.mjs\""
-          }
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blockGitMutation.mjs\"" },
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/blockSecretAccess.mjs\"" }
         ]
       },
       {
         "matcher": "Edit|Write|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/branchGuard.mjs\""
-          }
-        ]
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/branchGuard.mjs\"" }]
       }
     ]
   }
 }
 ```
 
-## 2. git 차단 훅 (blockGitMutation)
+관리자는 같은 의미의 훅을 개별 등록 항목으로 추가한다. 수동 등록이나 다른 도구의 항목을 덮어쓰지 않는다. 개인 설정은 자동 수정하지 않는다.
 
-절대 규칙 1(git 작업은 사용자 전담)을 강제한다.
+## 2. git 명령 보호
 
-**차단 범위 원칙:** 변경 명령만 막는다. `git status`·`diff`·`log`·`show`·`blame` 같은 읽기 명령은 에이전트의 작업 파악에 필요하므로 허용한다. **switch는 예외로 허용된다** — 순수 브랜치 전환(`git switch <b>`·`-c <b>`)은 작업 내용을 파괴하지 않으며(충돌 시 git이 거부), `branch` 스킬이 사용자 확인 후에만 사용한다. 단 파괴·이탈 플래그(`-f`/`--force`·`--discard-changes`·`-C`/`--force-create`·`--orphan`(워킹트리 비움)·`-d`/`--detach`(detached HEAD — branchGuard 무력화))와 `checkout`(파일 복원 기능 포함)·`restore`·`clean`(워킹트리 파괴 계열)은 계속 차단한다. 판정은 토큰 단위다 — git의 번들(`-fc`)·값 붙임(`-Cmain`)·따옴표(`"-f"`) 형태까지 잡는다.
+`blockGitMutation.mjs`는 기본적으로 commit·push 등 변경 명령을 차단한다. 읽기 명령과 일반 `git switch`·스테이징은 허용한다. switch의 강제·변경 폐기·detached HEAD 옵션과 merge·rebase·reset·원격 삭제 등은 계속 차단한다.
 
-**우회 방지:** 판정 정규식은 서브커맨드 앞의 전역 플래그를 건너뛴다. `-C <path>`·`-c <k=v>`·`--git-dir <path>`처럼 **값을 별도 인자로 받는 플래그**를 처리하지 않으면 `git -C /repo commit` 같은 우회가 생긴다 — 패턴을 수정할 때는 반드시 `scripts/hooks.test.mjs`의 차단/허용 케이스를 함께 갱신하고 통과를 확인한다.
-
-**commit·push 예외 (allowCommitPush, 옵트인):** 절대 규칙 1 예외 ②(사용자 명시 요청 커밋·PR 업로드 — `pr` 스킬)의 강제 수단이다. 스크립트 옆 `blockGitMutation.config.json`으로 켠다 — config가 없으면 예외는 비활성(기본 차단)이고, 파싱에 실패하면 fail-closed로 예외를 끈다:
+`blockGitMutation.config.json`:
 
 ```json
-{ "allowCommitPush": true }
+{
+  "allowCommitPush": true,
+  "requireHistoryDoc": true,
+  "historyBase": "origin/main",
+  "blockAttribution": false
+}
 ```
 
-활성 상태에서도 다음은 계속 차단된다:
+| 설정 | 동작 |
+|---|---|
+| allowCommitPush | 기본 false. 영구 허용은 사용자가 요청한 경우에만 설정 |
+| requireHistoryDoc | commit·push 허용 시 기본 true. push할 변경에 `docs/history/*.md`를 요구 |
+| historyBase | 생략 시 dev·main·master 계열을 탐색. 프로젝트 기준 브랜치를 지정하는 편이 명확함 |
+| blockAttribution | 기본 false. true이면 Claude 작성자 표기 패턴을 차단 |
 
-- **Claude 작성 표기가 든 커밋** — `Co-Authored-By: ... Claude`·`Generated with ... Claude`·`Claude-Session:`·`noreply@anthropic.com` 패턴을 명령 전체(heredoc 메시지 본문 포함)에서 검사한다. 커밋 메시지에서 Claude 흔적 제거는 절대 규칙이다. 단순 "claude" 단어는 오탐하지 않는다.
-- **메시지를 검사할 수 없는 커밋 형태** — `-F`/`-t`/`-c`/`-C`(메시지가 명령문 밖)와 `--amend`/`--fixup`/`--squash`(히스토리 재작성). 메시지는 `-m` 인라인으로만 작성한다.
-- **force/delete push** — `-f`/`--force(-with-lease)`·`--delete`·`--mirror`·`--prune`. 일반 push(`-u` 포함)만 허용한다.
-- **commit·push 외의 변경 명령** — merge·rebase·reset·checkout 등은 예외 모드에서도 전부 차단이다.
-- **기록 없는 push** — 아래 기록 게이트.
+설정 파일이 없거나 파싱에 실패하면 커밋·푸시 예외는 비활성이다. 기록 기준을 찾지 못하면 기록 게이트는 통과하므로 승인·보안 장치로 사용하지 않는다. 기존 표기 제한을 유지하려면 업데이트 전에 `blockAttribution: true`를 설정한다.
 
-**기록 게이트 (requireHistoryDoc):** 절대 규칙 3("PR 하나 = 기록 하나")의 강제 수단이다. commit·push 예외를 켜면 **함께 켜진다** — 베이스 브랜치와 HEAD 사이의 변경 경로에 `docs/history/*.md`가 없으면 push가 차단되고, `history` 스킬로 기록하라는 피드백이 전달된다. 종료 의례를 산문 지침으로만 두면 바쁜 실행에서 가장 먼저 생략되는 것이 기록이다.
+허용 상태에서도 force/delete push와 간접 커밋 메시지 옵션(`-F`, `-t`, `-c`, `-C`, amend/fixup 등)은 차단한다. 일반 커밋 메시지는 `-m`으로 전달한다. 이 검사는 셸 파서 전체를 대체하지 않는다.
 
-```json
-{ "allowCommitPush": true, "requireHistoryDoc": false, "historyBase": "develop" }
-```
+## 3. 보호 브랜치
 
-- 게이트 대상은 **push**다(커밋 단위가 아니라 PR 단위). PR 안에서 커밋을 논리 단위로 나누는 것은 그대로 가능하다.
-- 베이스는 `origin/dev`·`dev`·`origin/main`·`main`·`origin/master`·`master` 순으로 자동 탐색한다. 다른 이름이면 `historyBase`로 명시한다.
-- 베이스를 못 찾거나 git 호출이 실패하면 **통과시킨다.** 기록 게이트는 문서 위생 장치이므로, 판정 불가를 차단으로 처리하면 가드가 아니라 고장이 된다 — 시크릿·변경 명령 가드의 fail-closed와 다른 성격이다.
-- 끄려면 `requireHistoryDoc: false`. 사용자 확인 없이 끄지 않는다.
-
-구축 시 사용자 승인 없이 config를 만들지 않는다(옵트인 — SKILL.md Phase 2). git-flow(main·dev·feat) 채택 시 §3의 `protectedBranches`에 `dev`를 추가해 작업이 항상 `feat/*`에서 일어나게 한다.
-
-## 3. 브랜치 가드 (branchGuard)
-
-"작업 시작 전에 작업 브랜치부터 확인"(`branch` 스킬)을 기계적으로 강제한다. matcher `Edit|Write|NotebookEdit`로 등록되어(§1) 보호 브랜치 위에서의 파일 편집 시도를 차단하고, branch 스킬로 사용자 확인을 받으라는 피드백을 전달한다.
-
-- **판정:** `.git/HEAD`를 직접 읽는다(서브프로세스 없음, worktree의 `gitdir:` 포인터 추적). detached HEAD·git 저장소 아님이면 비활성(무해).
-- **설정:** 스크립트 옆 `branchGuard.config.json`의 `protectedBranches`(기본 `["main", "master"]`). 프로젝트의 실제 기본/배포 브랜치(`develop`·`release/*` 운용 등)에 맞게 구축 시 사용자와 확인해 조정한다.
+`branchGuard.mjs`는 Edit·Write·NotebookEdit에서 보호 브랜치 편집을 차단한다.
 
 ```json
 { "protectedBranches": ["main", "master"] }
 ```
 
-- **한계:** Edit/Write/NotebookEdit 도구만 막는다 — Bash 경유 파일 쓰기(`echo > file`)는 걸러지지 않으므로, 에이전트 정의의 작업 원칙("파일 변경 작업 시작 전 branch 스킬로 브랜치 확인")과 병행한다. 보호 브랜치에서 의도적으로 계속하려면 사용자가 직접 config를 수정한다 — 에이전트가 대신 수정하지 않는다.
+설정 파일은 `branchGuard.config.json`이다. 없으면 main·master를 사용하며 JSON 파싱 오류는 편집을 차단한다. 브랜치 이름은 정확히 일치해야 하며 와일드카드를 지원하지 않는다. git 저장소가 아니거나 detached HEAD·브랜치 조회 실패면 비활성이다. Bash로 파일을 쓰는 경로는 검사하지 않으므로 작업 시작 시 브랜치 확인을 병행한다.
 
-## 4. 시크릿 차단 — deny + 훅의 2중 방어
+## 4. 민감정보 접근
 
-절대 규칙 6(시크릿 읽기·기록 금지)의 읽기 측은 두 겹으로 강제한다. **deny 권한은 Read 도구만 막는다** — `cat .env`·`grep KEY .env` 같은 Bash 경유 읽기는 deny로 막히지 않으므로, `blockSecretAccess.mjs` 훅(§1에서 설치)이 그 우회 경로를 닫는다.
+`blockSecretAccess.mjs`는 알려진 민감정보 경로의 Bash 접근을 검사한다. Read 도구는 공유 설정의 deny를 함께 구성한다:
 
 ```json
 {
   "permissions": {
-    "deny": [
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Read(./**/credentials*)",
-      "Read(./**/*.pem)",
-      "Read(./**/secrets/**)"
-    ]
+    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./**/credentials*)", "Read(./**/*.pem)", "Read(./**/secrets/**)"]
   }
 }
 ```
 
-프로젝트의 실제 시크릿 위치(`.gitignore`에 단서가 있다)를 확인해 deny 패턴과 훅의 판정 패턴을 **같이** 맞춘다 — 두 겹의 커버리지가 어긋나면 우회 경로가 되살아난다. `.env.example` 같은 관례적 예시 파일은 훅이 허용한다. 기록 측(산출물에 토큰을 옮겨 적지 않는다)은 기계적 강제가 어려우므로 에이전트 정의의 작업 원칙으로 명시한다.
+프로젝트의 실제 경로가 다르면 패턴도 조정한다. 실제 키 값을 조사하거나 출력하지 않는다. Bash 훅과 Read deny의 적용 경로는 다르며, 예시 파일의 예외도 각 도구 설정에서 확인한다.
 
-## 5. 검증자 게이트 (Stop 훅, 선택)
+## 5. 종료 검사 (선택)
 
-종료 규칙(검증 명령 전체 통과)을 기계적으로 강제하는 선택 장치다. `assets/hooks/verifierGate.mjs`를 §1과 같은 방식으로 `.claude/hooks/`에 복사하고, 스크립트 **옆에** `verifierGate.config.json`으로 검증 명령과 안전장치를 정의한다 (config가 없으면 게이트는 비활성):
+`verifierGate.mjs`를 Stop에 등록한다. 관리자의 `plan --verifier`로 파일·등록을 추가하고, 훅 옆 `verifierGate.config.json`에 검사 명령을 쓴다.
 
 ```json
 {
-  "checks": [
-    { "name": "test", "command": "npm test" },
-    { "name": "typecheck", "command": "npx tsc --noEmit" }
-  ],
+  "checks": [{ "name": "test", "command": "npm test" }],
   "maxIterations": 10,
-  "maxTokens": 20000000,
   "stuckAfter": 3
 }
 ```
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verifierGate.mjs\""
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+- 설정이 없으면 비활성. checks는 이름과 명령이 있는 비어 있지 않은 배열이다.
+- 통과하면 종료한다. 실패 후 이어진 Stop도 재검사한다.
+- 최대 차단 횟수(기본 10)·같은 실패 횟수에 도달하면 중단 보고를 한 번 요청하고 다음 종료를 허용한다. `stop_hook_active`만으로 검사를 생략하지 않는다.
+- 상태는 세션별 파일에 기록한다. 다른 세션의 횟수를 공유하지 않는다. 동일 세션의 Stop 이벤트는 순서대로 처리해야 한다.
+- `maxTokens`는 선택이며 transcript 입력·출력·캐시 생성의 누적 근사치다. 과금액이나 실시간 상한이 아니다. 설정했지만 transcript를 읽지 못하면 사유를 보고하고 중단한다.
+- 설정 오류는 검사 성공으로 처리하지 않는다. 오류 보고 후 종료한다.
+- 건당 검사 명령은 최대 5분이다. 한 번의 명령 실행 도중 예산 초과를 감지해 취소하지 않으며 강제 앱 종료까지 막지는 않는다.
 
-**동작 (판정 순서가 규칙이다):**
-1. `checks` 전체 통과 → 종료 허용 (수렴 성공 — 예산과 무관). 막힘 추적(signature/streak)만 초기화한다 — `iterations`는 세션별 누적 상한이라 리셋하지 않는다(리셋하면 flaky 체크가 한 번 통과할 때마다 maxIterations가 무력화된다).
-2. 실패가 남았는데 **안전장치 도달** → 루프를 계속하지 않는다. "진행 상황·남은 실패·중단 사유를 보고하고 종료하라"를 지시하고, 그 보고 후 종료는 통과시킨다. 안전장치 3종:
-   - `maxTokens` — transcript 누적 토큰 초과 (토큰 예산 자동 중단). `maxTokens`는 **세션 transcript 누적 합계**를 본다 — 루프 1회분 예산이 아니다. 매 턴의 `input_tokens`에는 그때까지의 대화 전체가 다시 들어가므로 이 합계는 세션이 길어질수록 초선형으로 불어나고, 긴 세션은 수천만에 쉽게 도달한다. 따라서 값은 **"이 세션을 여기서 끊는다"는 상한**으로 잡는다 — 작업 1건의 예상 토큰으로 잡으면 정상 작업 중에 매 턴 발동한다(실사용 사례 `Guksu/fe-skills`는 20,000,000을 쓴다).
-   - `maxIterations` — 세션별 차단 횟수 도달
-   - `stuckAfter` — **같은 실패 시그니처가 N연속**(막힘 판정). 시그니처는 실패한 검증 이름 + 출력 전체(숫자·공백 정규화, 500자 캡)로 만든다 — 첫 줄만 쓰면 npm 배너 같은 고정 줄이 모든 실패를 동일하게 만들어 수렴 중인 루프를 오판한다. 진전 없이 같은 에러만 반복되면 예산을 소진하기 전에 중단시킨다. `docs/loops/` 명세의 "막힘 판정" 값과 일치시킨다.
-3. 실패 + 여력 있음 → exit 2로 종료를 차단하고 실패 출력을 피드백으로 전달한다.
+Stop 훅을 새로 등록하는 것과 한 작업에서 테스트를 재시도하는 것은 다르다. 일반적인 개발 재시도에는 이 설정을 요구하지 않는다.
 
-절대 규칙 2의 TDD 게이트는 `checks`에 테스트 명령 하나만 넣은 특수 사례다. 루프 하네스에서는 `docs/loops/` 명세의 검증자·안전장치 값과 config를 **일치**시킨다 (loop 스킬 참조).
+## 6. 사전 허용과 확인
 
-**적용 조건:** checks가 수 분 안에 끝나야 한다(모든 턴 종료마다 실행되므로 느린 스위트는 세션 전체를 마비시킨다). 스크립트의 `stop_hook_active` 가드는 삭제 금지 — 없으면 "실패 → 차단 → 재시도 → 차단"의 무한 루프에 빠진다. 구성 전에 사용자에게 확인한다.
+자주 실행하는 테스트·타입체크는 프로젝트에서 부수효과를 확인한 뒤 allowlist로 허용할 수 있다. 배포·패키지 발행·실제 결제 등 외부 영향이 있는 작업은 일괄 허용하지 않는다. 이미 받은 승인은 유지하되 단발 요청을 영구 권한 확대로 바꾸지 않는다.
 
-## 6. allowlist — 자율 실행 보장
+## 7. 제거
 
-에이전트 팀·Workflow가 매 테스트 실행마다 권한 프롬프트에 막히면 자율 실행이 끊긴다(특히 백그라운드 팀원은 프롬프트에 응답할 수 없다). 하네스가 반복 실행할 명령을 구축 시점에 미리 허용한다:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(npm test:*)",
-      "Bash(npm run build:*)",
-      "Bash(npx vitest:*)",
-      "Bash(npx tsc:*)"
-    ]
-  }
-}
-```
-
-**선정 기준:** 위험 등급 **low**(읽기 전용·가역·부작용 없음)만 allowlist에 넣는다 — 오케스트레이터·에이전트 정의가 명시하는 검증 명령(테스트·타입체크·린트·빌드). `rm`·패키지 publish·배포 명령처럼 파괴적이거나 외부로 나가는 명령(high)은 절대 사전 허용하지 않는다. git은 allowlist가 아니라 2번 훅으로 다룬다. 등급 분류는 위 "위험 등급" 표를 따른다.
-
-## 7. 기존 설정과의 병합 규칙
-
-- `.claude/settings.json`이 이미 존재하면 **덮어쓰지 말고 읽어서 병합한다.** 기존 hooks·permissions 항목은 보존하고 하네스 항목만 추가한다.
-- 기존 훅과 충돌(같은 matcher에 상반된 동작)이 보이면 임의 판단하지 말고 사용자에게 확인한다 — 절대 규칙 4(단일 출처)와 같은 원리다.
-- 훅·권한은 프로젝트 공유 자산이므로 `settings.json`에 쓴다. `settings.local.json`(개인 설정)에 넣으면 다른 사용자의 세션에서 절대 규칙이 강제되지 않는다.
-- 구성 후 변경 내용을 CLAUDE.md 변경 이력에 기록한다. 해체 시에는 하네스가 추가한 훅 등록·`.claude/hooks/` 스크립트·deny/allow 항목을 같은 경로로 제거한다.
+관리 도구는 자신이 추가한 정확한 훅·deny 항목만 해제한다. 사용자가 수정한 등록이나 파일은 충돌로 보존한다. 수동 설치의 출처가 불명확하면 목록을 보고하고 삭제를 추측하지 않는다. 문서·사용자 기록은 보존한다.

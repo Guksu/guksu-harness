@@ -15,7 +15,8 @@
 // stuckAfter: 같은 실패 시그니처가 N연속이면 반복을 계속하지 않고 보고 후 종료(막힘 판정).
 //   루프 명세(docs/loops/)의 "막힘 판정"과 게이트를 일치시키는 수단이다. 생략하면 비활성.
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, realpathSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -114,39 +115,56 @@ if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  if (input.stop_hook_active) process.exit(0); // 무한 차단 루프 방지 가드 — 삭제 금지
 
   const hookDir = dirname(fileURLToPath(import.meta.url));
   const configPath = join(hookDir, 'verifierGate.config.json');
   if (!existsSync(configPath)) process.exit(0); // 미구성 — 게이트 비활성
 
-  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  // 세션별 파일 + 원자적 교체로 다른 세션의 상태를 덮어쓰지 않는다.
+  const sessionKey = createHash('sha256').update(String(input.session_id ?? 'default')).digest('hex');
+  const statePath = join(hookDir, `verifierGate.${sessionKey}.state.json`);
+  let sessionState = {};
+  try { sessionState = JSON.parse(readFileSync(statePath, 'utf8')); } catch { /* 최초 실행 */ }
+  if (!sessionState || typeof sessionState !== 'object' || Array.isArray(sessionState)) sessionState = {};
+  const writeSessionState = (value) => {
+    const temporary = `${statePath}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify(value));
+    renameSync(temporary, statePath);
+  };
+  // stop_hook_active 자체는 통과 조건이 아니다. 우리가 중단 보고를 요청한 다음 종료만 허용한다.
+  if (input.stop_hook_active && sessionState.wrapup) process.exit(0);
 
-  let tokensUsed = 0;
-  if (config.maxTokens != null && input.transcript_path && existsSync(input.transcript_path)) {
-    tokensUsed = sumTranscriptTokens(readFileSync(input.transcript_path, 'utf8'));
+  let config;
+  try {
+    config = JSON.parse(readFileSync(configPath, 'utf8'));
+    if (!Array.isArray(config.checks) || config.checks.length === 0 ||
+        config.checks.some(check => !check || typeof check.name !== 'string' ||
+          typeof check.command !== 'string' || !check.command.trim())) {
+      throw new Error('checks에 이름과 실행 명령을 한 개 이상 지정하세요');
+    }
+    config.maxIterations ??= 10;
+    for (const field of ['maxIterations', 'maxTokens', 'stuckAfter']) {
+      if (config[field] != null && (!Number.isSafeInteger(config[field]) || config[field] <= 0)) {
+        throw new Error(`${field}는 양의 정수여야 합니다`);
+      }
+    }
+  } catch (error) {
+    writeSessionState({ ...sessionState, wrapup: true });
+    console.error(`검증 설정 오류: ${error.message}. 검증하지 못했습니다. 설정 오류를 보고하고 종료하세요.`);
+    process.exit(2);
   }
 
-  const statePath = join(hookDir, 'verifierGate.state.json');
-  const readState = () => {
+  let tokensUsed = 0;
+  if (config.maxTokens != null) {
     try {
-      return existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : {};
+      if (!input.transcript_path) throw new Error('transcript 없음');
+      tokensUsed = sumTranscriptTokens(readFileSync(input.transcript_path, 'utf8'));
     } catch {
-      return {}; // 손상된 상태 파일은 초기화 — 안전장치 카운터는 근사치여도 충분하다
+      writeSessionState({ ...sessionState, wrapup: true });
+      console.error('토큰 사용량을 확인할 수 없습니다. 예산 보호를 보장할 수 없어 중단합니다. 사유를 보고하고 종료하세요.');
+      process.exit(2);
     }
-  };
-  // 자기 세션 키만 갱신하되 쓰기 직전에 파일을 다시 읽는다 — 상태 파일은 session_id 키로
-  // 동시 세션을 전제하므로, 훅 시작 시점 스냅숏을 그대로 되쓰면 그 사이 다른 세션이 올린
-  // 카운터를 낡은 값으로 되감는다(완전한 락은 아니지만 경쟁 창을 훅 실행 시간 → 쓰기
-  // 직전으로 좁힌다).
-  const writeSessionState = (value) => {
-    const fresh = readState();
-    fresh[input.session_id] = value;
-    writeFileSync(statePath, JSON.stringify(fresh));
-  };
-  // 이전 스키마(값이 숫자)와의 호환: 세션별 상태를 {iterations, signature, streak} 객체로 정규화.
-  const prior = readState()[input.session_id];
-  const sessionState = typeof prior === 'number' ? { iterations: prior } : prior ?? {};
+  }
   const iterations = sessionState.iterations ?? 0;
 
   const failures = runChecks({ checks: config.checks ?? [], cwd: input.cwd });
@@ -161,13 +179,11 @@ if (isDirectRun) {
     // iterations는 문서화된 의미(세션별 누적 차단 횟수)라 통과했다고 리셋하지 않는다 —
     // 리셋하면 flaky 체크가 한 번 통과할 때마다 maxIterations가 초기화되어 세션당 총
     // 차단 횟수를 상한하지 못한다. 막힘 추적(signature/streak)만 통과 시점에 끊는다.
-    if (sessionState.signature != null || (sessionState.streak ?? 0) !== 0) {
-      writeSessionState({ iterations, signature: null, streak: 0 });
-    }
+    writeSessionState({ iterations, signature: null, streak: 0, wrapup: false });
     process.exit(0);
   }
 
-  writeSessionState({ iterations: iterations + 1, signature, streak: sameFailureStreak });
+  writeSessionState({ iterations: iterations + 1, signature, streak: sameFailureStreak, wrapup: decision.action === 'wrapup' });
   console.error(decision.reason);
   process.exit(2);
 }
