@@ -4,7 +4,7 @@
 |---|---|
 | 날짜 | 2026-09-18 |
 | 브랜치 | claude/focused-planck-898vo6 |
-| PR | 미생성 — 요청 범위는 커밋·푸시 |
+| PR | https://github.com/Guksu/guksu-harness/pull/20 |
 | 기준 | origin/main의 3977205 (v2.3.0) |
 | 버전 | 3.0.0 |
 
