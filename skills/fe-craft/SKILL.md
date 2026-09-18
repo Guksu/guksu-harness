@@ -26,7 +26,7 @@ node {harness 스킬 경로}/scripts/feSkills.mjs find "<사용자 요청 문장
 node {harness 스킬 경로}/scripts/feSkills.mjs get <slug> --into <대상 디렉토리>
 ```
 
-하네스가 구축된 프로젝트면 스크립트가 `.claude/scripts/feSkills.mjs`에 복사되어 있다. 설치는 필요 없다 — 필요한 스킬 하나만 가져오는 라이브러리다. 후보가 0건이거나 라이브러리를 못 가져오면 직접 구현하고 그 사실을 작업 기록에 남긴다. 가져온 패턴은 출처를 기록에 적는다.
+하네스가 구축된 프로젝트면 스크립트가 `.agents/scripts/feSkills.mjs`에 복사되어 있다(v2 구축본은 `.claude/scripts/`). 설치는 필요 없다 — 필요한 스킬 하나만 가져오는 라이브러리다. 후보가 0건이거나 라이브러리를 못 가져오면 직접 구현하고 그 사실을 작업 기록에 남긴다. 가져온 패턴은 출처를 기록에 적는다.
 
 ## 세 영역 — 필요한 reference만 로드한다
 

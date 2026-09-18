@@ -1,12 +1,12 @@
 # guksu-harness
 
-**AI에게 매번 반복하던 작업 규칙을 프로젝트에 저장합니다.** 중요한 브랜치를 보호하고, 변경을 검사하고, 다음 작업에 필요한 기록을 남기는 Claude Code 플러그인입니다.
+**AI에게 매번 반복하던 작업 규칙을 프로젝트에 저장합니다.** 중요한 브랜치를 보호하고, 변경을 검사하고, 다음 작업에 필요한 기록을 남기는 플러그인입니다. Claude Code와 Codex에서 같은 스킬과 훅을 씁니다.
 
-v2.3.0 · 스킬 9종 · 보호·검증 훅 4종 · MIT
+v3.0.0 · 스킬 9종 · 보호·검증 훅 4종 · Claude Code · Codex · MIT
 
 ## 시작하기
 
-Claude Code와 Node.js 22 이상이 필요합니다. 브랜치 기능에는 git 저장소가 필요합니다.
+Claude Code 또는 Codex, 그리고 Node.js 22 이상이 필요합니다. 브랜치 기능에는 git 저장소가 필요합니다.
 
 Claude Code에서 설치합니다:
 
@@ -15,10 +15,18 @@ Claude Code에서 설치합니다:
 /plugin install guksu-harness@guksu-harness
 ```
 
-프로젝트를 열고 요청합니다:
+Codex에서 설치합니다:
+
+```text
+codex plugin marketplace add Guksu/guksu-harness
+codex plugin add guksu-harness@guksu-harness
+```
+
+프로젝트를 열고 요청합니다. Claude Code는 `/guksu-harness:harness`, Codex는 `$harness`로 스킬을 부릅니다:
 
 ```text
 /guksu-harness:harness 이 프로젝트에 작업 규칙 설정해줘
+$harness 이 프로젝트에 작업 규칙 설정해줘
 ```
 
 기존 설정을 먼저 확인하고 필요한 파일을 만듭니다. 기본은 작업 절차·보호 장치·기록 양식입니다. 여러 역할의 협업이 필요할 때만 에이전트와 진행표를 추가합니다. 이미 승인한 내용은 다시 묻지 않습니다.
@@ -55,7 +63,9 @@ Claude Code에서 설치합니다:
 | 민감정보 보호 | 알려진 키·환경설정 경로의 접근 제한 | 프로젝트별 경로와 사용하는 도구에 맞춰 설정 필요 |
 | 종료 검사 (선택) | 실패하면 재검사, 반복 한도에 도달하면 보고 후 종료 | 설정 없으면 비활성. Stop 이벤트에서만 검사 |
 
-훅은 Claude Code 이벤트에 등록했을 때 동작합니다. 다른 앱에서 스킬을 읽었다고 같은 보호가 자동 적용되지는 않습니다. [설정과 보장 범위](skills/harness/references/hooks-and-permissions.md)를 확인하세요.
+훅 파일은 앱 중립 위치 `.agents/hooks/`에 한 벌만 두고, 등록은 앱별 파일에 씁니다(Claude Code `.claude/settings.json`, Codex `.codex/hooks.json`). 등록한 앱에서만 동작하며 스킬만 읽은 앱에는 보호가 없습니다.
+
+Codex에서는 두 가지를 직접 확인해야 합니다. 훅 기능이 켜져 있고 프로젝트 `.codex/hooks.json`이 신뢰되는지, 그리고 파일 편집 차단(branchGuard)이 실제로 막히는지입니다. Codex 0.133에서 편집 차단이 적용되지 않는 버그 보고가 있습니다. 민감정보 Read 거부는 Claude Code 전용입니다. 확인 절차는 [설정과 보장 범위](skills/harness/references/hooks-and-permissions.md) 8절에 있습니다.
 
 배포 점검은 **가능 / 불가 / 판정 보류**로 보고합니다. 필수 브라우저 검사를 실행하지 못했다면 정적 검사가 통과해도 판정 보류입니다.
 
@@ -67,8 +77,8 @@ Claude Code에서 설치합니다:
 # 상태만 확인 — 파일 변경 없음
 node skills/harness/scripts/harnessManager.mjs status /path/to/project
 
-# 변경 미리보기 — 프로젝트 변경 없음
-node skills/harness/scripts/harnessManager.mjs plan /path/to/project --out /tmp/harness-plan.json
+# 변경 미리보기 — 프로젝트 변경 없음. --app claude|codex|both로 등록할 앱 선택(생략 시 추정)
+node skills/harness/scripts/harnessManager.mjs plan /path/to/project --app both --out /tmp/harness-plan.json
 
 # 검토한 계획 적용 — 변경 전 백업 생성
 node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tmp/harness-plan.json
@@ -80,6 +90,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 
 ## 기존 사용자가 알아둘 변경
 
+- **v3.0.0:** 훅·설정·추적 기록이 `.claude/hooks/`, `.claude/harness-install.json`에서 `.agents/`로 옮겨집니다. 업데이트 미리보기에 이동이 표시되고, 직접 수정한 파일은 옮기지 않고 보존합니다. `.gitignore`의 백업·상태 파일 경로를 `.agents/`로 바꾸세요.
 - 브랜치 전략은 프로젝트 관례를 따릅니다. `dev`나 `feat/`를 강제하지 않습니다.
 - 일반적인 수정·테스트 재시도에 별도 루프 승인을 요구하지 않습니다.
 - 작업 기록은 의미 있는 변경·최종 커밋 단위로 모읍니다.
@@ -93,7 +104,8 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 |---|---|
 | 파일 수정이 막힘 | 현재 브랜치와 보호 브랜치 설정 |
 | 커밋·푸시가 막힘 | 사용자 요청 범위, allowCommitPush, 작업 기록 요구 |
-| 훅이 실행되지 않음 | Node.js, 공유 설정의 훅 등록, 현재 앱 지원 |
+| 훅이 실행되지 않음 | Node.js, 앱별 등록 파일(`.claude/settings.json`·`.codex/hooks.json`), Codex는 훅 기능 활성과 프로젝트 신뢰 |
+| 업데이트 후 훅 설정이 사라진 것처럼 보임 | 설정 파일이 `.claude/hooks/`에 남아 있는지. 상태 확인이 이동 대상을 알려 줍니다 |
 | 업데이트 충돌 | 파일을 직접 수정했는지 확인하고 필요한 파일만 선택 적용 |
 | 반복 검사가 중단됨 | 남은 실패·최대 반복·같은 실패 누적·설정 오류 |
 | 배포 판정 보류 | 실행하지 못한 필수 검사와 필요한 환경 |
@@ -114,5 +126,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 node skills/harness/scripts/validateHarness.mjs .
 node --test skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs
 ```
+
+저장소 구조: `.claude-plugin/`은 Claude Code, `.codex-plugin/`과 `.agents/plugins/`는 Codex 플러그인 설명 파일입니다. `skills/`는 양쪽이 공유합니다. 두 plugin.json의 버전은 구조 검사가 일치를 확인합니다.
 
 [검증 방법](skills/harness/references/testing-guide.md) · [변경 이력](CHANGELOG.md) · [라이선스](LICENSE)

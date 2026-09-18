@@ -19,7 +19,7 @@ description: "하네스 실행 회고 — 산출물(작업 기록·이전 회고
 
 - `docs/history/` 작업 기록 — 특히 각 기록의 "3. 검증 결과"와 "5. 주의사항"이 반복 문제의 1차 근거다
 - `docs/retro/` 이전 회고 — **반복 문제·재발 추적의 기준선**
-- `.claude/agents/`, `.claude/skills/`, CLAUDE.md 변경 이력 — 현재 하네스 정의
+- `.claude/agents/`, 스킬 경로(`.claude/skills/`·`.agents/skills/`), 규칙 파일(CLAUDE.md·AGENTS.md) 변경 이력 — 현재 하네스 정의
 - 기록이 0건이면 회고를 중단하고 사용자에게 알린다.
 
 ### 2. 분석

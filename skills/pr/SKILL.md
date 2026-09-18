@@ -10,7 +10,7 @@ description: "커밋·푸시·PR — 사용자가 요청한 git 업로드 작업
 ## 프로젝트 정책
 
 - 작업 브랜치와 PR 기준은 기존 프로젝트 규칙을 따른다. `dev`나 `feat/`를 강제하지 않는다. 기준이 명확하지 않으면 원격 기본 브랜치를 확인하고 선택 근거를 알린다.
-- 커밋 메시지는 기존 언어와 Conventional Commits 관례를 따른다. 작성자 표기는 프로젝트 정책을 따른다. `blockGitMutation.config.json`의 `blockAttribution: true`인 경우 Claude 표기 패턴이 차단된다(기본 false).
+- 커밋 메시지는 기존 언어와 Conventional Commits 관례를 따른다. 작성자 표기는 프로젝트 정책을 따른다. `.agents/hooks/blockGitMutation.config.json`의 `blockAttribution: true`인 경우 Claude 표기 패턴이 차단된다(기본 false).
 - 훅이 설치돼 있으면 `allowCommitPush` 설정을 따른다. 한 번의 커밋 요청을 영구 권한 변경으로 해석하지 않는다. 영구 설정 변경까지 이미 승인됐다면 다시 묻지 않는다.
 - `requireHistoryDoc`은 프로젝트의 기록 정책이다. 활성화된 프로젝트에서는 기록 없이 push하지 않는다. 이번 작업의 기록 하나를 갱신하고 커밋에 포함한다.
 - 파일은 경로를 명시해 스테이징한다. 무관한 변경을 함께 커밋하지 않는다.

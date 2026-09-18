@@ -32,4 +32,4 @@
 
 ## 4. 적용 결과
 
-{적용 후 갱신 — 적용한 항목, validateHarness 재검증 결과(error 0건), CLAUDE.md 변경 이력 반영 여부. 미적용이면 "미적용"과 사유를 명시한다.}
+{적용 후 갱신 — 적용한 항목, validateHarness 재검증 결과(error 0건), CLAUDE.md·AGENTS.md 변경 이력 반영 여부. 미적용이면 "미적용"과 사유를 명시한다.}

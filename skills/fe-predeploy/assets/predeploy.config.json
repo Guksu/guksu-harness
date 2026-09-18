@@ -1,5 +1,5 @@
 {
-  "$comment": "fe-predeploy 기준치 기본값 — 프로젝트 .claude/predeploy.config.json으로 복사해 조정한다. 없으면 이 기본값을 쓴다.",
+  "$comment": "fe-predeploy 기준치 기본값 — 프로젝트 .agents/predeploy.config.json으로 복사해 조정한다. 없으면 이 기본값을 쓴다.",
   "thresholds": {
     "lcpMs": 2500,
     "cls": 0.1,

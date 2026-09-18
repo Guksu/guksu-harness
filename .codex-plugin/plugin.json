@@ -1,0 +1,35 @@
+{
+  "name": "guksu-harness",
+  "version": "3.0.0",
+  "description": "프로젝트 작업 규칙을 설정하고 점검하는 플러그인. 브랜치·민감정보 보호, 변경 검증, 작업 기록, 상태 진단과 기존 설정을 보존하는 업데이트를 제공합니다.",
+  "author": {
+    "name": "Guksu",
+    "email": "yung3152@gmail.com",
+    "url": "https://github.com/Guksu"
+  },
+  "homepage": "https://github.com/Guksu/guksu-harness",
+  "repository": "https://github.com/Guksu/guksu-harness",
+  "license": "MIT",
+  "keywords": [
+    "harness",
+    "meta-skill",
+    "codex",
+    "codex-plugin",
+    "claude-code",
+    "agent-team",
+    "workflow-orchestration",
+    "skill-architect",
+    "multi-agent",
+    "tdd"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Guksu Harness",
+    "shortDescription": "프로젝트 작업 규칙 설정·점검·업데이트",
+    "longDescription": "브랜치·민감정보 보호 훅, 변경 검증, 작업 기록 양식, 설치 상태 진단과 기존 설정을 보존하는 업데이트를 제공합니다. 훅 등록은 프로젝트별로 harnessManager가 수행합니다.",
+    "developerName": "Guksu",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/Guksu/guksu-harness"
+  }
+}

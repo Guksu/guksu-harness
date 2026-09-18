@@ -9,6 +9,8 @@
 //     "stuckAfter": 3
 //   }
 // 설정 파일이 없으면 게이트는 비활성(무해)이다.
+// Claude Code·Codex 모두 Stop 입력에 session_id·cwd·stop_hook_active·transcript_path를 같은 이름으로 준다.
+//   transcript 파일 형식이 다른 앱에서는 maxTokens 합산이 0이 될 수 있다 — 그 경우 예산 검사는 동작하지 않는다.
 // maxTokens는 세션 transcript 누적 합계 기준이다(루프 1회분 예산이 아니다) — 매 턴의 input_tokens에
 //   대화 전체가 다시 들어가므로 세션이 길수록 초선형으로 커진다. "이 세션을 여기서 끊는다"는 상한으로
 //   잡는다. 작업 1건의 예상 토큰으로 잡으면 정상 작업 중에 매 턴 발동한다.
