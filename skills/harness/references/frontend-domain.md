@@ -33,12 +33,12 @@ node {스크립트 경로}/feSkills.mjs list                      # 전체 목�
 
 Phase 2에서 다음을 수행한다:
 
-1. **스크립트를 프로젝트로 복사한다** — 이 스킬의 `scripts/feSkills.mjs`를 프로젝트 `.claude/scripts/`로 복사한다(훅과 같은 이유로 베껴 쓰지 않고 그대로 복사). 복사해 두면 그 프로젝트는 이 플러그인이 설치되지 않은 세션에서도 라이브러리를 쓸 수 있다.
+1. **스크립트를 프로젝트로 복사한다** — 이 스킬의 `scripts/feSkills.mjs`를 프로젝트 `.agents/scripts/`로 복사한다(앱 중립 위치 — claude·codex 세션 모두에서 같은 경로)(훅과 같은 이유로 베껴 쓰지 않고 그대로 복사). 복사해 두면 그 프로젝트는 이 플러그인이 설치되지 않은 세션에서도 라이브러리를 쓸 수 있다.
 2. **도메인 스킬 또는 developer 에이전트 정의의 "규칙과 기록" 절에 아래를 넣는다:**
 
 ```markdown
 - **UI 패턴 구현·화면 설계는 fe-skills 라이브러리를 먼저 조회한다.** 직접 짜기 전에
-  `node .claude/scripts/feSkills.mjs find "<사용자 요청 문장>"`을 실행한다.
+  `node .agents/scripts/feSkills.mjs find "<사용자 요청 문장>"`을 실행한다.
   - 후보가 나오면 `get <slug> --into <대상 디렉토리>`로 가져와 SKILL.md를 읽고, 그 정본 코드를
     프로젝트 컨벤션에 맞춰 적용한다. 이미 모션·접근성·`prefers-reduced-motion`이 정리된 코드다.
   - 후보가 없거나(0건) 라이브러리를 못 가져오면(exit 3) 직접 구현하고, 그 사실과 이유를

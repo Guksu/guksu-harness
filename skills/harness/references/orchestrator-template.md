@@ -117,7 +117,7 @@ Agent(agent-2)
 
 ```
 루프 명세: docs/loops/{slug}.md (목표·검증·한도 — 기존 요청과 승인 범위에서 실행)
-검증자 게이트: .claude/hooks/verifierGate.config.json — 명세의 검증자·안전장치 값과 일치
+검증자 게이트: .agents/hooks/verifierGate.config.json — 명세의 검증자·안전장치 값과 일치
 한 바퀴 내부 실행: {직접 실행 | 서브 에이전트 | Workflow} (위 골격 재사용)
 ```
 

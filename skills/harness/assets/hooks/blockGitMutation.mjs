@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse 훅 (matcher: Bash) — git 변경 명령을 차단한다 (절대 규칙 1: git 작업은 사용자 전담).
-// exit 2면 호출이 차단되고 stderr가 에이전트에게 피드백으로 전달된다.
+// exit 2면 호출이 차단되고 stderr가 에이전트에게 피드백으로 전달된다. Claude Code와 Codex 모두
+// stdin JSON의 tool_input.command·cwd를 같은 이름으로 주고 exit 2를 차단으로 해석한다.
 //
 // 예외는 2종이며 모두 사용자 승인 기반이다:
 //   1. switch — 순수 브랜치 전환은 branch 스킬이 사용자 확인 후 수행한다 (아래 주석).
@@ -130,8 +131,9 @@ export const judgeGitCommand = (
 // 게이트를 통과시킨다 — 기록 게이트는 문서 위생 장치이므로, 판정 불가를 차단으로 처리하면
 // git 환경이 다른 곳에서 push 자체가 막힌다(시크릿·변경 명령 가드의 fail-closed와 다른 성격).
 const DEFAULT_HISTORY_BASES = ['origin/dev', 'dev', 'origin/main', 'main', 'origin/master', 'master'];
-const changedPathsSinceBase = (configuredBase) => {
-  const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+// cwd: 훅 입력의 프로젝트 경로. 앱이 훅 프로세스를 프로젝트 루트에서 실행한다고 가정하지 않는다.
+const changedPathsSinceBase = (configuredBase, cwd) => {
+  const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     const currentBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
     const candidates = configuredBase ? [configuredBase] : DEFAULT_HISTORY_BASES;
@@ -159,8 +161,9 @@ const isDirectRun = process.argv[1] != null
 if (isDirectRun) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
-  const { tool_input } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  const command = tool_input?.command ?? '';
+  const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const command = input.tool_input?.command ?? '';
+  const projectDir = input.cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 
   const configPath = join(dirname(fileURLToPath(import.meta.url)), 'blockGitMutation.config.json');
   let config = {};
@@ -176,7 +179,7 @@ if (isDirectRun) {
   const allowCommitPush = config.allowCommitPush === true;
   // 기록 게이트는 commit·push 예외를 켠 하네스의 기본값이다 — 명시적으로 false일 때만 끈다.
   const requireHistoryDoc = allowCommitPush && config.requireHistoryDoc !== false;
-  const changedPaths = requireHistoryDoc ? changedPathsSinceBase(config.historyBase) : null;
+  const changedPaths = requireHistoryDoc ? changedPathsSinceBase(config.historyBase, projectDir) : null;
 
   const verdict = judgeGitCommand(command, {
     allowCommitPush,

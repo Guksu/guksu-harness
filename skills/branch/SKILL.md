@@ -7,7 +7,7 @@ description: "작업 브랜치 확인 — 파일 수정 전에 현재 브랜치�
 
 파일을 수정하기 전에 현재 브랜치와 미커밋 변경을 확인한다. 사용자의 작업을 보존하면서 이번 변경을 별도 브랜치에서 진행하는 것이 목적이다.
 
-1. `git status -sb`와 `git branch --show-current`를 읽는다. 보호 브랜치는 `.claude/hooks/branchGuard.config.json`의 `protectedBranches`를 따른다. 없으면 `main`·`master`다.
+1. `git status -sb`와 `git branch --show-current`를 읽는다. 보호 브랜치는 `.agents/hooks/branchGuard.config.json`의 `protectedBranches`를 따른다(v2 설치본은 `.claude/hooks/`). 없으면 `main`·`master`다.
 2. 현재 브랜치가 이번 작업에 맞으면 그대로 진행한다. 분석·현황 확인만 요청받았으면 브랜치를 만들거나 이동하지 않는다.
 3. 보호 브랜치라면 기존 브랜치 이름·분기 기준을 확인하고 작업 브랜치를 정한다. 기존 규칙이 없으면 `codex/{작업이름}`을 사용한다. `dev`는 프로젝트가 실제로 사용하는 경우에만 기준으로 삼는다.
 4. 사용자가 구현을 승인했고 별도 브랜치 생성이 그 작업에 필요하면 이름과 분기 기준을 알리고 `git switch -c <이름> <기준>`으로 진행한다. 이미 받은 승인을 다시 묻지 않는다. 서로 무관한 기존 변경이 있거나 분기 기준이 결과를 크게 바꾸는데 확인할 수 없으면 그 선택만 질문한다.

@@ -1,6 +1,10 @@
 .DS_Store
 node_modules/
 _workspace/
+.agents/harness-backups/
+.agents/hooks/verifierGate.*.state.json
+.agents/hooks/verifierGate.*.tmp
+# v2 설치본 위치
 .claude/harness-backups/
 .claude/hooks/verifierGate.*.state.json
 .claude/hooks/verifierGate.*.tmp

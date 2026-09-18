@@ -18,7 +18,7 @@ description: "프론트엔드 배포 전 점검(퓨어 JS·React·Next.js) — �
 
 ## 기준치 — config가 단일 출처
 
-프로젝트 `.claude/predeploy.config.json`이 있으면 그것을, 없으면 이 스킬 `assets/predeploy.config.json`의 기본값(Web Vitals 표준: LCP 2.5s·CLS 0.1·INP 200ms, 뷰포트 3종, 연타 5회·마운트 사이클 5회)을 쓴다. 기준치 조정 요청 시 프로젝트 사본을 만들어 수정한다 — 스킬 번들 원본은 고치지 않는다.
+프로젝트 `.agents/predeploy.config.json`(없으면 v2 위치 `.claude/predeploy.config.json`)이 있으면 그것을, 없으면 이 스킬 `assets/predeploy.config.json`의 기본값(Web Vitals 표준: LCP 2.5s·CLS 0.1·INP 200ms, 뷰포트 3종, 연타 5회·마운트 사이클 5회)을 쓴다. 기준치 조정 요청 시 프로젝트 사본을 만들어 수정한다 — 스킬 번들 원본은 고치지 않는다.
 
 ## 워크플로우
 

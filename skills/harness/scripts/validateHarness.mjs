@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // 하네스 구조 검증기 — 스킬/에이전트/플러그인 manifest의 구조적 결함을 잡는다.
+// 프로젝트 스킬은 claude(.claude/skills)와 codex(.agents/skills) 양쪽 경로를 검사한다.
 // 사용법: node scripts/validateHarness.mjs [하네스 루트 경로]
 
 import { readFile, readdir, access } from 'node:fs/promises';
@@ -178,37 +179,49 @@ const validateAgents = async ({ agentsRoot, issues }) => {
   }
 };
 
-// 프로젝트에 하네스(.claude/skills·agents)가 있는가. 플러그인 repo의 루트 skills/는
-// 배포물이지 프로젝트 하네스가 아니므로 CLAUDE.md 포인터·훅 구성 검사 대상에서 의도적으로 제외한다.
+// 프로젝트 스킬 경로 — claude는 .claude/skills, codex는 .agents/skills를 읽는다.
+const PROJECT_SKILL_ROOTS = [['.claude', 'skills'], ['.agents', 'skills']];
+// 규칙 파일 — claude는 CLAUDE.md, codex는 AGENTS.md를 읽는다. 둘 중 하나만 있어도 된다.
+const POINTER_FILES = ['CLAUDE.md', 'AGENTS.md'];
+
+// 프로젝트에 하네스(.claude/skills·.agents/skills·agents)가 있는가. 플러그인 repo의 루트 skills/는
+// 배포물이지 프로젝트 하네스가 아니므로 포인터·훅 구성 검사 대상에서 의도적으로 제외한다.
 const hasProjectHarness = async ({ rootDir }) => {
-  const hasSkills = (await listDir({ path: join(rootDir, '.claude', 'skills') })).some((entry) =>
-    entry.isDirectory(),
-  );
+  let hasSkills = false;
+  for (const parts of PROJECT_SKILL_ROOTS) {
+    if ((await listDir({ path: join(rootDir, ...parts) })).some((entry) => entry.isDirectory())) hasSkills = true;
+  }
   const hasAgents = (await listDir({ path: join(rootDir, '.claude', 'agents') })).some(
     (entry) => entry.isFile() && entry.name.endsWith('.md'),
   );
   return hasSkills || hasAgents;
 };
 
-const validateClaudeMdPointer = async ({ rootDir, issues }) => {
+const validatePointerFile = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
-  const claudeMdPath = join(rootDir, 'CLAUDE.md');
-  if (!(await exists({ path: claudeMdPath }))) {
+  const present = [];
+  for (const name of POINTER_FILES) {
+    if (await exists({ path: join(rootDir, name) })) present.push(name);
+  }
+  if (present.length === 0) {
     issues.push({
       level: 'warn',
-      path: claudeMdPath,
-      message: 'CLAUDE.md가 없다 — 하네스 포인터(목표·트리거·규칙 파일 포인터)를 등록하라 (Phase 4)',
+      path: join(rootDir, 'CLAUDE.md'),
+      message: 'CLAUDE.md 또는 AGENTS.md가 없다 — 하네스 포인터(목표·트리거·규칙 파일 포인터)를 등록하라 (Phase 4)',
     });
     return;
   }
-  const content = await readFile(claudeMdPath, 'utf8');
-  if (!/##\s*하네스/.test(content)) {
-    issues.push({
-      level: 'warn',
-      path: claudeMdPath,
-      message: 'CLAUDE.md에 하네스 포인터 섹션(## 하네스: ...)이 없다 (Phase 4)',
-    });
+  for (const name of present) {
+    const pointerPath = join(rootDir, name);
+    const content = await readFile(pointerPath, 'utf8');
+    if (!/##\s*하네스/.test(content)) {
+      issues.push({
+        level: 'warn',
+        path: pointerPath,
+        message: `${name}에 하네스 포인터 섹션(## 하네스: ...)이 없다 (Phase 4)`,
+      });
+    }
   }
 };
 
@@ -219,7 +232,9 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
   let templates = COMMON_TEMPLATES;
-  const installPath = join(rootDir, '.claude', 'harness-install.json');
+  // 설치 추적 기록 — v3부터 .agents/, v2.x는 .claude/에 있다.
+  let installPath = join(rootDir, '.agents', 'harness-install.json');
+  if (!(await exists({ path: installPath }))) installPath = join(rootDir, '.claude', 'harness-install.json');
   if (await exists({ path: installPath })) {
     try {
       const install = JSON.parse(await readFile(installPath, 'utf8'));
@@ -281,25 +296,37 @@ const validateRulesFile = async ({ rootDir, issues }) => {
   }
 };
 
+// 훅 등록 파일 — claude는 .claude/settings.json(hooks + permissions.deny), codex는 .codex/hooks.json(hooks).
+// 둘 중 어느 파일에든 등록되어 있으면 구성된 것으로 본다. 실제 실행 지원은 앱별로 다르다.
+const HOOK_REGISTRIES = [
+  { app: 'claude', parts: ['.claude', 'settings.json'] },
+  { app: 'codex', parts: ['.codex', 'hooks.json'] },
+];
+
 const validateEnforcement = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
-  const settingsPath = join(rootDir, '.claude', 'settings.json');
-  let settings = null;
-  try {
-    settings = JSON.parse(await readFile(settingsPath, 'utf8'));
-  } catch {
-    // 파일 없음/파싱 실패 — 아래에서 미구성으로 보고된다
+  const registries = [];
+  for (const registry of HOOK_REGISTRIES) {
+    const path = join(rootDir, ...registry.parts);
+    let data = null;
+    try {
+      data = JSON.parse(await readFile(path, 'utf8'));
+    } catch {
+      // 파일 없음/파싱 실패 — 아래에서 미구성으로 보고된다
+    }
+    registries.push({ ...registry, path, data });
   }
-
-  const preToolUseCommands = (settings?.hooks?.PreToolUse ?? [])
+  const preToolUseCommands = registries
+    .flatMap((registry) => registry.data?.hooks?.PreToolUse ?? [])
     .flatMap((entry) => entry.hooks ?? [])
     .map((hook) => hook.command ?? '')
     .join('\n');
+  const reportPath = registries.find((registry) => registry.data)?.path ?? registries[0].path;
   if (!preToolUseCommands.includes('blockGitMutation')) {
     issues.push({
       level: 'warn',
-      path: settingsPath,
+      path: reportPath,
       message:
         'git 차단 훅(blockGitMutation)이 구성되지 않았다 — 절대 규칙 1의 기계적 강제가 없다 (hooks-and-permissions.md)',
     });
@@ -307,7 +334,7 @@ const validateEnforcement = async ({ rootDir, issues }) => {
   if (!preToolUseCommands.includes('blockSecretAccess')) {
     issues.push({
       level: 'warn',
-      path: settingsPath,
+      path: reportPath,
       message:
         '시크릿 Bash 차단 훅(blockSecretAccess)이 구성되지 않았다 — deny는 Read 도구만 막아 cat .env 우회가 열린다 (hooks-and-permissions.md)',
     });
@@ -315,16 +342,20 @@ const validateEnforcement = async ({ rootDir, issues }) => {
   if (!preToolUseCommands.includes('branchGuard')) {
     issues.push({
       level: 'warn',
-      path: settingsPath,
+      path: reportPath,
       message:
         '브랜치 가드 훅(branchGuard)이 구성되지 않았다 — 보호 브랜치 편집 차단이 없다 (hooks-and-permissions.md)',
     });
   }
-  const denyPatterns = settings?.permissions?.deny ?? [];
-  if (!denyPatterns.some((pattern) => pattern.includes('.env'))) {
+  // Read deny는 claude 전용 권한이다. codex만 쓰는 프로젝트(codex 등록만 있음)에는 요구하지 않는다.
+  const claude = registries.find((registry) => registry.app === 'claude');
+  const codex = registries.find((registry) => registry.app === 'codex');
+  const claudeOnlyMissing = !claude.data && codex.data;
+  const denyPatterns = claude.data?.permissions?.deny ?? [];
+  if (!claudeOnlyMissing && !denyPatterns.some((pattern) => pattern.includes('.env'))) {
     issues.push({
       level: 'warn',
-      path: settingsPath,
+      path: claude.path,
       message:
         '시크릿 deny 권한(.env 등)이 구성되지 않았다 — 절대 규칙 6의 기계적 강제가 없다 (hooks-and-permissions.md)',
     });
@@ -344,35 +375,67 @@ const validateCommandsDir = async ({ rootDir, issues }) => {
   }
 };
 
+// 플러그인 repo: claude(.claude-plugin)·codex(.codex-plugin + .agents/plugins) 설명 파일의 이름·버전 일치.
 const validatePluginManifests = async ({ rootDir, issues }) => {
-  const pluginPath = join(rootDir, '.claude-plugin', 'plugin.json');
-  const marketplacePath = join(rootDir, '.claude-plugin', 'marketplace.json');
-  if (!(await exists({ path: pluginPath })) || !(await exists({ path: marketplacePath }))) return;
+  const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'));
+  const claudePlugin = join(rootDir, '.claude-plugin', 'plugin.json');
+  const claudeMarket = join(rootDir, '.claude-plugin', 'marketplace.json');
+  const codexPlugin = join(rootDir, '.codex-plugin', 'plugin.json');
+  const codexMarket = join(rootDir, '.agents', 'plugins', 'marketplace.json');
+  const versions = [];
 
-  try {
-    const plugin = JSON.parse(await readFile(pluginPath, 'utf8'));
-    const marketplace = JSON.parse(await readFile(marketplacePath, 'utf8'));
-    const marketplaceEntry = (marketplace.plugins ?? []).find(
-      (entry) => entry.name === plugin.name,
-    );
-    if (!marketplaceEntry) {
-      issues.push({
-        level: 'error',
-        path: marketplacePath,
-        message: `plugins에 ${plugin.name} 항목이 없다`,
-      });
-    } else if (marketplaceEntry.version !== plugin.version) {
-      issues.push({
-        level: 'error',
-        path: marketplacePath,
-        message: `버전 불일치 — plugin.json(${plugin.version}) vs marketplace.json(${marketplaceEntry.version})`,
-      });
+  if ((await exists({ path: claudePlugin })) && (await exists({ path: claudeMarket }))) {
+    try {
+      const plugin = await readJson(claudePlugin);
+      const marketplace = await readJson(claudeMarket);
+      versions.push({ path: claudePlugin, version: plugin.version });
+      const marketplaceEntry = (marketplace.plugins ?? []).find((entry) => entry.name === plugin.name);
+      if (!marketplaceEntry) {
+        issues.push({ level: 'error', path: claudeMarket, message: `plugins에 ${plugin.name} 항목이 없다` });
+      } else if (marketplaceEntry.version !== plugin.version) {
+        issues.push({
+          level: 'error',
+          path: claudeMarket,
+          message: `버전 불일치 — plugin.json(${plugin.version}) vs marketplace.json(${marketplaceEntry.version})`,
+        });
+      }
+    } catch (parseError) {
+      issues.push({ level: 'error', path: claudePlugin, message: `manifest JSON 파싱 실패 — ${parseError.message}` });
     }
-  } catch (parseError) {
+  }
+
+  if (await exists({ path: codexPlugin })) {
+    try {
+      const plugin = await readJson(codexPlugin);
+      versions.push({ path: codexPlugin, version: plugin.version });
+      for (const field of ['name', 'version', 'description', 'author', 'interface']) {
+        if (plugin[field] == null) {
+          issues.push({ level: 'error', path: codexPlugin, message: `codex plugin.json에 필수 항목 ${field}가 없다` });
+        }
+      }
+      if (await exists({ path: codexMarket })) {
+        const marketplace = await readJson(codexMarket);
+        if (!(marketplace.plugins ?? []).some((entry) => entry.name === plugin.name)) {
+          issues.push({ level: 'error', path: codexMarket, message: `plugins에 ${plugin.name} 항목이 없다` });
+        }
+      } else {
+        issues.push({
+          level: 'warn',
+          path: codexMarket,
+          message: 'codex 마켓 목록(.agents/plugins/marketplace.json)이 없다 — codex plugin marketplace add로 설치할 수 없다',
+        });
+      }
+    } catch (parseError) {
+      issues.push({ level: 'error', path: codexPlugin, message: `manifest JSON 파싱 실패 — ${parseError.message}` });
+    }
+  }
+
+  const distinct = new Set(versions.map((entry) => entry.version));
+  if (distinct.size > 1) {
     issues.push({
       level: 'error',
-      path: pluginPath,
-      message: `manifest JSON 파싱 실패 — ${parseError.message}`,
+      path: versions[0].path,
+      message: `앱별 plugin.json 버전이 다르다 — ${versions.map((entry) => `${entry.path.split('/').slice(-2).join('/')}(${entry.version})`).join(' vs ')}`,
     });
   }
 };
@@ -383,11 +446,13 @@ export const validateHarness = async ({ rootDir }) => {
     ...(await collectAgentNames({ agentsRoot: join(rootDir, '.claude', 'agents') })),
     ...(await collectAgentNames({ agentsRoot: join(rootDir, 'agents') })),
   ]);
-  await validateSkillsRoot({ skillsRoot: join(rootDir, '.claude', 'skills'), agentNames, issues });
+  for (const parts of PROJECT_SKILL_ROOTS) {
+    await validateSkillsRoot({ skillsRoot: join(rootDir, ...parts), agentNames, issues });
+  }
   await validateSkillsRoot({ skillsRoot: join(rootDir, 'skills'), agentNames, issues });
   await validateAgents({ agentsRoot: join(rootDir, '.claude', 'agents'), issues });
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
-  await validateClaudeMdPointer({ rootDir, issues });
+  await validatePointerFile({ rootDir, issues });
   await validateCommonTemplates({ rootDir, issues });
   await validateRulesFile({ rootDir, issues });
   await validateEnforcement({ rootDir, issues });

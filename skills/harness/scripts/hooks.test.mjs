@@ -270,7 +270,7 @@ test('브랜치 가드 — detached HEAD·git 저장소 아님은 null (가드 �
 });
 
 // CLI 경로 검증 — config는 스크립트 옆에서 읽으므로 훅을 임시 디렉토리로 복사해 실행한다
-const runBranchGuardCli = async ({ config, headRef }) => {
+const runBranchGuardCli = async ({ config, headRef, app = 'claude' }) => {
   const rootDir = await mkdtemp(join(tmpdir(), 'guksu-guard-cli-'));
   const hookPath = join(rootDir, 'branchGuard.mjs');
   await copyFile(
@@ -281,14 +281,26 @@ const runBranchGuardCli = async ({ config, headRef }) => {
   const projectDir = join(rootDir, 'project');
   await mkdir(join(projectDir, '.git'), { recursive: true });
   await writeFile(join(projectDir, '.git', 'HEAD'), headRef);
+  // codex는 CLAUDE_PROJECT_DIR를 주지 않고 tool_name을 apply_patch로 보고한다 — cwd로만 프로젝트를 찾아야 한다.
+  const { CLAUDE_PROJECT_DIR: _omit, ...baseEnv } = process.env;
   const result = spawnSync(process.execPath, [hookPath], {
-    input: JSON.stringify({ cwd: projectDir, tool_input: { file_path: 'a.ts' } }),
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+    input: app === 'codex'
+      ? JSON.stringify({ cwd: projectDir, hook_event_name: 'PreToolUse', tool_name: 'apply_patch', tool_input: { patch: '*** Begin Patch' } })
+      : JSON.stringify({ cwd: projectDir, tool_input: { file_path: 'a.ts' } }),
+    env: app === 'codex' ? baseEnv : { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
     encoding: 'utf8',
   });
   await rm(rootDir, { recursive: true, force: true });
   return result;
 };
+
+test('브랜치 가드 CLI — codex 입력(CLAUDE_PROJECT_DIR 없음·apply_patch)도 cwd 기준으로 차단한다', async () => {
+  const onMain = await runBranchGuardCli({ headRef: 'ref: refs/heads/main\n', app: 'codex' });
+  assert.equal(onMain.status, 2);
+  assert.ok(onMain.stderr.includes('보호 브랜치'));
+  const onFeature = await runBranchGuardCli({ headRef: 'ref: refs/heads/feat/login\n', app: 'codex' });
+  assert.equal(onFeature.status, 0);
+});
 
 test('브랜치 가드 CLI — 보호 브랜치 편집은 exit 2로 차단, 작업 브랜치는 통과', async () => {
   const onMain = await runBranchGuardCli({ headRef: 'ref: refs/heads/main\n' });
@@ -309,7 +321,7 @@ test('브랜치 가드 CLI — 설정 파일이 깨져 있으면 fail-closed(차
 });
 
 // CLI 경로 검증 — config는 스크립트 옆에서 읽으므로 훅을 임시 디렉토리로 복사해 실행한다
-const runGitMutationCli = async ({ config, command }) => {
+const runGitMutationCli = async ({ config, command, cwd }) => {
   const rootDir = await mkdtemp(join(tmpdir(), 'guksu-git-cli-'));
   const hookPath = join(rootDir, 'blockGitMutation.mjs');
   await copyFile(
@@ -318,12 +330,34 @@ const runGitMutationCli = async ({ config, command }) => {
   );
   if (config != null) await writeFile(join(rootDir, 'blockGitMutation.config.json'), config);
   const result = spawnSync(process.execPath, [hookPath], {
-    input: JSON.stringify({ tool_input: { command } }),
+    input: JSON.stringify({ ...(cwd ? { cwd } : {}), tool_input: { command } }),
     encoding: 'utf8',
   });
   await rm(rootDir, { recursive: true, force: true });
   return result;
 };
+
+test('git 훅 CLI — 기록 게이트는 stdin의 cwd에서 git을 실행한다 (훅 프로세스의 현재 디렉터리에 의존하지 않는다)', async () => {
+  // 실제 저장소: main에 기록 없는 커밋, 작업 브랜치에 기록 문서 커밋
+  const repo = await mkdtemp(join(tmpdir(), 'guksu-history-'));
+  const git = (...args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+  git('init', '-q', '-b', 'main');
+  await writeFile(join(repo, 'a.txt'), 'a');
+  git('add', '.'); git('commit', '-q', '-m', 'init');
+  git('switch', '-q', '-c', 'feat/x');
+  await writeFile(join(repo, 'b.txt'), 'b');
+  git('add', '.'); git('commit', '-q', '-m', 'work');
+  const config = '{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "main" }';
+  const missing = await runGitMutationCli({ config, command: 'git push -u origin feat/x', cwd: repo });
+  assert.equal(missing.status, 2, missing.stderr);
+  assert.ok(missing.stderr.includes('작업 기록이 없습니다'));
+  await mkdir(join(repo, 'docs', 'history'), { recursive: true });
+  await writeFile(join(repo, 'docs', 'history', '2026-01-01-x.md'), '# x');
+  git('add', '.'); git('commit', '-q', '-m', 'history');
+  const present = await runGitMutationCli({ config, command: 'git push -u origin feat/x', cwd: repo });
+  assert.equal(present.status, 0, present.stderr);
+  await rm(repo, { recursive: true, force: true });
+});
 
 test('git 훅 CLI — allowCommitPush 옵트인으로 커밋이 열리고, 표기 커밋·설정 오류는 차단된다', async () => {
   const off = await runGitMutationCli({ command: 'git commit -m "feat: x"' });

@@ -2,6 +2,30 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [3.0.0] - 2026-09-18
+
+Codex에서도 같은 스킬과 훅을 쓸 수 있게 했다. 관리 파일 위치가 `.claude/`에서 앱 중립 위치 `.agents/`로 바뀌므로 주 버전을 올렸다.
+
+### Added
+
+- `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`: Codex 플러그인 설명 파일. `skills/`는 Claude Code와 공유한다. 훅은 플러그인에 번들하지 않고 프로젝트별로 관리자가 등록한다(설정 파일이 프로젝트에 있어야 하므로).
+- `harnessManager.mjs --app claude|codex|both`: 등록할 앱 선택. 생략하면 프로젝트 파일(`.claude/`·`CLAUDE.md`·`.codex/`·`AGENTS.md`)로 추정하고 추적 기록에 저장한다. Codex는 `.codex/hooks.json`에 상대 경로 명령과 `apply_patch|Edit|Write` matcher로 등록한다.
+- v2 설치본 이동: `.claude/hooks/`·`.claude/harness-install.json`을 업데이트 계획에서 `.agents/`로 옮긴다. 수정한 파일, 새 위치의 다른 설정, 이전 파일을 참조하는 수동 등록은 충돌로 보존한다.
+- `validateHarness.mjs`: `.agents/skills/` 스킬 검사, `AGENTS.md` 포인터 검사, `.codex/hooks.json` 등록 검사, Codex plugin.json 필수 항목·마켓 목록·두 plugin.json 버전 일치 검사.
+- 테스트 17건 추가(101→118): 앱 추정, codex·both 설치와 제거, v2 이동과 충돌, codex 형식 훅 입력, 기록 게이트의 cwd 사용, Codex 경로 검사.
+- `hooks-and-permissions.md` §8: 앱별 실행 조건과 사용자 확인 절차.
+
+### Changed
+
+- **업데이트 주의:** 훅 스크립트·설정은 `.agents/hooks/`, 추적 기록은 `.agents/harness-install.json`, 백업은 `.agents/harness-backups/`에 둔다. `.gitignore`의 상태·백업 경로를 바꾼다.
+- 훅은 프로젝트 경로를 stdin의 `cwd`에서 먼저 읽는다. `CLAUDE_PROJECT_DIR`는 없을 때만 쓴다. 기록 게이트의 git 명령도 `cwd`에서 실행한다.
+- 스킬·참조 문서의 `.claude/...` 경로 표현을 앱 중립 경로로 바꾸고, `CLAUDE.md`만 가리키던 곳은 `CLAUDE.md·AGENTS.md`로 넓혔다. `context-economy.md`의 Claude Code 전용 항목(`.claude/rules/`, `/context`, `/usage`)에 전용 표시를 달았다.
+- 상태 진단이 앱별 등록 여부와 이전 위치에 남은 파일을 표시한다.
+
+### 확인하지 못한 것
+
+- Codex 앱 안에서의 실제 훅 실행. Codex 0.133의 `apply_patch` 차단 미적용 버그(openai/codex #27833)가 사용 중인 버전에 있는지, 훅 프로세스의 현재 디렉터리가 프로젝트 루트인지, Read deny에 해당하는 Codex 설정이 있는지, Stop 입력의 transcript 형식이 같은지.
+
 ## [2.3.0] - 2026-09-12
 
 프로젝트 작업 규칙을 더 적은 확인 절차로 사용할 수 있게 정리하고, 설치 상태 진단과 변경 미리보기·업데이트·제거·복원을 추가했다.

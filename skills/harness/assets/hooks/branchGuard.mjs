@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// PreToolUse 훅 (matcher: Edit|Write|NotebookEdit) — 보호 브랜치(main 등) 위에서의 파일 편집을 차단한다.
+// PreToolUse 훅 — 보호 브랜치(main 등) 위에서의 파일 편집을 차단한다.
+//   matcher: Claude Code는 Edit|Write|NotebookEdit, Codex는 apply_patch|Edit|Write (편집 도구 이름이 다르다).
 // "작업 시작 전에 작업 브랜치부터 확인"을 기계적으로 강제한다 — branch 스킬과 한 쌍으로 동작한다.
 // exit 2면 호출이 차단되고 stderr가 에이전트에게 피드백으로 전달된다.
 //
@@ -64,7 +65,8 @@ if (isDirectRun) {
     }
   }
 
-  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? input.cwd ?? process.cwd();
+  // 프로젝트 경로: 훅 입력의 cwd가 우선이다. CLAUDE_PROJECT_DIR는 Claude Code만 준다.
+  const projectDir = input.cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const branch = readCurrentBranch({ projectDir });
   if (isProtectedBranch({ branch, protectedBranches })) {
     console.error(

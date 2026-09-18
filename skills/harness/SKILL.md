@@ -28,7 +28,7 @@ description: "프로젝트 작업 규칙 설정 — 하네스를 구축·점검�
 
 ## 1. 현황 확인
 
-1. 프로젝트의 `CLAUDE.md`, `.claude/skills/`, `.claude/agents/`, 공유 설정과 기존 기록을 확인한다. 실제 민감정보 파일은 읽지 않는다.
+1. 프로젝트의 규칙 파일(`CLAUDE.md`·`AGENTS.md`), 스킬 경로(`.claude/skills/`·`.agents/skills/`), `.claude/agents/`, 앱별 등록 파일(`.claude/settings.json`·`.codex/hooks.json`)과 기존 기록을 확인한다. 실제 민감정보 파일은 읽지 않는다. 현재 앱이 Claude Code인지 Codex인지도 확인한다.
 2. 아래 두 검사를 실행한다. 구조 검사와 상태 진단은 파일을 수정하지 않는다.
 
 ```bash
@@ -45,7 +45,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs status <프로젝트>
 
 | 구성 | 사용하는 경우 | 만드는 것 |
 |---|---|---|
-| **기본** (`basic`, 이전 라이트) | 직접 실행, 단발 위임, 한 작업 안의 반복 | 도메인 스킬, 규칙 파일, 기본 훅·권한, history·handoff 템플릿, CLAUDE.md 포인터 |
+| **기본** (`basic`, 이전 라이트) | 직접 실행, 단발 위임, 한 작업 안의 반복 | 도메인 스킬, 규칙 파일, 기본 훅·권한, history·handoff 템플릿, 규칙 파일(CLAUDE.md·AGENTS.md) 포인터 |
 | **협업** (`collaboration`, 이전 풀) | 여러 역할이 실제로 지속 협업 | 기본 구성 + 필요한 에이전트 정의·진행표, retro·loop-spec 템플릿 |
 
 검증 훅은 구성과 별개인 선택 기능이다. 장시간·정기 실행이 필요하면 `loop` 스킬을 사용한다. 상세 선택 기준은 `references/execution-modes.md`, 에이전트 정의는 `references/agent-design.md`를 따른다.
@@ -59,31 +59,31 @@ node {이 스킬 경로}/scripts/harnessManager.mjs plan <프로젝트> --out <�
 node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan <계획.json>
 ```
 
-- `plan`은 추가·수정·충돌·보존 목록을 보여 준다. 프로젝트는 바꾸지 않는다.
+- `plan`은 추가·수정·충돌·보존 목록을 보여 준다. 프로젝트는 바꾸지 않는다. `--app claude|codex|both`로 등록할 앱을 고른다. 생략하면 프로젝트 파일로 추정한다.
 - 적용은 저장된 계획이 현재 파일·번들과 일치할 때만 한다. 사용자 수정 파일과 출처가 불명확한 파일은 덮어쓰지 않는다.
 - 사용자가 업데이트를 승인했다면 변경 목록을 설명하고 적용한다. 미리보기를 새 승인 의례로 만들지 않는다. 충돌은 내용 비교 후 요청 범위에서 해결하고, 결과를 바꾸는 미결정만 질문한다.
-- 관리자 도구는 공통 훅·규칙·템플릿·공유 훅 등록만 관리한다. 도메인 스킬·에이전트·CLAUDE.md·검증 명령은 아래에서 별도로 구성한다.
+- 관리자 도구는 공통 훅·규칙·템플릿·앱별 훅 등록만 관리한다. 훅 파일은 앱 중립 위치 `.agents/hooks/`에 둔다. 도메인 스킬·에이전트·규칙 파일·검증 명령은 아래에서 별도로 구성한다.
 
 추가 구성:
 
-1. 프로젝트 `.claude/skills/{name}/SKILL.md`에 필요한 도메인 절차를 작성한다. 중복 스킬부터 확인하고, 본문은 500줄 이내로 유지한다 → `references/skill-authoring.md`.
+1. 프로젝트 스킬 경로에 필요한 도메인 절차를 `{name}/SKILL.md`로 작성한다. Claude Code는 `.claude/skills/`, Codex는 `.agents/skills/`를 읽는다. 두 앱을 함께 쓰면 한쪽에 두고 다른 쪽에 같은 내용을 복사한다(심볼릭 링크는 Windows에서 깨진다). 중복 스킬부터 확인하고, 본문은 500줄 이내로 유지한다 → `references/skill-authoring.md`.
 2. 협업 구성이면 실제로 재사용할 역할 정의와 진행표만 만든다 → `references/orchestrator-template.md`.
 3. 프로젝트의 보호 브랜치·커밋 허용·기록·작성자 표기 정책을 확인한다. 기존 설정은 보존하며 영구 권한 확대는 요청 범위에 포함됐을 때만 한다 → `references/hooks-and-permissions.md`.
 4. 프론트엔드 프로젝트면 구현 중 `fe-craft`, 배포 전 `fe-predeploy`를 연결한다. 외부 라이브러리 연동은 `references/frontend-domain.md`를 따른다.
-5. `_workspace/`, `.claude/harness-backups/`, `.claude/hooks/verifierGate.*.state.json`과 임시 파일을 `.gitignore`에 추가한다. 백업에는 설정 사본이 있으므로 커밋하지 않는다.
-6. `CLAUDE.md`에는 목표·호출 조건·규칙 파일 포인터만 등록한다. 작업 기록은 `history`로 한 건에 모으고 변경 이력을 여러 곳에 중복 작성하지 않는다.
+5. `_workspace/`, `.agents/harness-backups/`, `.agents/hooks/verifierGate.*.state.json`과 임시 파일을 `.gitignore`에 추가한다. 백업에는 설정 사본이 있으므로 커밋하지 않는다.
+6. 규칙 파일에는 목표·호출 조건·규칙 파일 포인터만 등록한다. Claude Code는 `CLAUDE.md`, Codex는 `AGENTS.md`를 읽는다. 두 앱을 함께 쓰면 둘 다 두되 내용은 같게 유지한다. 작업 기록은 `history`로 한 건에 모으고 변경 이력을 여러 곳에 중복 작성하지 않는다.
 
 ## 4. 검증과 완료
 
 1. 구조 검사를 다시 실행한다. 오류를 해결하고 경고는 적용 대상인지 확인한다.
 2. 스크립트를 변경했으면 관련 회귀 테스트를 실행한다. 종료 훅은 개별 함수뿐 아니라 실제 이벤트 입력 순서도 검사한다.
-3. `references/testing-guide.md`의 요청 시나리오로 읽기 전용 요청·작은 수정·업데이트 충돌·기록·업로드 범위를 확인한다. 모델 실행 평가와 문서 검사를 혼동하지 않는다.
+3. `references/testing-guide.md`의 요청 시나리오로 읽기 전용 요청·작은 수정·업데이트 충돌·기록·업로드 범위를 확인한다. 모델 실행 평가와 문서 검사를 혼동하지 않는다. 훅이 실제 앱에서 동작하는지는 `references/hooks-and-permissions.md` §8의 절차로 사용자가 확인한다.
 4. `references/plain-output.md`에 따라 결과·남은 실패·사용자 할 일을 짧게 보고한다.
 5. 의미 있는 변경·커밋·PR 단위 기록은 `history` 스킬로 남긴다. 커밋·푸시는 요청받은 경우에만 `pr` 스킬로 진행한다.
 
 ## 해체
 
-1. 요청한 대상을 참조하는 스킬·에이전트·CLAUDE.md를 역추적하고 참조부터 정리한다.
+1. 요청한 대상을 참조하는 스킬·에이전트·규칙 파일(CLAUDE.md·AGENTS.md)을 역추적하고 참조부터 정리한다.
 2. 관리 파일은 `plan --mode remove`로 미리보고 적용한다. 직접 수정한 파일이나 변경된 등록 항목은 충돌로 보존한다.
 3. 도구 밖에서 생성한 도메인 정의는 생성 근거와 요청 범위를 확인해 제거한다. 사용자 기록과 기존 설정은 보존한다.
 4. 구조 검사와 상태 진단으로 남은 참조를 확인한다. 기존 수동 설치의 출처를 확인할 수 없으면 임의 삭제하지 않고 목록을 보고한다.
@@ -93,7 +93,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan 
 | 파일 | 필요한 때 |
 |---|---|
 | `references/installation.md` | 진단·미리보기·업데이트·제거·복원 |
-| `references/hooks-and-permissions.md` | 훅별 설정과 한계 |
+| `references/hooks-and-permissions.md` | 훅별 설정과 한계, 앱(Claude Code·Codex)별 등록·확인 |
 | `references/design-dialogue.md` | 빠진 요구사항 결정 |
 | `references/execution-modes.md` | 실행 방식 선택 |
 | `references/agent-design.md` | 독립 역할 정의 |
