@@ -1,16 +1,30 @@
 # 상태 확인과 안전한 업데이트
 
+일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다.
+
+```bash
+npx guksu-harness init /path/to/project --app both
+npx guksu-harness update /path/to/project
+npx guksu-harness check /path/to/project
+npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
+```
+
 `harnessManager.mjs`는 **이 번들에 포함된 공통 파일**을 프로젝트에 설치·업데이트한다. 도메인 스킬·에이전트·규칙 파일(CLAUDE.md·AGENTS.md) 작성은 `harness` 스킬이 담당한다. 기존 사용자 설정과 기록은 관리 대상에 포함하지 않는다.
 
 관리 파일은 앱 중립 위치 `.agents/`에 둔다. 훅 등록만 앱별 파일에 쓴다.
 
-| 파일 | 위치 |
-|---|---|
-| 훅 스크립트·설정 | `.agents/hooks/` |
-| 설치 추적 기록 | `.agents/harness-install.json` |
-| 백업 | `.agents/harness-backups/` |
-| Claude Code 등록 | `.claude/settings.json` |
-| Codex 등록 | `.codex/hooks.json` |
+| 파일 | 위치 | 소유 |
+|---|---|---|
+| 훅 스크립트 | `.agents/hooks/` | 코어 — 미수정이면 교체, 수정본은 충돌. `eject` 가능 |
+| 코어 규칙 사본 | `.agents/harness-core-rules.md` | 코어 — 항상 새 버전으로 교체 |
+| 팀 규칙 | `docs/harness-rules.md` | 프로젝트 — 없을 때 한 번 생성, 이후 안 건드림 |
+| 규칙 포인터 | `CLAUDE.md`·`AGENTS.md` | 프로젝트 — 없을 때 한 번 생성 |
+| 문서 템플릿 | `docs/templates/` | 공동 — 미수정이면 교체, 수정본은 충돌(3-way 병합은 4.1.0 예정) |
+| 훅 설정값 | `.agents/hooks/*.config.json` | 프로젝트 |
+| 설치 추적 기록 | `.agents/harness-install.json` | 관리 도구 |
+| 백업 | `.agents/harness-backups/` | 관리 도구 |
+| Claude Code 등록 | `.claude/settings.json` | 공동 — 이 도구가 넣은 항목만 갱신 |
+| Codex 등록 | `.codex/hooks.json` | 공동 |
 
 필요 환경: Node.js 22 이상. 아래 명령의 `MANAGER`는 설치된 플러그인의 `skills/harness/scripts/harnessManager.mjs` 절대 경로다. 플러그인 저장소에서 실행할 때는 이 상대 경로를 그대로 사용할 수 있다.
 
@@ -87,6 +101,24 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 ```
 
 추적한 훅과 이 도구가 추가한 정확한 등록 항목만 제거한다. 수정된 등록이나 기존 수동 등록이 파일을 참조하면 충돌로 남긴다. 설정 파일·문서·사용자 작업 기록은 보존한다. 도메인 정의나 CLAUDE.md 참조는 `harness` 스킬에서 먼저 정리한다. 추적 기록이 없는 옛 설치본을 임의로 삭제하지 않는다.
+
+## eject — 코어 파일을 프로젝트 소유로
+
+```bash
+npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
+```
+
+대상 파일의 추적을 해제하고 `harness-install.json`의 `ejected`에 기록한다. 파일은 그대로 남고 이후 업데이트·제거에서 건드리지 않는다. 코어 파일(훅 4종·코어 규칙 사본)에만 쓸 수 있다. 되돌리려면 파일을 지우고 `ejected` 항목을 제거한 뒤 `update`를 실행한다. 팀이 코어 파일을 고쳐야 할 때의 탈출구이며 기본 안내는 하지 않는다 — 대부분의 커스텀은 설정값·팀 규칙·팀 스킬·팀 훅으로 해결한다.
+
+## v3 규칙 파일 전환 (v4.0.0)
+
+v3.x는 `docs/harness-rules.md`에 코어 규칙 전문을 두고 추적했다. v4는 코어 사본을 `.agents/harness-core-rules.md`로 옮기고 `docs/harness-rules.md`를 팀 규칙 파일로 쓴다.
+
+| 대상 | 계획에 표시되는 처리 |
+|---|---|
+| `docs/harness-rules.md` (v3 원본 그대로) | update — 팀 규칙 양식(코어 포인터 + 빈 팀 규칙)으로 교체. 추적 해제 |
+| `docs/harness-rules.md` (팀이 수정) | preserve — 그대로 두고 추적만 해제. `status`가 "코어 규칙 전문이 남아 있다"고 안내하므로 코어 규칙 7개를 지우고 포인터를 남긴다 |
+| `.agents/harness-core-rules.md` | create |
 
 ## v2 설치본 이동 (v3.0.0)
 

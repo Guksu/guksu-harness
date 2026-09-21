@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // 번들 자산만 추적한다. 도메인 스킬·사용자 기록·개인 설정은 관리 대상이 아니다.
+// 파일 소유권 (docs/design/2026-09-21-scaffold.md):
+//   코어 파일   — 훅 스크립트, 코어 규칙 사본(.agents/harness-core-rules.md). 미수정이면 교체, 수정됐으면 충돌. eject로 소유 전환.
+//   공동 파일   — 문서 템플릿, 앱 등록 파일. 이 도구가 넣은 부분만 갱신.
+//   프로젝트 파일 — 팀 규칙(docs/harness-rules.md), 규칙 포인터(CLAUDE.md·AGENTS.md). 없을 때 한 번 만들고 이후 건드리지 않는다.
 // 관리 파일(훅·추적 기록·백업)은 앱 중립 위치 .agents/에 둔다. 훅 등록만 앱별 파일에 쓴다:
 //   claude → .claude/settings.json (hooks + permissions.deny), codex → .codex/hooks.json (hooks)
-// v2.x가 설치한 .claude/hooks/·.claude/harness-install.json은 업데이트 계획에서 새 위치로 이동한다.
+// v2.x(.claude/hooks/·.claude/harness-install.json)와 v3.x(docs/harness-rules.md를 코어 사본으로 추적)는 업데이트 계획에서 변환한다.
 import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -10,23 +14,28 @@ import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateHarness } from './validateHarness.mjs';
 
-const bundleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+export const bundleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const hooksDir = '.agents/hooks';
 const legacyHooksDir = '.claude/hooks';
 const manifestPath = '.agents/harness-install.json';
 const legacyManifestPath = '.claude/harness-install.json';
 const backupDir = '.agents/harness-backups';
-// 앱별 훅 등록 파일. signals는 --app 생략 시 프로젝트에서 앱을 추정하는 단서다.
+export const coreRulesPath = '.agents/harness-core-rules.md';
+export const teamRulesPath = 'docs/harness-rules.md';
+const rulesAsset = 'skills/harness/assets/harness-rules.md';
+const teamRulesAsset = 'skills/harness/assets/harness-team-rules.md';
+const pointerAsset = 'skills/harness/assets/pointer.md';
+// 앱별 훅 등록 파일과 규칙 포인터 파일. signals는 --app 생략 시 프로젝트에서 앱을 추정하는 단서다.
 const apps = {
-  claude: { registry: '.claude/settings.json', signals: ['.claude', 'CLAUDE.md'] },
-  codex: { registry: '.codex/hooks.json', signals: ['.codex', 'AGENTS.md', '.agents/skills', '.agents/plugins'] },
+  claude: { registry: '.claude/settings.json', pointer: 'CLAUDE.md', signals: ['.claude', 'CLAUDE.md'] },
+  codex: { registry: '.codex/hooks.json', pointer: 'AGENTS.md', signals: ['.codex', 'AGENTS.md', '.agents/skills', '.agents/plugins'] },
 };
 const appNames = Object.keys(apps);
 const hash = value => value == null ? null : createHash('sha256').update(value).digest('hex');
 const json = value => `${JSON.stringify(value, null, 2)}\n`;
 const read = path => existsSync(path) ? readFileSync(path, 'utf8') : null;
 const parse = (text, fallback) => text == null ? fallback : JSON.parse(text);
-const version = () => JSON.parse(readFileSync(join(bundleRoot, '.claude-plugin/plugin.json'), 'utf8')).version;
+export const version = () => JSON.parse(readFileSync(join(bundleRoot, '.claude-plugin/plugin.json'), 'utf8')).version;
 const hookNames = ['blockGitMutation', 'blockSecretAccess', 'branchGuard'];
 const allHookNames = [...hookNames, 'verifierGate'];
 const deny = ['Read(./.env)', 'Read(./.env.*)', 'Read(./**/credentials*)', 'Read(./**/*.pem)', 'Read(./**/secrets/**)'];
@@ -34,6 +43,7 @@ const hookPath = name => `${hooksDir}/${name}.mjs`;
 const legacyHookPath = name => `${legacyHooksDir}/${name}.mjs`;
 const configPath = (dir, name) => `${dir}/${name}.config.json`;
 const hookSource = name => `skills/harness/assets/hooks/${name}.mjs`;
+const countRules = content => content.split('\n').filter(line => /^\d+\.\s+\*\*/.test(line)).length;
 
 // 계획·설치 기록에서 읽은 경로도 프로젝트 밖이나 심볼릭 링크를 따라가지 않는다.
 function safePath(root, path) {
@@ -51,22 +61,30 @@ function safePath(root, path) {
   }
   return result;
 }
+// 추적하는 번들 파일(코어·공동). 프로젝트 파일은 포함하지 않는다.
 function catalog({ profile = 'basic', verifier = false } = {}) {
   if (!['basic', 'collaboration'].includes(profile)) throw new Error('profile은 basic 또는 collaboration입니다');
   const files = {};
   for (const name of [...hookNames, ...(verifier ? ['verifierGate'] : [])]) files[hookPath(name)] = hookSource(name);
-  files['docs/harness-rules.md'] = 'skills/harness/assets/harness-rules.md';
+  files[coreRulesPath] = rulesAsset;
   for (const name of ['history', 'handoff', ...(profile === 'collaboration' ? ['retro', 'loop-spec'] : [])]) {
     files[`docs/templates/${name}.md`] = `skills/history/assets/templates/${name}.md`;
   }
   return files;
 }
+// 프로젝트 파일: 없을 때만 만든다. 추적하지 않으며 업데이트·제거에서 건드리지 않는다.
+function projectFiles(selectedApps) {
+  const files = { [teamRulesPath]: teamRulesAsset };
+  for (const app of selectedApps) files[apps[app].pointer] = pointerAsset;
+  return files;
+}
 const allPaths = new Set(Object.keys(catalog({ profile: 'collaboration', verifier: true })));
-const legacyPaths = new Set(allHookNames.map(legacyHookPath));
-// 복원 대상으로 인정하는 경로: 번들 파일, 이전 위치 훅, 훅 설정(이동), 등록 파일, 추적 기록.
+export const corePaths = new Set([...allHookNames.map(hookPath), coreRulesPath]);
+const legacyPaths = new Set([...allHookNames.map(legacyHookPath), teamRulesPath]);
+// 복원 대상으로 인정하는 경로: 번들 파일, 이전 위치 파일, 훅 설정(이동), 등록 파일, 추적 기록, 프로젝트 파일(최초 생성).
 const restorablePaths = new Set([
-  ...allPaths, ...legacyPaths, manifestPath, legacyManifestPath,
-  ...appNames.map(app => apps[app].registry),
+  ...allPaths, ...legacyPaths, manifestPath, legacyManifestPath, teamRulesPath,
+  ...appNames.flatMap(app => [apps[app].registry, apps[app].pointer]),
   ...allHookNames.flatMap(name => [configPath(hooksDir, name), configPath(legacyHooksDir, name)]),
 ]);
 
@@ -109,7 +127,13 @@ function loadManifest(root) {
   if (manifest.ownedHooks.some(item => !knownHook(item))) throw new Error('설치 기록에 알 수 없는 훅이 있습니다');
   if (manifest.ownedDeny.some(item => !deny.includes(item))) throw new Error('알 수 없는 권한 항목입니다');
   if (manifest.apps != null && (!Array.isArray(manifest.apps) || manifest.apps.some(app => !appNames.includes(app)))) throw new Error('설치 기록의 앱 항목이 잘못되었습니다');
+  manifest.ejected ??= [];
+  if (!Array.isArray(manifest.ejected) || manifest.ejected.some(path => !corePaths.has(path))) throw new Error('설치 기록의 eject 항목이 잘못되었습니다');
   return { manifest, legacyManifest: legacy };
+}
+export function isInstalled(project) {
+  const root = realpathSync(project);
+  return Object.keys(loadManifest(root).manifest.files).length > 0;
 }
 export function detectApps(root) {
   const found = appNames.filter(app => apps[app].signals.some(signal => existsSync(join(root, signal))));
@@ -147,6 +171,7 @@ export function createPlan(project, options = {}) {
   const add = (path, action, before, after, reason) => operations.push({ path, action, beforeHash: hash(before), after, reason });
   const selected = path => only == null || only.includes(path);
   const target = catalog({ profile, verifier });
+  for (const path of previous.ejected) delete target[path]; // eject한 코어 파일은 프로젝트 소유 — 갱신하지 않는다
   const activeHooks = [...hookNames, ...(verifier ? ['verifierGate'] : [])];
   for (const [path, source] of Object.entries(mode === 'remove' ? previous.files : target)) {
     if (!selected(legacyPaths.has(path) ? path.replace(legacyHooksDir, hooksDir) : path)) continue;
@@ -190,6 +215,25 @@ export function createPlan(project, options = {}) {
     } else {
       next.files[path] = { hash: hash(after), version: version() };
       add(path, before == null ? 'create' : 'update', before, after, '번들 파일 적용');
+    }
+  }
+  if (mode === 'update') {
+    // v3.x는 docs/harness-rules.md를 코어 사본으로 추적했다. v4부터 그 경로는 팀 규칙(프로젝트 파일)이다.
+    // 원본 그대로면 팀 규칙 형식으로 바꾸고, 팀이 고쳤으면 그대로 두고 추적만 해제한다(status가 정리 방법을 안내한다).
+    const trackedRules = previous.files[teamRulesPath];
+    if (trackedRules && selected(coreRulesPath)) {
+      const before = read(safePath(root, teamRulesPath));
+      delete next.files[teamRulesPath];
+      if (before != null && hash(before) === trackedRules.hash) {
+        add(teamRulesPath, 'update', before, readFileSync(join(bundleRoot, teamRulesAsset), 'utf8'), `팀 규칙 파일로 전환 · 코어 규칙은 ${coreRulesPath}`);
+      } else if (before != null) {
+        add(teamRulesPath, 'preserve', before, before, `팀이 수정한 규칙 파일 보존 · 추적 해제. 코어 규칙 7개를 지우고 ${coreRulesPath} 포인터를 남기세요`);
+      }
+    }
+    // 프로젝트 파일은 없을 때만 만든다.
+    for (const [path, source] of Object.entries(projectFiles(selectedApps))) {
+      if (operations.some(op => op.path === path)) continue;
+      if (read(safePath(root, path)) == null) add(path, 'create', null, readFileSync(join(bundleRoot, source), 'utf8'), '프로젝트 파일 · 최초 생성 후 관리하지 않음');
     }
   }
   // 등록 파일은 기존 키를 보존하고 이 도구가 추가한 정확한 항목만 추적한다.
@@ -316,6 +360,23 @@ export function rollback(project, backup) {
   for (const record of [...data.records].reverse()) atomicWrite(safePath(root, record.path), record.before);
   return { restored: data.records.length };
 }
+// 코어 파일 하나를 프로젝트 소유로 전환한다. 파일은 그대로 두고 추적만 해제하며, 이후 업데이트·제거에서 건드리지 않는다.
+// 되돌리려면 파일을 지우고 update를 실행한다(다시 코어 파일로 생성·추적된다).
+export function eject(project, path) {
+  const root = realpathSync(project);
+  if (!corePaths.has(path)) throw new Error(`eject는 코어 파일에만 쓸 수 있습니다: ${[...corePaths].join(', ')}`);
+  const { manifest } = loadManifest(root);
+  if (!manifest.files[path]) throw new Error(`추적 중인 파일이 아닙니다: ${path}`);
+  if (read(safePath(root, path)) == null) throw new Error(`파일이 없습니다: ${path}`);
+  const next = structuredClone(manifest);
+  delete next.files[path];
+  if (!next.ejected.includes(path)) next.ejected.push(path);
+  const before = read(safePath(root, manifestPath));
+  const backup = `${backupDir}/${randomUUID()}.json`;
+  atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records: [{ path: manifestPath, before, afterHash: hash(json(next)) }] }));
+  atomicWrite(safePath(root, manifestPath), json(next));
+  return { ejected: path, backup };
+}
 export async function status(project) {
   const root = realpathSync(project);
   const { manifest, legacyManifest } = loadManifest(root);
@@ -333,13 +394,14 @@ export async function status(project) {
     }));
     const configuration = existsSync(safePath(root, configPath(hooksDir, name))) ? 'present'
       : existsSync(safePath(root, configPath(legacyHooksDir, name))) ? 'legacy' : 'default';
-    return { name, file: content == null ? (legacyContent == null ? 'missing' : 'legacy') : content === expected ? 'current' : 'different',
-      registered, configuration,
+    const file = manifest.ejected.includes(hookPath(name)) ? 'ejected'
+      : content == null ? (legacyContent == null ? 'missing' : 'legacy') : content === expected ? 'current' : 'different';
+    return { name, file, registered, configuration,
       note: name === 'verifierGate' ? '설정 없으면 비활성 · Stop에서만 검사' : '훅 이벤트를 지원하는 앱(claude·codex)에서만 적용' };
   });
   let branch = null;
   try { branch = execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* 비 git 프로젝트 */ }
-  const all = catalog({ profile: 'collaboration', verifier: true });
+  const all = { ...catalog({ profile: 'collaboration', verifier: true }), [teamRulesPath]: rulesAsset };
   const files = Object.entries(manifest.files).map(([path, entry]) => {
     const content = read(safePath(root, path));
     const expected = readFileSync(join(bundleRoot, all[path] ?? all[path.replace(legacyHooksDir, hooksDir)]), 'utf8');
@@ -347,14 +409,19 @@ export async function status(project) {
       hash(content) !== entry.hash ? 'modified' : legacyPaths.has(path) ? 'legacy-location' : content === expected ? 'current' : 'update-available' };
   });
   const issues = await validateHarness({ rootDir: root });
-  if (legacyManifest) issues.push({ level: 'warn', path: legacyManifestPath, message: `설치 기록이 이전 위치에 있습니다. plan·apply로 ${manifestPath}로 이동하세요` });
+  if (legacyManifest) issues.push({ level: 'warn', path: legacyManifestPath, message: `설치 기록이 이전 위치에 있습니다. update로 ${manifestPath}로 이동하세요` });
+  if (manifest.files[teamRulesPath]) issues.push({ level: 'warn', path: teamRulesPath, message: `v3 구조입니다. update가 코어 규칙을 ${coreRulesPath}로 옮기고 이 파일을 팀 규칙 파일로 바꿉니다` });
+  const teamRules = read(safePath(root, teamRulesPath));
+  if (Object.keys(manifest.files).length && !manifest.files[teamRulesPath] && teamRules != null && countRules(teamRules) >= countRules(readFileSync(join(bundleRoot, rulesAsset), 'utf8'))) {
+    issues.push({ level: 'warn', path: teamRulesPath, message: `팀 규칙 파일에 코어 규칙 전문이 남아 있습니다. 코어 규칙은 ${coreRulesPath}가 정본이니 이 파일에는 포인터와 팀 규칙만 남기세요` });
+  }
   for (const hook of hooks) {
     const path = hookPath(hook.name);
     const missingRegistration = targetApps.some(app => !hook.registered[app]);
-    if (hook.name !== 'verifierGate' && (hook.file === 'missing' || missingRegistration)) issues.push({ level: 'warn', path, message: `${hook.name}: 파일 또는 등록(${targetApps.join('·')})이 없습니다. plan으로 설치 목록을 확인하세요` });
-    if (hook.file === 'legacy') issues.push({ level: 'warn', path, message: `${hook.name}: 이전 위치(${legacyHooksDir})에 있습니다. plan·apply로 이동하세요` });
-    if (hook.file === 'different') issues.push({ level: 'warn', path, message: `${hook.name}: 번들과 다릅니다. 사용자 수정 여부를 비교하세요` });
-    if (hook.configuration === 'legacy') issues.push({ level: 'warn', path: configPath(legacyHooksDir, hook.name), message: `${hook.name}: 설정 파일이 이전 위치에 있어 새 위치의 훅이 읽지 못합니다. plan·apply로 이동하세요` });
+    if (hook.name !== 'verifierGate' && (hook.file === 'missing' || missingRegistration)) issues.push({ level: 'warn', path, message: `${hook.name}: 파일 또는 등록(${targetApps.join('·')})이 없습니다. update로 설치 목록을 확인하세요` });
+    if (hook.file === 'legacy') issues.push({ level: 'warn', path, message: `${hook.name}: 이전 위치(${legacyHooksDir})에 있습니다. update로 이동하세요` });
+    if (hook.file === 'different') issues.push({ level: 'warn', path, message: `${hook.name}: 번들과 다릅니다. 사용자 수정 여부를 비교하세요. 의도한 수정이면 eject로 소유를 전환하세요` });
+    if (hook.configuration === 'legacy') issues.push({ level: 'warn', path: configPath(legacyHooksDir, hook.name), message: `${hook.name}: 설정 파일이 이전 위치에 있어 새 위치의 훅이 읽지 못합니다. update로 이동하세요` });
     for (const dir of [hooksDir, legacyHooksDir]) {
       const config = safePath(root, configPath(dir, hook.name));
       if (!existsSync(config)) continue;
@@ -369,7 +436,7 @@ export async function status(project) {
     }
   }
   return { root, bundleVersion: version(), installedVersion: Object.keys(manifest.files).length ? manifest.version ?? null : null, nodeVersion: process.version, branch,
-    apps: manifest.apps ?? null, detectedApps: detectApps(root), hooks, files, trackedFiles: Object.keys(manifest.files).length, issues,
+    apps: manifest.apps ?? null, detectedApps: detectApps(root), hooks, files, ejected: manifest.ejected, trackedFiles: Object.keys(manifest.files).length, issues,
     note: '등록 여부는 앱별 등록 파일 기준입니다. 현재 앱의 훅 실행 지원 여부(codex는 hooks 기능 활성·프로젝트 신뢰)는 별도 확인이 필요합니다.' };
 }
 
@@ -393,6 +460,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
           console.log(`${hook.name}: 파일 ${hook.file}, 등록 ${registered}, 설정 ${hook.configuration}`);
         }
         for (const file of result.files.filter(file => file.state !== 'current')) console.log(`${file.path}: ${file.state} (설치 ${file.installedVersion ?? '알 수 없음'})`);
+        for (const path of result.ejected) console.log(`${path}: ejected (프로젝트 소유)`);
         for (const issue of result.issues) console.log(`${issue.level}: ${issue.message}`);
         console.log(result.note);
       }

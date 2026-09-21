@@ -399,7 +399,7 @@ test('하네스가 있는데 절대 규칙 파일이 없으면 경고', async ()
     issues.some(
       (issue) =>
         issue.level === 'warn' &&
-        issue.message.includes('절대 규칙 파일(docs/harness-rules.md)이 없다'),
+        issue.message.includes('코어 규칙 사본(.agents/harness-core-rules.md)이 없다'),
     ),
   );
   await rm(rootDir, { recursive: true, force: true });
@@ -415,7 +415,7 @@ test('절대 규칙 파일의 규칙 수가 플러그인 정본보다 적으면 
   const rootDir = await makeFixture({
     files: {
       '.claude/agents/demo-agent.md': VALID_AGENT,
-      'docs/harness-rules.md': staleRules,
+      '.agents/harness-core-rules.md': staleRules,
     },
   });
   const issues = await validateHarness({ rootDir });
@@ -431,11 +431,12 @@ test('절대 규칙 파일이 플러그인 정본과 같으면 규칙 경고가 
   const rootDir = await makeFixture({
     files: {
       '.claude/agents/demo-agent.md': VALID_AGENT,
-      'docs/harness-rules.md': canonicalRules,
+      '.agents/harness-core-rules.md': canonicalRules,
+      'docs/harness-rules.md': '# 팀 규칙\n\n코어 규칙은 `.agents/harness-core-rules.md`.\n',
     },
   });
   const issues = await validateHarness({ rootDir });
-  assert.ok(!issues.some((issue) => issue.message.includes('절대 규칙 파일')));
+  assert.ok(!issues.some((issue) => /규칙 사본|팀 규칙 파일|코어 규칙 전문|구버전/.test(issue.message)), issues.map(i => i.message).join('\n'));
   await rm(rootDir, { recursive: true, force: true });
 });
 
@@ -541,7 +542,7 @@ test('codex plugin.json은 필수 항목·마켓 목록·claude 버전 일치를
   const issues = await validateHarness({ rootDir });
   assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('interface')));
   assert.ok(issues.some(issue => issue.level === 'warn' && issue.message.includes('마켓 목록')));
-  assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('앱별 plugin.json 버전')));
+  assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('버전이 다르다')));
 });
 
 test('codex 마켓 목록에 플러그인 항목이 없으면 에러', async t => {
@@ -552,4 +553,26 @@ test('codex 마켓 목록에 플러그인 항목이 없으면 에러', async t =
   t.after(() => rm(rootDir, { recursive: true, force: true }));
   const issues = await validateHarness({ rootDir });
   assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('demo 항목이 없다')));
+});
+
+test('v3 구조(팀 규칙 파일에 코어 전문, 코어 사본 없음)는 update 안내로 경고한다', async t => {
+  const canonicalRules = await readFile(new URL('../assets/harness-rules.md', import.meta.url), 'utf8');
+  const rootDir = await makeFixture({ files: {
+    '.claude/agents/demo-agent.md': VALID_AGENT,
+    'docs/harness-rules.md': canonicalRules,
+  } });
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const issues = await validateHarness({ rootDir });
+  assert.ok(issues.some(issue => issue.level === 'warn' && issue.message.includes('v3 구조')));
+});
+
+test('package.json 버전이 plugin.json과 다르면 에러', async t => {
+  const rootDir = await makeFixture({ files: {
+    '.claude-plugin/plugin.json': JSON.stringify({ name: 'demo', version: '1.0.0' }),
+    '.claude-plugin/marketplace.json': JSON.stringify({ plugins: [{ name: 'demo', version: '1.0.0' }] }),
+    'package.json': JSON.stringify({ name: 'guksu-harness', version: '1.0.1' }),
+  } });
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const issues = await validateHarness({ rootDir });
+  assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('버전이 다르다')));
 });

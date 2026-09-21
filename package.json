@@ -1,0 +1,44 @@
+{
+  "name": "guksu-harness",
+  "version": "4.0.0",
+  "description": "AI 코딩 에이전트(Claude Code·Codex)용 프로젝트 작업 규칙 스캐폴딩 — 브랜치·민감정보 보호 훅, 변경 검증, 작업 기록, 기존 설정을 보존하는 업데이트",
+  "type": "module",
+  "bin": {
+    "guksu-harness": "bin/guksu-harness.mjs"
+  },
+  "files": [
+    "bin/",
+    "skills/",
+    "!**/*.test.mjs",
+    ".claude-plugin/",
+    ".codex-plugin/",
+    ".agents/plugins/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node skills/harness/scripts/validateHarness.mjs .",
+    "test": "node --test skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs",
+    "prepublishOnly": "npm run check && npm test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Guksu/guksu-harness.git"
+  },
+  "homepage": "https://github.com/Guksu/guksu-harness",
+  "author": "Guksu <yung3152@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "harness",
+    "claude-code",
+    "codex",
+    "agent",
+    "scaffold",
+    "hooks",
+    "skills"
+  ]
+}

@@ -2,6 +2,30 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [4.0.0] - 2026-09-21
+
+팀이 뼈대 위에 자기 규칙·스킬·훅을 얹고, 뼈대가 갱신되어도 팀 파일이 남는 스캐폴딩 구조(1단계). 설계: `docs/design/2026-09-21-scaffold.md`. 규칙 파일의 의미가 바뀌어 주 버전을 올렸다.
+
+### Added
+
+- `npx guksu-harness` 명령(`bin/guksu-harness.mjs`, `package.json`): `init`(뼈대 생성)·`update`(코어 갱신)·`status`·`check`(CI용, error면 종료 코드 1)·`eject`(코어 파일 소유 전환, `--confirm` 필수). `--dry-run` 미리보기. 세밀한 제어는 기존 `harnessManager.mjs plan/apply/rollback` 유지.
+- 파일 소유권 모델: 코어(훅·코어 규칙 사본 — 미수정이면 교체, 수정본은 충돌), 공동(템플릿·앱 등록 파일 — 이 도구가 넣은 부분만 갱신), 프로젝트(팀 규칙·`CLAUDE.md`·`AGENTS.md`·훅 설정값 — 없을 때 한 번 생성, 이후 안 건드림).
+- `.agents/harness-core-rules.md`: 코어 규칙 사본(관리 파일). `docs/harness-rules.md`는 팀 규칙 파일(코어 포인터 + 팀 규칙, 팀 소유, 코어보다 우선). 새 자산 `harness-team-rules.md`, `pointer.md`.
+- v3 규칙 파일 전환: 원본 그대로면 팀 규칙 양식으로 교체, 팀이 고쳤으면 그대로 두고 추적 해제 후 `status`가 정리 방법을 안내.
+- `validateHarness`: 코어 사본·팀 규칙 파일 검사, v3 구조 안내, `package.json` 버전 일치 검사.
+- 테스트 118→131: 소유권(프로젝트 파일 1회 생성·기존 파일 보존), eject, v3 전환(원본·수정본), 명령 실행(init→check→update→eject, dry-run, 오류 경로).
+
+### Changed
+
+- **업데이트 주의:** `docs/harness-rules.md`가 팀 규칙 파일이 된다. `npx guksu-harness update`가 전환한다. 팀이 고친 파일은 코어 규칙 7개를 지우고 코어 포인터를 남긴다.
+- 문서·스킬의 규칙 파일 포인터를 "코어 사본 + 팀 규칙(우선)"으로 바꿨다. README·`installation.md`·`hooks-and-permissions.md`가 `npx guksu-harness`를 기본 진입점으로 안내한다.
+- `status`가 ejected 파일과 v3 구조를 표시한다.
+
+### 확인하지 못한 것
+
+- npm에 `guksu-harness` 이름이 비어 있는지(이 환경에서 레지스트리 접근 불가). 배포 전 `npm view guksu-harness`로 확인한다.
+- 실제 Codex 앱 안의 훅 실행(3.0.0과 같음).
+
 ## [3.0.0] - 2026-09-18
 
 Codex에서도 같은 스킬과 훅을 쓸 수 있게 했다. 관리 파일 위치가 `.claude/`에서 앱 중립 위치 `.agents/`로 바뀌므로 주 버전을 올렸다.
