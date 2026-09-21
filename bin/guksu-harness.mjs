@@ -2,8 +2,8 @@
 // guksu-harness 명령 — 프로젝트에 하네스 뼈대를 만들고(init) 갱신하며(update) 검사한다(check).
 // 관리 로직은 skills/harness/scripts/harnessManager.mjs가 담당한다. 이 파일은 사용법과 출력만 맡는다.
 // 사용법:
-//   npx guksu-harness init   [프로젝트] [--app claude|codex|both] [--profile basic|collaboration] [--verifier] [--dry-run]
-//   npx guksu-harness update [프로젝트] [--only <경로,경로>] [--dry-run]
+//   npx guksu-harness init   [프로젝트] [--app claude|codex|both] [--profile basic|collaboration] [--verifier] [--ci] [--dry-run]
+//   npx guksu-harness update [프로젝트] [--only <경로,경로>] [--ci] [--dry-run]
 //   npx guksu-harness status [프로젝트] [--json]
 //   npx guksu-harness check  [프로젝트]            구조 검사 + 상태 진단. error가 있으면 종료 코드 1 (CI용)
 //   npx guksu-harness eject  [프로젝트] <코어 파일 경로> --confirm
@@ -15,10 +15,11 @@ import { validateHarness } from '../skills/harness/scripts/validateHarness.mjs';
 
 const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로젝트 작업 규칙 뼈대
 
-  init   [프로젝트] [--app claude|codex|both] [--profile basic|collaboration] [--verifier] [--dry-run]
-         뼈대를 만든다. 이미 설치되어 있으면 update를 안내한다.
-  update [프로젝트] [--only <경로,경로>] [--dry-run]
-         코어 파일을 새 버전으로 바꾼다. 팀 파일은 건드리지 않는다. 수정된 코어 파일은 충돌로 보존한다.
+  init   [프로젝트] [--app claude|codex|both] [--profile basic|collaboration] [--verifier] [--ci] [--dry-run]
+         뼈대를 만든다. --ci는 PR마다 check를 돌리는 GitHub Actions 워크플로를 추가한다. 이미 설치되어 있으면 update를 안내한다.
+  update [프로젝트] [--only <경로,경로>] [--ci] [--dry-run]
+         코어 파일을 새 버전으로 바꾼다. 팀 파일은 건드리지 않는다. 팀이 고친 문서 템플릿은 설치 원본과 3-way 병합한다.
+         수정된 코어 파일과 병합이 겹치는 템플릿은 충돌로 보존한다.
   status [프로젝트] [--json]
          설치 버전·앱별 등록·파일 상태를 보여 준다. 파일을 바꾸지 않는다.
   check  [프로젝트]
@@ -29,8 +30,8 @@ const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로�
 프로젝트를 생략하면 현재 디렉터리다. 세밀한 미리보기·복원은 skills/harness/scripts/harnessManager.mjs의 plan·apply·rollback을 쓴다.`;
 
 const FLAGS = {
-  init: { '--app': 'value', '--profile': 'value', '--verifier': 'flag', '--dry-run': 'flag' },
-  update: { '--only': 'value', '--dry-run': 'flag' },
+  init: { '--app': 'value', '--profile': 'value', '--verifier': 'flag', '--ci': 'flag', '--dry-run': 'flag' },
+  update: { '--only': 'value', '--ci': 'flag', '--dry-run': 'flag' },
   status: { '--json': 'flag' },
   check: {},
   eject: { '--confirm': 'flag' },
@@ -59,7 +60,7 @@ const printPlan = plan => {
   for (const op of plan.operations) console.log(`${op.action.padEnd(9)} ${op.path} — ${op.reason}`);
   const conflicts = plan.operations.filter(op => op.action === 'conflict');
   if (conflicts.length) {
-    console.log(`\n충돌 ${conflicts.length}건 — 적용하지 않았습니다. 파일을 비교해 정리하거나, 의도한 수정이면 eject로 소유를 전환한 뒤 다시 실행하세요.`);
+    console.log(`\n충돌 ${conflicts.length}건 — 적용하지 않았습니다. 코어 파일은 비교해 정리하거나 의도한 수정이면 eject로 소유를 전환하고, 템플릿은 새 버전과 직접 병합한 뒤 다시 실행하세요.`);
   }
   return conflicts.length === 0;
 };
@@ -84,8 +85,8 @@ export async function run(argv) {
     if (command === 'init' && installed) throw new Error('이미 설치된 프로젝트입니다. update를 사용하세요.');
     if (command === 'update' && !installed) throw new Error('설치 기록이 없습니다. init을 사용하세요.');
     const plan = createPlan(project, command === 'init'
-      ? { app: options['--app'], profile: options['--profile'], verifier: options['--verifier'] ? true : undefined }
-      : { only: options['--only']?.split(',') });
+      ? { app: options['--app'], profile: options['--profile'], verifier: options['--verifier'] ? true : undefined, ci: options['--ci'] === true }
+      : { only: options['--only']?.split(','), ci: options['--ci'] === true });
     const clean = printPlan(plan);
     if (options['--dry-run']) { console.log('\n--dry-run: 적용하지 않았습니다.'); return clean ? 0 : 1; }
     if (!clean) return 1;
@@ -97,7 +98,7 @@ export async function run(argv) {
       console.log(`\n다음 할 일:
   1. 팀 규칙을 docs/harness-rules.md에 쓴다. 코어 규칙(.agents/harness-core-rules.md)은 고치지 않는다.
   2. 훅 설정값(.agents/hooks/*.config.json)을 프로젝트에 맞춘다 — 보호 브랜치, 커밋 허용 여부.
-  3. .gitignore에 .agents/harness-backups/ 와 .agents/hooks/verifierGate.*.state.json 을 추가한다.
+  3. .gitignore에 .agents/harness-backups/ 와 .agents/hooks/verifierGate.*.state.json 을 추가한다. .agents/harness-base/ 는 커밋한다.
   4. 앱에서 실제로 차단되는지 확인한다 (skills/harness/references/hooks-and-permissions.md §8).`);
     }
     return ok ? 0 : 1;

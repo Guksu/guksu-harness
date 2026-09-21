@@ -1,0 +1,19 @@
+# guksu-harness 구조 검사 — PR마다 하네스 파일(훅 등록·규칙·템플릿)이 온전한지 확인한다.
+# 프로젝트 파일이다: init --ci가 없을 때 한 번 만들고 이후 건드리지 않는다. 트리거·노드 버전은 팀이 조정한다.
+name: harness-check
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 구조 검사 + 상태 진단. error가 있으면 실패한다. 훅 설정값은 출력하지 않는다.
+      - run: npx --yes guksu-harness@4 check .

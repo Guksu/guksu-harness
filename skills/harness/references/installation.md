@@ -3,7 +3,7 @@
 일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다.
 
 ```bash
-npx guksu-harness init /path/to/project --app both
+npx guksu-harness init /path/to/project --app both --ci
 npx guksu-harness update /path/to/project
 npx guksu-harness check /path/to/project
 npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
@@ -19,7 +19,9 @@ npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
 | 코어 규칙 사본 | `.agents/harness-core-rules.md` | 코어 — 항상 새 버전으로 교체 |
 | 팀 규칙 | `docs/harness-rules.md` | 프로젝트 — 없을 때 한 번 생성, 이후 안 건드림 |
 | 규칙 포인터 | `CLAUDE.md`·`AGENTS.md` | 프로젝트 — 없을 때 한 번 생성 |
-| 문서 템플릿 | `docs/templates/` | 공동 — 미수정이면 교체, 수정본은 충돌(3-way 병합은 4.1.0 예정) |
+| 문서 템플릿 | `docs/templates/` | 공동 — 미수정이면 교체, 팀 수정본은 설치 원본 사본과 3-way 병합. 같은 곳을 고쳤으면 충돌 |
+| 병합 원본 사본 | `.agents/harness-base/docs/templates/` | 관리 도구 — 커밋한다(팀원 모두 같은 원본 기준) |
+| CI 워크플로 | `.github/workflows/harness-check.yml` | 프로젝트 — `init --ci`·`update --ci`로 없을 때 한 번 생성 |
 | 훅 설정값 | `.agents/hooks/*.config.json` | 프로젝트 |
 | 설치 추적 기록 | `.agents/harness-install.json` | 관리 도구 |
 | 백업 | `.agents/harness-backups/` | 관리 도구 |
@@ -60,10 +62,11 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-plan.json
 |---|---|
 | create | 대상 파일이 없어 새로 생성 |
 | update | 마지막 설치본 그대로인 파일을 새 번들로 교체하거나 관리 설정을 병합 |
+| merge | 팀이 고친 템플릿에 새 버전의 변경을 3-way 병합해 적용 |
 | unchanged | 이미 같음 |
 | adopt | 추적되지 않았지만 번들과 내용이 같음. 적용하면 추적 시작 |
 | conflict | 사용자 수정 또는 출처 불명. 덮어쓰지 않음 |
-| preserve | 제거 작업에서도 문서를 보존하고 추적만 해제 |
+| preserve | 제거 작업에서 문서를 보존하고 추적만 해제. 업데이트에서는 병합 원본 사본이 없는 팀 수정 템플릿을 그대로 두고 사본을 등록 |
 | delete | 추적한 훅 파일을 제거. v2 위치의 파일·설정·추적 기록을 새 위치로 옮길 때도 이전 파일에 표시된다 |
 
 충돌이 하나라도 있으면 전체 적용을 멈춘다. 안전한 항목부터 진행하려면 `--only`로 새 계획을 만든다. 업데이트 전에 수정된 규칙·템플릿은 직접 비교해 합칠 수 있지만 자동 덮어쓰기는 제공하지 않는다.
@@ -101,6 +104,22 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 ```
 
 추적한 훅과 이 도구가 추가한 정확한 등록 항목만 제거한다. 수정된 등록이나 기존 수동 등록이 파일을 참조하면 충돌로 남긴다. 설정 파일·문서·사용자 작업 기록은 보존한다. 도메인 정의나 CLAUDE.md 참조는 `harness` 스킬에서 먼저 정리한다. 추적 기록이 없는 옛 설치본을 임의로 삭제하지 않는다.
+
+## 문서 템플릿 3-way 병합
+
+템플릿(`docs/templates/*.md`)은 팀이 고칠 수 있고 코어 업데이트도 받는 공동 파일이다. 설치·업데이트 때 원본 사본을 `.agents/harness-base/docs/templates/`에 둔다. 업데이트 때 파일 상태에 따라 이렇게 처리한다.
+
+| 팀 수정 | 사본 | 처리 |
+|---|---|---|
+| 없음 | — | 새 버전으로 교체 |
+| 있음 | 있음 | 사본·팀 수정본·새 버전을 `git merge-file`로 병합(merge). 같은 곳을 고쳤으면 conflict — 직접 병합 후 다시 실행 |
+| 있음 | 없음(v4.0 이하 설치본) | 수정본을 그대로 두고(preserve) 현재 번들 원본을 사본으로 등록. 다음 업데이트부터 병합 |
+
+병합 결과를 추적 해시로 기록하므로 재적용은 변경 0건이다. `status`의 파일 상태 `customized`는 팀 수정이 반영된 추적본이라는 뜻이다. git이 없으면 병합하지 못하고 충돌로 표시한다. 사본 디렉터리는 커밋한다 — 팀원마다 사본이 다르면 병합 결과도 달라진다.
+
+## CI 검사 워크플로 (--ci)
+
+`init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@4 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. npm에 패키지가 배포되어 있어야 동작한다.
 
 ## eject — 코어 파일을 프로젝트 소유로
 

@@ -4,6 +4,7 @@ _workspace/
 .agents/harness-backups/
 .agents/hooks/verifierGate.*.state.json
 .agents/hooks/verifierGate.*.tmp
+# .agents/harness-base/ 는 커밋한다 (템플릿 3-way 병합 원본)
 # v2 설치본 위치
 .claude/harness-backups/
 .claude/hooks/verifierGate.*.state.json
