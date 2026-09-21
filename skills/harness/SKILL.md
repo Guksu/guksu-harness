@@ -61,7 +61,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs plan <프로젝트> --out <�
 node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan <계획.json>
 ```
 
-파일 소유권: 코어 파일(훅·코어 규칙 사본)은 미수정일 때만 교체하고 수정본은 충돌로 보존한다. 팀이 의도적으로 고친 코어 파일은 `eject`로 소유를 전환한다. 문서 템플릿은 팀 수정본을 새 버전과 3-way 병합한다. 프로젝트 파일(팀 규칙·CLAUDE.md·AGENTS.md·CI 워크플로)은 없을 때 한 번만 만든다. 팀이 저장소 쪽 강제를 원하면 `--ci`로 검사 워크플로를 추가한다.
+팀이 무엇을 어디에 두어야 하는지 물으면 `references/team-customization.md`를 따른다. 파일 소유권: 코어 파일(훅·코어 규칙 사본)은 미수정일 때만 교체하고 수정본은 충돌로 보존한다. 팀이 의도적으로 고친 코어 파일은 `eject`로 소유를 전환한다. 문서 템플릿은 팀 수정본을 새 버전과 3-way 병합한다. 프로젝트 파일(팀 규칙·CLAUDE.md·AGENTS.md·CI 워크플로)은 없을 때 한 번만 만든다. 팀이 저장소 쪽 강제를 원하면 `--ci`로 검사 워크플로를 추가한다.
 
 - `plan`은 추가·수정·충돌·보존 목록을 보여 준다. 프로젝트는 바꾸지 않는다. `--app claude|codex|both`로 등록할 앱을 고른다. 생략하면 프로젝트 파일로 추정한다.
 - 적용은 저장된 계획이 현재 파일·번들과 일치할 때만 한다. 사용자 수정 파일과 출처가 불명확한 파일은 덮어쓰지 않는다.
@@ -97,6 +97,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan 
 | 파일 | 필요한 때 |
 |---|---|
 | `references/installation.md` | 진단·미리보기·업데이트·제거·복원 |
+| `references/team-customization.md` | 팀이 뼈대 위에 규칙·스킬·훅·양식을 얹는 법, 여러 저장소에 같은 설정 쓰기(export/import) |
 | `references/hooks-and-permissions.md` | 훅별 설정과 한계, 앱(Claude Code·Codex)별 등록·확인 |
 | `references/design-dialogue.md` | 빠진 요구사항 결정 |
 | `references/execution-modes.md` | 실행 방식 선택 |

@@ -107,3 +107,22 @@ test('init --ci는 워크플로를 만들고, update는 팀이 고친 템플릿�
   const status = JSON.parse(run('status', root, '--json').stdout);
   assert.equal(status.files.find(f => f.path === 'docs/templates/history.md').state, 'customized');
 });
+
+test('export → import 명령 흐름', t => {
+  const source = fixture(t), target = fixture(t);
+  assert.equal(run('init', source, '--app', 'claude').status, 0);
+  write(source, '.agents/hooks/branchGuard.config.json', '{"protectedBranches":["main","release"]}');
+  const out = join(source, 'team-preset.json');
+  const exported = run('export', source, '--out', out);
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.match(exported.stdout, /branchGuard\.config\.json/);
+  assert.equal(run('export', source, '--out', out).status, 1, '기존 묶음 파일을 덮어쓰지 않는다');
+  const noInit = run('import', target, '--from', out);
+  assert.equal(noInit.status, 1);
+  assert.match(noInit.stderr, /init/);
+  assert.equal(run('init', target, '--app', 'claude').status, 0);
+  const imported = run('import', target, '--from', out);
+  assert.equal(imported.status, 0, imported.stdout + imported.stderr);
+  assert.equal(readFileSync(join(target, '.agents/hooks/branchGuard.config.json'), 'utf8'), '{"protectedBranches":["main","release"]}');
+  assert.equal(run('check', target).status, 0);
+});

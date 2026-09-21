@@ -2,6 +2,20 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [4.2.0] - 2026-09-21
+
+스캐폴딩 3단계(마지막): 팀이 뼈대 위에 무엇을 어디에 두는지 안내하고, 여러 저장소에 같은 팀 설정을 옮기는 명령을 넣었다.
+
+### Added
+
+- `references/team-customization.md`: 팀 커스텀 가이드. 고쳐도 되는 곳과 안 되는 곳, 팀 규칙·훅 설정값·팀 스킬(코어와 다른 이름)·팀 훅·eject·export/import·업데이트 순서·흔한 실수.
+- `npx guksu-harness export --out <묶음.json>` / `import --from <묶음.json> [--force]`: 팀 규칙·훅 설정값·팀 훅·팀 스킬·고친 템플릿·CI 워크플로만 담는다. 코어 파일·규칙 포인터·추적 기록·백업·사본·작업 기록·상태 파일은 뺀다. `import`는 허용된 종류의 경로만 쓰고(코어 훅 이름·프로젝트 밖 경로 거부), 이미 있고 다른 파일은 `--force` 없이는 건너뛰되 `init` 초기 상태 그대로인 파일은 덮어쓰며, 쓴 파일은 백업에 남는다. 결과는 결정적이다.
+- 테스트 139→143: export 포함/제외, import 건너뜀·force·복원·거부, 명령 흐름.
+
+### Changed
+
+- README에 팀 커스텀 가이드 링크와 export/import. `installation.md`에 팀 묶음 절. harness SKILL.md 참조 표.
+
 ## [4.1.0] - 2026-09-21
 
 스캐폴딩 2단계: 팀이 고친 문서 템플릿도 코어 업데이트를 받는다. PR마다 검사하는 CI 워크플로를 뼈대에 넣을 수 있다.

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-import { createPlan, applyPlan, rollback, status, detectApps, eject, mergeThreeWay, bundleRoot } from './harnessManager.mjs';
+import { createPlan, applyPlan, rollback, status, detectApps, eject, mergeThreeWay, bundleRoot, exportPreset, importPreset } from './harnessManager.mjs';
 const fixture = t => { const root = mkdtempSync(join(tmpdir(), 'harness-manager-')); t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
 const write = (root, path, content) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), content); };
 
@@ -460,4 +460,75 @@ test('ci 옵션은 워크플로를 없을 때만 만들고 이후 건드리지 �
   applyPlan(createPlan(root, { ci: true }));
   assert.equal(readFileSync(path, 'utf8'), 'name: mine\n');
   assert.ok(!createPlan(root).operations.some(op => op.path.startsWith('.github/')), 'ci를 다시 주지 않으면 계획에 오르지 않는다');
+});
+
+// ── 팀 묶음 export / import ───────────────────────────────────────────────────
+const customize = root => {
+  write(root, 'docs/harness-rules.md', '# 팀 규칙\n\n1. **우리 규칙.**\n');
+  write(root, '.agents/hooks/branchGuard.config.json', '{"protectedBranches":["main","release"]}');
+  write(root, '.agents/hooks/teamGuard.mjs', '// 팀 훅\n');
+  write(root, '.claude/skills/deploy-check/SKILL.md', '---\nname: deploy-check\ndescription: "배포 점검. 다시 확인 요청에 사용."\n---\n# 배포 점검\n');
+  write(root, '.claude/skills/deploy-check/references/list.md', '# 목록\n');
+  write(root, 'docs/templates/history.md', `${readFileSync(join(root, 'docs/templates/history.md'), 'utf8')}\n팀 추가 줄\n`);
+  write(root, 'docs/history/2026-01-01-x.md', '# 기록\n');
+  write(root, '.agents/hooks/verifierGate.abc.state.json', '{}');
+};
+test('export는 팀이 소유·수정한 파일만 담고 코어·기록·포인터·상태 파일은 뺀다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { app: 'both', ci: true }));
+  customize(root);
+  const preset = exportPreset(root);
+  const paths = Object.keys(preset.files);
+  for (const expected of ['docs/harness-rules.md', '.agents/hooks/branchGuard.config.json', '.agents/hooks/teamGuard.mjs',
+    '.claude/skills/deploy-check/SKILL.md', '.claude/skills/deploy-check/references/list.md', 'docs/templates/history.md', '.github/workflows/harness-check.yml']) {
+    assert.ok(paths.includes(expected), `${expected}가 있어야 한다: ${paths.join(', ')}`);
+  }
+  for (const excluded of ['.agents/hooks/branchGuard.mjs', '.agents/harness-core-rules.md', 'docs/templates/handoff.md', 'docs/history/2026-01-01-x.md', 'CLAUDE.md', 'AGENTS.md', '.agents/harness-install.json']) {
+    assert.ok(!paths.includes(excluded), `${excluded}는 없어야 한다`);
+  }
+  assert.ok(!paths.some(path => path.includes('.state.json')));
+  assert.equal(preset.tool, 'guksu-harness');
+  assert.equal(JSON.stringify(exportPreset(root)), JSON.stringify(preset), '결정적이다');
+});
+test('import는 새 저장소에 팀 묶음을 쓰고, 다른 내용의 기존 파일은 --force 없이는 건너뛴다', async t => {
+  const source = fixture(t), target = fixture(t);
+  applyPlan(createPlan(source, { app: 'both', ci: true }));
+  customize(source);
+  const preset = exportPreset(source);
+  applyPlan(createPlan(target, { app: 'claude' }));
+  write(target, 'docs/harness-rules.md', '# 이 저장소만의 규칙\n');
+  const first = importPreset(target, preset);
+  assert.ok(first.written.includes('.agents/hooks/teamGuard.mjs'));
+  assert.ok(first.written.includes('docs/templates/history.md'), 'init이 만든 뒤 손대지 않은 템플릿은 덮어쓴다');
+  assert.ok(first.skipped.includes('docs/harness-rules.md'), '이 저장소가 고친 팀 규칙 파일은 건너뛴다');
+  assert.deepEqual(first.rejected, []);
+  assert.equal(readFileSync(join(target, '.claude/skills/deploy-check/SKILL.md'), 'utf8'), preset.files['.claude/skills/deploy-check/SKILL.md']);
+  assert.ok(readFileSync(join(target, 'docs/templates/history.md'), 'utf8').endsWith('팀 추가 줄\n'));
+  const forced = importPreset(target, preset, { force: true });
+  assert.ok(forced.written.includes('docs/harness-rules.md'));
+  assert.equal(readFileSync(join(target, 'docs/harness-rules.md'), 'utf8'), '# 팀 규칙\n\n1. **우리 규칙.**\n');
+  rollback(target, forced.backup);
+  assert.equal(readFileSync(join(target, 'docs/harness-rules.md'), 'utf8'), '# 이 저장소만의 규칙\n', '복원하면 덮어쓰기 전으로 돌아간다');
+  assert.equal(importPreset(target, preset).written.length, 0, '같은 내용은 다시 쓰지 않는다');
+  const s = await status(target);
+  assert.equal(s.files.find(f => f.path === 'docs/templates/history.md').state, 'modified', '가져온 템플릿은 다음 update에서 병합 대상이다');
+  assert.equal(applyPlan(createPlan(target)).changed > 0, true);
+  assert.equal((await status(target)).files.find(f => f.path === 'docs/templates/history.md').state, 'customized');
+});
+test('import는 코어 훅·프로젝트 밖·허용되지 않은 경로를 거부하고 잘못된 묶음은 에러다', t => {
+  const target = fixture(t);
+  applyPlan(createPlan(target));
+  const result = importPreset(target, { schemaVersion: 1, tool: 'guksu-harness', files: {
+    '.agents/hooks/branchGuard.mjs': '// 코어 훅 덮어쓰기 시도',
+    '../outside.md': 'x',
+    '.agents/harness-install.json': '{}',
+    'src/app.js': 'x',
+    '.claude/skills/../../etc': 'x',
+    '.agents/hooks/ok.config.json': '{}',
+  } });
+  assert.deepEqual(result.written, ['.agents/hooks/ok.config.json']);
+  assert.equal(result.rejected.length, 5);
+  assert.equal(readFileSync(join(target, '.agents/hooks/branchGuard.mjs'), 'utf8').includes('덮어쓰기'), false);
+  assert.throws(() => importPreset(target, { schemaVersion: 2, files: {} }), /지원하지 않는/);
+  assert.throws(() => importPreset(target, { schemaVersion: 1, tool: 'other', files: {} }), /지원하지 않는/);
 });

@@ -4,10 +4,11 @@
 //   코어 파일   — 훅 스크립트, 코어 규칙 사본(.agents/harness-core-rules.md). 미수정이면 교체, 수정됐으면 충돌. eject로 소유 전환.
 //   공동 파일   — 문서 템플릿, 앱 등록 파일. 템플릿은 팀이 고쳤으면 원본 사본(.agents/harness-base/)과 3-way 병합. 등록 파일은 이 도구가 넣은 부분만 갱신.
 //   프로젝트 파일 — 팀 규칙(docs/harness-rules.md), 규칙 포인터(CLAUDE.md·AGENTS.md), CI 워크플로(--ci). 없을 때 한 번 만들고 이후 건드리지 않는다.
+// 팀 묶음(export/import): 팀이 소유·수정한 파일만 한 JSON으로 묶어 다른 저장소로 옮긴다. 코어 파일·추적 기록·백업·사본은 제외한다.
 // 관리 파일(훅·추적 기록·백업)은 앱 중립 위치 .agents/에 둔다. 훅 등록만 앱별 파일에 쓴다:
 //   claude → .claude/settings.json (hooks + permissions.deny), codex → .codex/hooks.json (hooks)
 // v2.x(.claude/hooks/·.claude/harness-install.json)와 v3.x(docs/harness-rules.md를 코어 사본으로 추적)는 업데이트 계획에서 변환한다.
-import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, realpathSync, renameSync, unlinkSync, readdirSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
@@ -406,7 +407,7 @@ export function rollback(project, backup) {
   const data = JSON.parse(readFileSync(safePath(root, backup), 'utf8'));
   if (data.root !== root || data.schemaVersion !== 1 || !Array.isArray(data.records)) throw new Error('다른 프로젝트 또는 잘못된 백업입니다');
   for (const record of data.records) {
-    if (!restorablePaths.has(record.path)) throw new Error('백업에 알 수 없는 파일이 있습니다');
+    if (!restorablePaths.has(record.path) && !presetKind(record.path)) throw new Error('백업에 알 수 없는 파일이 있습니다');
     if (hash(read(safePath(root, record.path))) !== record.afterHash) throw new Error(`적용 후 수정된 파일은 복원하지 않습니다: ${record.path}`);
   }
   for (const record of [...data.records].reverse()) atomicWrite(safePath(root, record.path), record.before);
@@ -428,6 +429,99 @@ export function eject(project, path) {
   atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records: [{ path: manifestPath, before, afterHash: hash(json(next)) }] }));
   atomicWrite(safePath(root, manifestPath), json(next));
   return { ejected: path, backup };
+}
+// ── 팀 묶음: 팀이 소유하거나 고친 파일만 모은다 ────────────────────────────────
+// 포함: 팀 규칙, 훅 설정값, 팀 훅(코어 이름이 아닌 .mjs), 팀 스킬(.claude/skills·.agents/skills), 팀이 고친 템플릿, CI 워크플로.
+// 제외: 코어 훅·코어 규칙 사본(update가 준다), 규칙 포인터(프로젝트 이름이 들어간다), 추적 기록·백업·사본, 작업 기록.
+const coreHookFiles = new Set(allHookNames.map(hookPath));
+const skillRoots = ['.claude/skills', '.agents/skills'];
+const presetRules = [
+  { test: path => path === teamRulesPath, why: '팀 규칙' },
+  { test: path => path === ciWorkflowPath, why: 'CI 워크플로' },
+  { test: path => /^\.agents\/hooks\/[\w.-]+\.config\.json$/.test(path), why: '훅 설정값' },
+  { test: path => /^\.agents\/hooks\/[\w.-]+\.mjs$/.test(path) && !coreHookFiles.has(path), why: '팀 훅' },
+  { test: path => templatePaths.includes(path), why: '문서 템플릿(팀 수정본)' },
+  { test: path => skillRoots.some(rootDir => path.startsWith(`${rootDir}/`)) && /\/[\w-]+\/(SKILL\.md|(scripts|references|assets)\/[\w./-]+)$/.test(path) && !path.includes('..'), why: '팀 스킬' },
+];
+const presetKind = path => presetRules.find(rule => rule.test(path))?.why ?? null;
+const listFiles = (root, dir) => {
+  const out = [];
+  const walk = rel => {
+    const abs = safePath(root, rel);
+    if (!existsSync(abs) || !lstatSync(abs).isDirectory()) return;
+    for (const name of readdirSync(abs).sort()) {
+      const child = `${rel}/${name}`;
+      const stat = lstatSync(join(abs, name));
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isDirectory()) walk(child); else out.push(child);
+    }
+  };
+  walk(dir);
+  return out;
+};
+export function exportPreset(project) {
+  const root = realpathSync(project);
+  const { manifest } = loadManifest(root);
+  const candidates = new Set([teamRulesPath, ciWorkflowPath, ...listFiles(root, hooksDir), ...skillRoots.flatMap(dir => listFiles(root, dir)), ...templatePaths]);
+  const files = {};
+  const skipped = [];
+  for (const path of [...candidates].sort()) {
+    const content = read(safePath(root, path));
+    if (content == null) continue;
+    const kind = presetKind(path);
+    if (!kind) { skipped.push(path); continue; }
+    if (templatePaths.includes(path)) {
+      // 템플릿은 팀이 고친 것만 담는다. 원본 그대로면 update가 준다.
+      const base = read(safePath(root, basePathOf(path)));
+      const pristine = base != null ? content === base : content === readFileSync(join(bundleRoot, catalog({ profile: 'collaboration' })[path]), 'utf8');
+      if (pristine) continue;
+    }
+    if (/\.(state|tmp)\b/.test(path)) continue;
+    files[path] = content;
+  }
+  return { schemaVersion: 1, tool: 'guksu-harness', bundleVersion: version(), sourceVersion: manifest.version ?? null, files, skipped };
+}
+// init이 만든 뒤 손대지 않은 파일인가 — 템플릿은 사본(없으면 번들)과, 팀 규칙·CI 워크플로는 초기 양식과 같으면 그렇다.
+// 이런 파일은 덮어써도 잃는 것이 없으므로 force 없이 가져온다.
+const untouched = (root, path, content) => {
+  if (templatePaths.includes(path)) {
+    const base = read(safePath(root, basePathOf(path)));
+    return content === (base ?? readFileSync(join(bundleRoot, catalog({ profile: 'collaboration' })[path]), 'utf8'));
+  }
+  if (path === teamRulesPath) return content === readFileSync(join(bundleRoot, teamRulesAsset), 'utf8');
+  if (path === ciWorkflowPath) return content === readFileSync(join(bundleRoot, ciAsset), 'utf8');
+  return false;
+};
+// 가져오기: 허용된 종류의 경로만 쓴다. 이미 있고 내용이 다른 파일은 force가 아니면 건너뛰고 보고한다(init 초기 상태 그대로인 파일은 예외).
+export function importPreset(project, preset, { force = false } = {}) {
+  const root = realpathSync(project);
+  if (preset?.schemaVersion !== 1 || preset.tool !== 'guksu-harness' || !preset.files || typeof preset.files !== 'object' || Array.isArray(preset.files)) {
+    throw new Error('지원하지 않는 묶음 파일입니다');
+  }
+  const written = [], skipped = [], rejected = [];
+  const records = [];
+  for (const [path, content] of Object.entries(preset.files)) {
+    if (typeof content !== 'string' || !presetKind(path)) { rejected.push(path); continue; }
+    let target;
+    try { target = safePath(root, path); } catch { rejected.push(path); continue; }
+    const before = read(target);
+    if (before === content) continue;
+    if (before != null && !force && !untouched(root, path, before)) { skipped.push(path); continue; }
+    records.push({ path, before, afterHash: hash(content) });
+    written.push(path);
+  }
+  if (records.length) {
+    const backup = `${backupDir}/${randomUUID()}.json`;
+    atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records }));
+    try {
+      for (const record of records) atomicWrite(safePath(root, record.path), preset.files[record.path]);
+    } catch (error) {
+      for (const record of [...records].reverse()) atomicWrite(safePath(root, record.path), record.before);
+      throw error;
+    }
+    return { written, skipped, rejected, backup };
+  }
+  return { written, skipped, rejected, backup: null };
 }
 export async function status(project) {
   const root = realpathSync(project);

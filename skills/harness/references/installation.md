@@ -1,6 +1,6 @@
 # 상태 확인과 안전한 업데이트
 
-일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다.
+일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)·`export`/`import`(팀 묶음)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다.
 
 ```bash
 npx guksu-harness init /path/to/project --app both --ci
@@ -120,6 +120,28 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 ## CI 검사 워크플로 (--ci)
 
 `init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@4 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. npm에 패키지가 배포되어 있어야 동작한다.
+
+## 팀 묶음 — export / import
+
+```bash
+npx guksu-harness export /path/to/source --out team-preset.json
+npx guksu-harness import /path/to/target --from team-preset.json [--force]
+```
+
+`export`는 팀이 소유하거나 고친 파일만 한 JSON에 담는다. `import`는 설치된 프로젝트에 그 파일들을 쓴다.
+
+| 종류 | 경로 | 담는 조건 |
+|---|---|---|
+| 팀 규칙 | `docs/harness-rules.md` | 있으면 |
+| 훅 설정값 | `.agents/hooks/*.config.json` | 있으면 |
+| 팀 훅 | `.agents/hooks/*.mjs` (코어 이름 제외) | 있으면 |
+| 팀 스킬 | `.claude/skills/**`, `.agents/skills/**` (SKILL.md·scripts·references·assets) | 있으면 |
+| 문서 템플릿 | `docs/templates/*.md` | 팀이 고친 것만(사본·번들과 다를 때) |
+| CI 워크플로 | `.github/workflows/harness-check.yml` | 있으면 |
+
+담지 않는 것: 코어 훅·코어 규칙 사본(각 저장소의 `update`가 준다), 규칙 포인터 `CLAUDE.md`·`AGENTS.md`(프로젝트 고유), 추적 기록·백업·사본, 작업 기록, 훅 상태 파일.
+
+`import` 규칙: 위 종류의 경로만 쓴다(코어 훅 이름·프로젝트 밖 경로·그 밖의 경로는 거부). 이미 있고 내용이 다른 파일은 `--force` 없이는 건너뛴다. 단 `init`이 만든 뒤 손대지 않은 파일(원본 사본이나 초기 양식과 같은 템플릿·팀 규칙·CI 워크플로)은 잃을 것이 없으므로 그냥 쓴다. 쓴 파일은 백업에 남아 `rollback`으로 되돌릴 수 있다. 가져온 템플릿은 다음 `update`에서 병합 대상이 된다. 팀 훅의 앱 등록은 묶음에 없으므로 직접 추가한다. 묶음 파일은 커밋해 두면 새 저장소를 `init` + `import`로 만들 수 있다. 훅 설정값에 비밀이 없는지 확인한 뒤 공유한다.
 
 ## eject — 코어 파일을 프로젝트 소유로
 

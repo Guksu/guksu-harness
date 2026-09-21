@@ -7,10 +7,13 @@
 //   npx guksu-harness status [프로젝트] [--json]
 //   npx guksu-harness check  [프로젝트]            구조 검사 + 상태 진단. error가 있으면 종료 코드 1 (CI용)
 //   npx guksu-harness eject  [프로젝트] <코어 파일 경로> --confirm
+//   npx guksu-harness export [프로젝트] --out <묶음.json>       팀이 소유·수정한 파일을 한 파일로
+//   npx guksu-harness import [프로젝트] --from <묶음.json> [--force]   다른 저장소의 팀 묶음을 가져오기
 import { realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPlan, applyPlan, status, eject, isInstalled, version, corePaths } from '../skills/harness/scripts/harnessManager.mjs';
+import { createPlan, applyPlan, status, eject, isInstalled, version, corePaths, exportPreset, importPreset } from '../skills/harness/scripts/harnessManager.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { validateHarness } from '../skills/harness/scripts/validateHarness.mjs';
 
 const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로젝트 작업 규칙 뼈대
@@ -26,6 +29,10 @@ const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로�
          구조 검사와 상태 진단을 실행한다. error가 있으면 종료 코드 1. CI에서 쓴다.
   eject  [프로젝트] <코어 파일 경로> --confirm
          코어 파일 하나를 프로젝트 소유로 바꾼다. 이후 업데이트를 받지 않는다.
+  export [프로젝트] --out <묶음.json>
+         팀 규칙·훅 설정값·팀 훅·팀 스킬·고친 템플릿·CI 워크플로를 한 파일로 모은다. 코어 파일은 넣지 않는다.
+  import [프로젝트] --from <묶음.json> [--force]
+         묶음을 프로젝트에 쓴다. 이미 있고 내용이 다른 파일은 --force 없이는 건너뛴다. 먼저 init이 되어 있어야 한다.
 
 프로젝트를 생략하면 현재 디렉터리다. 세밀한 미리보기·복원은 skills/harness/scripts/harnessManager.mjs의 plan·apply·rollback을 쓴다.`;
 
@@ -35,6 +42,8 @@ const FLAGS = {
   status: { '--json': 'flag' },
   check: {},
   eject: { '--confirm': 'flag' },
+  export: { '--out': 'value' },
+  import: { '--from': 'value', '--force': 'flag' },
 };
 
 export function parseArgs(argv) {
@@ -131,6 +140,27 @@ export async function run(argv) {
     const result = eject(project, path);
     console.log(`${result.ejected}: 프로젝트 소유로 전환했습니다. 백업: ${result.backup}\n되돌리려면 파일을 지우고 update를 실행하세요.`);
     return 0;
+  }
+  if (command === 'export') {
+    if (!options['--out']) throw new Error('--out으로 묶음 파일 경로를 지정하세요');
+    const preset = exportPreset(project);
+    writeFileSync(options['--out'], `${JSON.stringify(preset, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    for (const path of Object.keys(preset.files)) console.log(`담음      ${path}`);
+    for (const path of preset.skipped) console.log(`건너뜀    ${path} — 팀 묶음 대상이 아님`);
+    console.log(`\n${Object.keys(preset.files).length}개 파일을 ${options['--out']}에 저장했습니다. 훅 설정값에 비밀이 없는지 확인한 뒤 공유하세요.`);
+    return 0;
+  }
+  if (command === 'import') {
+    if (!options['--from']) throw new Error('--from으로 묶음 파일 경로를 지정하세요');
+    if (!isInstalled(project)) throw new Error('설치 기록이 없습니다. 먼저 init을 실행하세요.');
+    const preset = JSON.parse(readFileSync(options['--from'], 'utf8'));
+    const result = importPreset(project, preset, { force: options['--force'] === true });
+    for (const path of result.written) console.log(`씀        ${path}`);
+    for (const path of result.skipped) console.log(`건너뜀    ${path} — 이미 있고 내용이 다름 (--force로 덮어씀)`);
+    for (const path of result.rejected) console.log(`거부      ${path} — 팀 묶음이 쓸 수 없는 경로`);
+    console.log(result.backup ? `\n${result.written.length}개 파일을 썼습니다. 백업: ${result.backup}` : '\n쓴 파일이 없습니다.');
+    const issues = await validateHarness({ rootDir: project });
+    return printIssues(issues) && result.rejected.length === 0 ? 0 : 1;
   }
   return 1;
 }
