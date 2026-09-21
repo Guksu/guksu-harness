@@ -4,7 +4,7 @@
 |---|---|
 | 날짜 | 2026-09-21 |
 | 브랜치 | feat/scaffold-phase3 |
-| PR | 미생성 |
+| PR | https://github.com/Guksu/guksu-harness/pull/23 |
 | 기준 | origin/main의 293b4e4 (v4.1.0) |
 | 버전 | 4.2.0 |
 
