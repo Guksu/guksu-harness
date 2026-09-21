@@ -26,6 +26,13 @@ npx guksu-harness check                  # 구조 검사 (CI에서도 같은 명
 
 뼈대를 새 버전으로 올릴 때는 `npx guksu-harness update`를 실행합니다. 코어 파일을 꼭 직접 고쳐야 하면 `eject`로 그 파일을 팀 소유로 바꿉니다. 그 파일은 이후 업데이트를 받지 않습니다.
 
+팀에 맞게 바꾸는 방법(팀 규칙·스킬·훅·양식, 여러 저장소에 같은 설정 쓰기)은 [팀 커스텀 가이드](skills/harness/references/team-customization.md)에 있습니다. 저장소가 여러 개면 한 곳에서 `export`한 묶음을 다른 곳에서 `import`합니다:
+
+```bash
+npx guksu-harness export . --out team-preset.json     # 팀 규칙·설정값·팀 스킬·팀 훅·고친 양식만 담김
+npx guksu-harness import . --from team-preset.json    # 다른 저장소에서. 먼저 init
+```
+
 스킬(대화로 규칙을 맞추는 절차)은 앱 플러그인으로 설치합니다. Claude Code에서 설치합니다:
 
 ```text
@@ -110,6 +117,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 
 ## 기존 사용자가 알아둘 변경
 
+- **v4.2.0:** `export`·`import`로 팀 설정 묶음을 다른 저장소에 옮길 수 있습니다. 팀 커스텀 가이드가 추가됐습니다.
 - **v4.1.0:** 문서 양식을 팀이 고쳐도 업데이트가 합쳐 줍니다. 그 기준이 되는 원본 사본 `.agents/harness-base/`는 커밋하세요. 4.0 설치본은 첫 업데이트에서 사본만 등록하고 그다음부터 합칩니다.
 - **v4.0.0:** `docs/harness-rules.md`가 팀 규칙 파일이 됩니다. 코어 규칙은 `.agents/harness-core-rules.md`로 옮겨지고 관리 도구가 갱신합니다. `update`가 원본 그대로인 파일은 자동 전환하고, 팀이 고친 파일은 그대로 둔 채 정리 방법을 안내합니다.
 - **v3.0.0:** 훅·설정·추적 기록이 `.claude/hooks/`, `.claude/harness-install.json`에서 `.agents/`로 옮겨집니다. 업데이트 미리보기에 이동이 표시되고, 직접 수정한 파일은 옮기지 않고 보존합니다. `.gitignore`의 백업·상태 파일 경로를 `.agents/`로 바꾸세요.
@@ -139,6 +147,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 
 | 작업 | 스킬 |
 |---|---|
+| 팀에 맞게 바꾸기 | [팀 커스텀 가이드](skills/harness/references/team-customization.md) |
 | 구성·점검·업데이트 | [harness](skills/harness/SKILL.md) |
 | 브랜치 준비·업로드 | [branch](skills/branch/SKILL.md), [pr](skills/pr/SKILL.md) |
 | 기록·인계·회고 | [history](skills/history/SKILL.md), [handoff](skills/handoff/SKILL.md), [retro](skills/retro/SKILL.md) |
