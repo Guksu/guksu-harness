@@ -4,7 +4,7 @@
 |---|---|
 | 날짜 | 2026-09-21 |
 | 브랜치 | fix/npx-bin-symlink |
-| PR | 미생성 |
+| PR | https://github.com/Guksu/guksu-harness/pull/24 |
 | 기준 | origin/main의 0e99d37 (v4.2.0) |
 | 버전 | 4.2.1 |
 
