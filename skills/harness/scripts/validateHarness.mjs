@@ -255,43 +255,66 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
   }
 };
 
-// 절대 규칙 정본 — 하네스 구축 시 프로젝트 docs/harness-rules.md로 복사된다.
-// 정본에 규칙이 추가·개정되면 기존 프로젝트 사본은 조용히 구버전이 되므로 규칙 수를 비교해 경고한다.
+// 절대 규칙 정본 — 하네스 구축 시 프로젝트 .agents/harness-core-rules.md(코어 사본)로 복사된다.
+// docs/harness-rules.md는 v4부터 팀 규칙 파일이다(코어 포인터 + 팀 규칙). v3 이하는 그 경로에 코어 전문이 있었다.
 const RULES_ASSET_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
   'assets',
   'harness-rules.md',
 );
+const CORE_RULES_PATH = ['.agents', 'harness-core-rules.md'];
+const TEAM_RULES_PATH = ['docs', 'harness-rules.md'];
 const countRules = ({ content }) =>
   content.split('\n').filter((line) => /^\d+\.\s+\*\*/.test(line)).length;
 
 const validateRulesFile = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
-  const rulesPath = join(rootDir, 'docs', 'harness-rules.md');
-  if (!(await exists({ path: rulesPath }))) {
-    issues.push({
-      level: 'warn',
-      path: rulesPath,
-      message:
-        '절대 규칙 파일(docs/harness-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. harness 스킬의 assets/harness-rules.md를 복사하라 (Phase 2)',
-    });
-    return;
-  }
-
   let assetRuleCount;
   try {
     assetRuleCount = countRules({ content: await readFile(RULES_ASSET_PATH, 'utf8') });
   } catch {
-    return; // 플러그인 정본을 찾지 못하면(비표준 설치) 비교를 생략한다
+    assetRuleCount = null; // 플러그인 정본을 찾지 못하면(비표준 설치) 개수 비교를 생략한다
   }
-  const projectRuleCount = countRules({ content: await readFile(rulesPath, 'utf8') });
-  if (projectRuleCount < assetRuleCount) {
+
+  const corePath = join(rootDir, ...CORE_RULES_PATH);
+  const teamPath = join(rootDir, ...TEAM_RULES_PATH);
+  const hasCore = await exists({ path: corePath });
+  const hasTeam = await exists({ path: teamPath });
+  const teamRuleCount = hasTeam ? countRules({ content: await readFile(teamPath, 'utf8') }) : 0;
+  const teamHoldsCore = assetRuleCount != null && teamRuleCount >= assetRuleCount;
+
+  if (!hasCore) {
     issues.push({
       level: 'warn',
-      path: rulesPath,
-      message: `절대 규칙 파일이 구버전이다 — 프로젝트 ${projectRuleCount}종 vs 플러그인 정본 ${assetRuleCount}종. 누락된 규칙만 추가하라 (프로젝트가 손본 문구는 보존)`,
+      path: corePath,
+      message: teamHoldsCore
+        ? '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — v3 구조다. npx guksu-harness update로 코어 사본을 만들고 docs/harness-rules.md를 팀 규칙 파일로 바꿔라'
+        : '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. npx guksu-harness update로 생성하라 (Phase 2)',
+    });
+  } else if (assetRuleCount != null) {
+    const coreRuleCount = countRules({ content: await readFile(corePath, 'utf8') });
+    if (coreRuleCount < assetRuleCount) {
+      issues.push({
+        level: 'warn',
+        path: corePath,
+        message: `코어 규칙 사본이 구버전이다 — 프로젝트 ${coreRuleCount}종 vs 플러그인 정본 ${assetRuleCount}종. npx guksu-harness update로 갱신하라`,
+      });
+    }
+    if (teamHoldsCore) {
+      issues.push({
+        level: 'warn',
+        path: teamPath,
+        message: '팀 규칙 파일에 코어 규칙 전문이 남아 있다 — 코어 규칙은 .agents/harness-core-rules.md가 정본이다. 이 파일에는 코어 포인터와 팀 규칙만 남겨라',
+      });
+    }
+  }
+  if (!hasTeam) {
+    issues.push({
+      level: 'warn',
+      path: teamPath,
+      message: '팀 규칙 파일(docs/harness-rules.md)이 없다 — 코어 포인터와 팀 규칙을 담는 파일이다. npx guksu-harness update로 생성하라',
     });
   }
 };
@@ -430,12 +453,21 @@ const validatePluginManifests = async ({ rootDir, issues }) => {
     }
   }
 
+  const packagePath = join(rootDir, 'package.json');
+  if (versions.length && (await exists({ path: packagePath }))) {
+    try {
+      const pkg = await readJson(packagePath);
+      if (pkg.name === 'guksu-harness') versions.push({ path: packagePath, version: pkg.version });
+    } catch (parseError) {
+      issues.push({ level: 'error', path: packagePath, message: `package.json 파싱 실패 — ${parseError.message}` });
+    }
+  }
   const distinct = new Set(versions.map((entry) => entry.version));
   if (distinct.size > 1) {
     issues.push({
       level: 'error',
       path: versions[0].path,
-      message: `앱별 plugin.json 버전이 다르다 — ${versions.map((entry) => `${entry.path.split('/').slice(-2).join('/')}(${entry.version})`).join(' vs ')}`,
+      message: `plugin.json·package.json 버전이 다르다 — ${versions.map((entry) => `${entry.path.split('/').slice(-2).join('/')}(${entry.version})`).join(' vs ')}`,
     });
   }
 };

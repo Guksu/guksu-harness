@@ -11,7 +11,7 @@
 
 ## 1. 설치와 기존 설정 보존
 
-`harnessManager.mjs plan`으로 파일과 설정 변경을 확인하고 `apply`로 적용한다 → `installation.md`. `--app claude|codex|both`로 등록할 앱을 고른다. 생략하면 프로젝트의 `.claude/`·`CLAUDE.md`·`.codex/`·`AGENTS.md` 유무로 추정하고, 한 번 적용한 뒤에는 추적 기록의 값을 쓴다.
+`npx guksu-harness init`(최초) 또는 `update`(갱신)로 설치한다. 세밀한 미리보기는 `harnessManager.mjs plan`·`apply` → `installation.md`. `--app claude|codex|both`로 등록할 앱을 고른다. 생략하면 프로젝트의 `.claude/`·`CLAUDE.md`·`.codex/`·`AGENTS.md` 유무로 추정하고, 한 번 적용한 뒤에는 추적 기록의 값을 쓴다.
 
 기본 훅 3종은 `.agents/hooks/`에 복사한다. 앱별 등록 형태:
 
@@ -115,7 +115,7 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 
 ## 5. 종료 검사 (선택)
 
-`verifierGate.mjs`를 Stop에 등록한다. 관리자의 `plan --verifier`로 파일·등록을 추가하고, 훅 옆 `.agents/hooks/verifierGate.config.json`에 검사 명령을 쓴다.
+`verifierGate.mjs`를 Stop에 등록한다. `init --verifier`(또는 관리자의 `plan --verifier`)로 파일·등록을 추가하고, 훅 옆 `.agents/hooks/verifierGate.config.json`에 검사 명령을 쓴다.
 
 ```json
 {
@@ -161,4 +161,4 @@ Stop 훅을 새로 등록하는 것과 한 작업에서 테스트를 재시도�
 2. `git commit -m test`를 요청한다. 차단 메시지("git 변경 작업은 사용자 전담")가 나오면 blockGitMutation이 동작한다.
 3. `cat .env`를 요청한다. 차단 메시지("시크릿 파일")가 나오면 blockSecretAccess가 동작한다.
 
-하나라도 차단되지 않으면 그 앱에서는 규칙 문서(`docs/harness-rules.md`)만 적용되는 상태다. 결과를 작업 기록에 남긴다.
+하나라도 차단되지 않으면 그 앱에서는 규칙 문서(`.agents/harness-core-rules.md`·`docs/harness-rules.md`)만 적용되는 상태다. 결과를 작업 기록에 남긴다.

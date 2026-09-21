@@ -1,14 +1,31 @@
 # guksu-harness
 
-**AI에게 매번 반복하던 작업 규칙을 프로젝트에 저장합니다.** 중요한 브랜치를 보호하고, 변경을 검사하고, 다음 작업에 필요한 기록을 남기는 플러그인입니다. Claude Code와 Codex에서 같은 스킬과 훅을 씁니다.
+**AI에게 매번 반복하던 작업 규칙을 프로젝트에 저장합니다.** 중요한 브랜치를 보호하고, 변경을 검사하고, 다음 작업에 필요한 기록을 남기는 뼈대입니다. 팀은 이 뼈대 위에 자기 규칙·스킬·훅을 얹고, 뼈대가 갱신되어도 팀 파일은 그대로 남습니다. Claude Code와 Codex에서 같은 스킬과 훅을 씁니다.
 
-v3.0.0 · 스킬 9종 · 보호·검증 훅 4종 · Claude Code · Codex · MIT
+v4.0.0 · 스킬 9종 · 보호·검증 훅 4종 · Claude Code · Codex · MIT
 
 ## 시작하기
 
-Claude Code 또는 Codex, 그리고 Node.js 22 이상이 필요합니다. 브랜치 기능에는 git 저장소가 필요합니다.
+Node.js 22 이상이 필요합니다. 브랜치 기능에는 git 저장소가 필요합니다.
 
-Claude Code에서 설치합니다:
+프로젝트에 뼈대를 만듭니다:
+
+```bash
+npx guksu-harness init --app both    # claude · codex · both
+npx guksu-harness check              # 구조 검사 (CI에서도 씁니다)
+```
+
+`init`이 만드는 것과 그 소유자입니다.
+
+| 파일 | 소유 | 업데이트 때 |
+|---|---|---|
+| `.agents/hooks/*.mjs` 훅 4종, `.agents/harness-core-rules.md` 코어 규칙 | 뼈대 | 새 버전으로 바뀝니다. 고쳐져 있으면 멈추고 알립니다 |
+| `docs/harness-rules.md` 팀 규칙, `CLAUDE.md`·`AGENTS.md` 포인터, 훅 설정값 | 팀 | 건드리지 않습니다 |
+| `docs/templates/` 문서 양식, 앱 등록 파일 | 공동 | 뼈대가 넣은 부분만 바뀝니다 |
+
+뼈대를 새 버전으로 올릴 때는 `npx guksu-harness update`를 실행합니다. 코어 파일을 꼭 직접 고쳐야 하면 `eject`로 그 파일을 팀 소유로 바꿉니다. 그 파일은 이후 업데이트를 받지 않습니다.
+
+스킬(대화로 규칙을 맞추는 절차)은 앱 플러그인으로 설치합니다. Claude Code에서 설치합니다:
 
 ```text
 /plugin marketplace add Guksu/guksu-harness
@@ -22,7 +39,7 @@ codex plugin marketplace add Guksu/guksu-harness
 codex plugin add guksu-harness@guksu-harness
 ```
 
-프로젝트를 열고 요청합니다. Claude Code는 `/guksu-harness:harness`, Codex는 `$harness`로 스킬을 부릅니다:
+프로젝트를 열고 요청합니다. Claude Code는 `/guksu-harness:harness`, Codex는 `$harness`로 스킬을 부릅니다. 뼈대가 이미 있으면 스킬은 도메인 스킬·팀 규칙만 맞춥니다:
 
 ```text
 /guksu-harness:harness 이 프로젝트에 작업 규칙 설정해줘
@@ -74,13 +91,15 @@ Codex에서는 두 가지를 직접 확인해야 합니다. 훅 기능이 켜져
 플러그인 저장소에서 실행하는 예시입니다. 다른 위치에서는 스크립트의 절대 경로를 사용합니다.
 
 ```bash
-# 상태만 확인 — 파일 변경 없음
-node skills/harness/scripts/harnessManager.mjs status /path/to/project
+npx guksu-harness status /path/to/project          # 상태만 확인 — 파일 변경 없음
+npx guksu-harness update /path/to/project --dry-run # 변경 미리보기
+npx guksu-harness update /path/to/project          # 적용 — 변경 전 백업 생성
+```
 
-# 변경 미리보기 — 프로젝트 변경 없음. --app claude|codex|both로 등록할 앱 선택(생략 시 추정)
+세밀한 제어(선택 적용, 제거, 복원)는 관리자 스크립트를 직접 씁니다:
+
+```bash
 node skills/harness/scripts/harnessManager.mjs plan /path/to/project --app both --out /tmp/harness-plan.json
-
-# 검토한 계획 적용 — 변경 전 백업 생성
 node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tmp/harness-plan.json
 ```
 
@@ -90,6 +109,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 
 ## 기존 사용자가 알아둘 변경
 
+- **v4.0.0:** `docs/harness-rules.md`가 팀 규칙 파일이 됩니다. 코어 규칙은 `.agents/harness-core-rules.md`로 옮겨지고 관리 도구가 갱신합니다. `update`가 원본 그대로인 파일은 자동 전환하고, 팀이 고친 파일은 그대로 둔 채 정리 방법을 안내합니다.
 - **v3.0.0:** 훅·설정·추적 기록이 `.claude/hooks/`, `.claude/harness-install.json`에서 `.agents/`로 옮겨집니다. 업데이트 미리보기에 이동이 표시되고, 직접 수정한 파일은 옮기지 않고 보존합니다. `.gitignore`의 백업·상태 파일 경로를 `.agents/`로 바꾸세요.
 - 브랜치 전략은 프로젝트 관례를 따릅니다. `dev`나 `feat/`를 강제하지 않습니다.
 - 일반적인 수정·테스트 재시도에 별도 루프 승인을 요구하지 않습니다.
@@ -106,6 +126,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 | 커밋·푸시가 막힘 | 사용자 요청 범위, allowCommitPush, 작업 기록 요구 |
 | 훅이 실행되지 않음 | Node.js, 앱별 등록 파일(`.claude/settings.json`·`.codex/hooks.json`), Codex는 훅 기능 활성과 프로젝트 신뢰 |
 | 업데이트 후 훅 설정이 사라진 것처럼 보임 | 설정 파일이 `.claude/hooks/`에 남아 있는지. 상태 확인이 이동 대상을 알려 줍니다 |
+| 업데이트가 충돌로 멈춤 | 고친 코어 파일이 있는지. 의도한 수정이면 `eject`, 아니면 파일을 지우고 다시 `update` |
 | 업데이트 충돌 | 파일을 직접 수정했는지 확인하고 필요한 파일만 선택 적용 |
 | 반복 검사가 중단됨 | 남은 실패·최대 반복·같은 실패 누적·설정 오류 |
 | 배포 판정 보류 | 실행하지 못한 필수 검사와 필요한 환경 |
@@ -123,10 +144,10 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 | 화면 개선·배포 검사 | [fe-craft](skills/fe-craft/SKILL.md), [fe-predeploy](skills/fe-predeploy/SKILL.md) |
 
 ```bash
-node skills/harness/scripts/validateHarness.mjs .
-node --test skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs
+npm run check   # 구조 검사
+npm test        # 전체 테스트
 ```
 
-저장소 구조: `.claude-plugin/`은 Claude Code, `.codex-plugin/`과 `.agents/plugins/`는 Codex 플러그인 설명 파일입니다. `skills/`는 양쪽이 공유합니다. 두 plugin.json의 버전은 구조 검사가 일치를 확인합니다.
+저장소 구조: `bin/`은 `npx guksu-harness` 명령입니다. `.claude-plugin/`은 Claude Code, `.codex-plugin/`과 `.agents/plugins/`는 Codex 플러그인 설명 파일입니다. `skills/`는 양쪽이 공유합니다. 두 plugin.json의 버전은 구조 검사가 일치를 확인합니다.
 
 [검증 방법](skills/harness/references/testing-guide.md) · [변경 이력](CHANGELOG.md) · [라이선스](LICENSE)

@@ -75,5 +75,7 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 CLI 회귀 검사는 실제 임시 프로젝트에서 설치·업데이트·충돌·제거·복원, claude·codex·both 앱 선택, v2 설치본 이동을 검증하고, Stop 이벤트 연속 입력과 codex 형식 훅 입력(`CLAUDE_PROJECT_DIR` 없음·`apply_patch`)도 검사한다. 실제 앱 안에서의 훅 실행은 검사하지 않는다 — 앱별 확인 절차는 `hooks-and-permissions.md` §8을 따른다:
 
 ```bash
-node --test skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs
+npm test   # = node --test skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs
 ```
+
+`bin/guksu-harness.test.mjs`는 `npx guksu-harness` 명령(init·update·check·eject·status)의 실제 실행을 임시 프로젝트에서 검사한다.

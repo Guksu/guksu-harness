@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-import { createPlan, applyPlan, rollback, status, detectApps } from './harnessManager.mjs';
+import { createPlan, applyPlan, rollback, status, detectApps, eject } from './harnessManager.mjs';
 const fixture = t => { const root = mkdtempSync(join(tmpdir(), 'harness-manager-')); t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
 const write = (root, path, content) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), content); };
 
@@ -29,16 +29,16 @@ test('설정 병합은 기존 훅·권한을 보존하고 재적용은 멱등이
 });
 test('추적되지 않은 파일은 덮어쓰지 않고 충돌을 알린다', t => {
   const root = fixture(t);
-  write(root, 'docs/harness-rules.md', 'project rules');
+  write(root, '.agents/harness-core-rules.md', 'project rules');
   const plan = createPlan(root);
   assert.ok(plan.operations.some(op => op.action === 'conflict'));
   assert.throws(() => applyPlan(plan), /충돌/);
-  assert.equal(readFileSync(join(root, 'docs/harness-rules.md'), 'utf8'), 'project rules');
+  assert.equal(readFileSync(join(root, '.agents/harness-core-rules.md'), 'utf8'), 'project rules');
 });
 test('설치 후 수정한 파일도 보존하며 선택 적용이 가능하다', t => {
   const root = fixture(t);
   applyPlan(createPlan(root));
-  write(root, 'docs/harness-rules.md', 'local edit');
+  write(root, '.agents/harness-core-rules.md', 'local edit');
   assert.throws(() => applyPlan(createPlan(root)), /충돌/);
   assert.equal(applyPlan(createPlan(root, { only: ['.agents/hooks/branchGuard.mjs'] })).changed, 0);
 });
@@ -73,9 +73,9 @@ test('백업 복원은 적용 전 파일 내용을 복구한다', t => {
 test('적용 후 변경한 파일은 백업으로 덮어쓰지 않는다', t => {
   const root = fixture(t);
   const result = applyPlan(createPlan(root));
-  write(root, 'docs/harness-rules.md', 'new user edit');
+  write(root, '.agents/harness-core-rules.md', 'new user edit');
   assert.throws(() => rollback(root, result.backup), /수정된 파일/);
-  assert.equal(readFileSync(join(root, 'docs/harness-rules.md'), 'utf8'), 'new user edit');
+  assert.equal(readFileSync(join(root, '.agents/harness-core-rules.md'), 'utf8'), 'new user edit');
 });
 test('루트 밖을 향하는 심볼릭 링크는 거부한다', t => {
   const root = fixture(t), outside = fixture(t);
@@ -276,4 +276,95 @@ test('이전 위치 파일을 수동 등록이 참조하면 이동을 멈추고 
   const plan = createPlan(root);
   assert.equal(plan.operations.find(op => op.path === '.claude/hooks/blockGitMutation.mjs' && op.action === 'conflict')?.reason, '남아 있는 훅 등록이 참조합니다');
   assert.throws(() => applyPlan(plan), /충돌/);
+});
+
+// ── 소유권: 코어 · 공동 · 프로젝트 파일 ──────────────────────────────────────
+test('프로젝트 파일(팀 규칙·규칙 포인터)은 없을 때 한 번만 만들고 이후 건드리지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { app: 'both' }));
+  for (const path of ['docs/harness-rules.md', 'CLAUDE.md', 'AGENTS.md']) assert.ok(existsSync(join(root, path)), path);
+  assert.ok(readFileSync(join(root, 'docs/harness-rules.md'), 'utf8').includes('.agents/harness-core-rules.md'), '팀 규칙 파일은 코어 사본을 가리킨다');
+  assert.ok(readFileSync(join(root, 'CLAUDE.md'), 'utf8').includes('## 하네스'));
+  write(root, 'docs/harness-rules.md', '# 팀 규칙\n\n1. **우리 규칙.**\n');
+  write(root, 'AGENTS.md', '# 우리 프로젝트\n');
+  const plan = createPlan(root);
+  assert.ok(!plan.operations.some(op => ['docs/harness-rules.md', 'AGENTS.md'].includes(op.path)), '프로젝트 파일은 계획에 오르지 않는다');
+  assert.equal(applyPlan(plan).changed, 0);
+  assert.equal(readFileSync(join(root, 'AGENTS.md'), 'utf8'), '# 우리 프로젝트\n');
+  const manifest = JSON.parse(readFileSync(join(root, '.agents/harness-install.json'), 'utf8'));
+  assert.equal(manifest.files['docs/harness-rules.md'], undefined, '프로젝트 파일은 추적하지 않는다');
+  assert.ok(manifest.files['.agents/harness-core-rules.md'], '코어 사본은 추적한다');
+});
+test('기존 CLAUDE.md가 있으면 포인터를 만들지 않고 보존한다', t => {
+  const root = fixture(t);
+  write(root, 'CLAUDE.md', '# 원래 내용\n');
+  applyPlan(createPlan(root, { app: 'claude' }));
+  assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), '# 원래 내용\n');
+  assert.equal(existsSync(join(root, 'AGENTS.md')), false, '선택하지 않은 앱의 포인터는 만들지 않는다');
+});
+test('코어 규칙 사본을 고치면 충돌이고, eject하면 프로젝트 소유가 되어 업데이트에서 빠진다', async t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  write(root, '.agents/harness-core-rules.md', '# 우리가 고친 코어 규칙\n');
+  assert.throws(() => applyPlan(createPlan(root)), /충돌/);
+  assert.throws(() => eject(root, 'docs/harness-rules.md'), /코어 파일에만/);
+  const result = eject(root, '.agents/harness-core-rules.md');
+  assert.match(result.backup, /harness-backups/);
+  const plan = createPlan(root);
+  assert.ok(!plan.operations.some(op => op.path === '.agents/harness-core-rules.md'));
+  assert.equal(applyPlan(plan).changed, 0);
+  assert.equal(readFileSync(join(root, '.agents/harness-core-rules.md'), 'utf8'), '# 우리가 고친 코어 규칙\n');
+  const s = await status(root);
+  assert.deepEqual(s.ejected, ['.agents/harness-core-rules.md']);
+  assert.throws(() => eject(root, '.agents/harness-core-rules.md'), /추적 중인 파일이 아닙니다/);
+  // 되돌리기: 파일을 지우고 update하면 다시 코어 파일로 생성된다... 단 ejected 목록에 있으므로 생성되지 않는다 — 명시적 정책 확인
+  rmSync(join(root, '.agents/harness-core-rules.md'));
+  applyPlan(createPlan(root, { mode: 'remove' }));
+  assert.equal(existsSync(join(root, '.agents/hooks/branchGuard.mjs')), false, '제거는 eject된 파일과 무관하게 나머지를 정리한다');
+});
+test('eject한 훅 파일은 제거 때도 지우지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  eject(root, '.agents/hooks/branchGuard.mjs');
+  applyPlan(createPlan(root, { mode: 'remove' }));
+  assert.equal(existsSync(join(root, '.agents/hooks/branchGuard.mjs')), true);
+  assert.equal(existsSync(join(root, '.agents/hooks/blockGitMutation.mjs')), false);
+});
+
+// ── v3.x(docs/harness-rules.md를 코어 사본으로 추적) 변환 ─────────────────────
+const installV3 = (root, { modifyRules = false } = {}) => {
+  const { createHash } = require('node:crypto');
+  const rules = readFileSync(new URL('../assets/harness-rules.md', import.meta.url), 'utf8');
+  write(root, 'docs/harness-rules.md', modifyRules ? `${rules}\n8. **우리 팀 규칙.** 설명.\n` : rules);
+  write(root, '.agents/harness-install.json', JSON.stringify({ schemaVersion: 1, version: '3.0.0', profile: 'basic', verifier: false, apps: ['claude'],
+    files: { 'docs/harness-rules.md': { hash: createHash('sha256').update(rules).digest('hex'), version: '3.0.0' } }, ownedHooks: [], ownedDeny: [] }));
+};
+test('v3 규칙 파일이 원본 그대로면 팀 규칙 파일로 바꾸고 코어 사본을 만든다', async t => {
+  const root = fixture(t);
+  installV3(root);
+  assert.ok((await status(root)).issues.some(issue => issue.message.includes('v3 구조')));
+  const plan = createPlan(root);
+  const rulesOp = plan.operations.find(op => op.path === 'docs/harness-rules.md');
+  assert.equal(rulesOp.action, 'update');
+  assert.equal(plan.operations.find(op => op.path === '.agents/harness-core-rules.md').action, 'create');
+  applyPlan(plan);
+  const team = readFileSync(join(root, 'docs/harness-rules.md'), 'utf8');
+  assert.ok(team.includes('팀 규칙') && !team.includes('1. **git은'), '코어 전문이 팀 파일에서 사라진다');
+  const manifest = JSON.parse(readFileSync(join(root, '.agents/harness-install.json'), 'utf8'));
+  assert.equal(manifest.files['docs/harness-rules.md'], undefined);
+  assert.ok(!(await status(root)).issues.some(issue => issue.message.includes('v3 구조')));
+  assert.equal(applyPlan(createPlan(root)).changed, 0);
+});
+test('v3 규칙 파일을 팀이 고쳤으면 그대로 두고 추적만 해제하며 정리 방법을 안내한다', async t => {
+  const root = fixture(t);
+  installV3(root, { modifyRules: true });
+  const plan = createPlan(root);
+  const rulesOp = plan.operations.find(op => op.path === 'docs/harness-rules.md');
+  assert.equal(rulesOp.action, 'preserve');
+  assert.ok(!plan.operations.some(op => op.action === 'conflict'), '팀 수정본은 충돌이 아니라 보존이다');
+  applyPlan(plan);
+  assert.ok(readFileSync(join(root, 'docs/harness-rules.md'), 'utf8').includes('우리 팀 규칙'));
+  assert.ok(existsSync(join(root, '.agents/harness-core-rules.md')));
+  const s = await status(root);
+  assert.ok(s.issues.some(issue => issue.message.includes('코어 규칙 전문이 남아 있습니다')));
 });
