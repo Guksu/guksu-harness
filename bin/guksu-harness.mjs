@@ -165,7 +165,10 @@ export async function run(argv) {
   return 1;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// npx·npm은 node_modules/.bin/guksu-harness 심볼릭 링크로 실행한다. argv[1]은 링크 경로, import.meta.url은 실제 경로라
+// 문자열 비교로는 어긋나 아무것도 하지 않고 0으로 끝난다(4.2.0 결함). 양쪽을 realpath로 맞춰 비교한다.
+const toRealPath = p => { try { return realpathSync(p); } catch { return resolve(p); } };
+if (process.argv[1] && toRealPath(process.argv[1]) === toRealPath(fileURLToPath(import.meta.url))) {
   try {
     process.exitCode = await run(process.argv.slice(2));
   } catch (error) {
