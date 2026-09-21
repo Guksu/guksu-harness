@@ -93,3 +93,17 @@ test('프로젝트 디렉터리가 없으면 실패한다', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /디렉터리가 없습니다/);
 });
+
+test('init --ci는 워크플로를 만들고, update는 팀이 고친 템플릿을 보존한다', t => {
+  const root = fixture(t);
+  const init = run('init', root, '--ci', '--app', 'claude');
+  assert.equal(init.status, 0, init.stderr + init.stdout);
+  assert.ok(existsSync(join(root, '.github/workflows/harness-check.yml')));
+  assert.ok(existsSync(join(root, '.agents/harness-base/docs/templates/history.md')));
+  write(root, 'docs/templates/history.md', `${readFileSync(join(root, 'docs/templates/history.md'), 'utf8')}\n팀 추가\n`);
+  const update = run('update', root);
+  assert.equal(update.status, 0, update.stdout);
+  assert.ok(readFileSync(join(root, 'docs/templates/history.md'), 'utf8').endsWith('팀 추가\n'), '팀 수정을 덮어쓰지 않는다');
+  const status = JSON.parse(run('status', root, '--json').stdout);
+  assert.equal(status.files.find(f => f.path === 'docs/templates/history.md').state, 'customized');
+});

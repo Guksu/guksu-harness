@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-import { createPlan, applyPlan, rollback, status, detectApps, eject } from './harnessManager.mjs';
+import { createPlan, applyPlan, rollback, status, detectApps, eject, mergeThreeWay, bundleRoot } from './harnessManager.mjs';
 const fixture = t => { const root = mkdtempSync(join(tmpdir(), 'harness-manager-')); t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
 const write = (root, path, content) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), content); };
 
@@ -367,4 +367,97 @@ test('v3 규칙 파일을 팀이 고쳤으면 그대로 두고 추적만 해제�
   assert.ok(existsSync(join(root, '.agents/harness-core-rules.md')));
   const s = await status(root);
   assert.ok(s.issues.some(issue => issue.message.includes('코어 규칙 전문이 남아 있습니다')));
+});
+
+// ── 공동 파일(문서 템플릿) 3-way 병합 ────────────────────────────────────────
+test('3-way 병합 — 다른 곳을 고치면 합치고, 같은 곳을 고치면 충돌이다', () => {
+  const base = 'a\nb\nc\n';
+  assert.equal(mergeThreeWay({ ours: 'a\nB-team\nc\n', base, theirs: 'a\nb\nc\nd-core\n' }).merged, 'a\nB-team\nc\nd-core\n');
+  assert.equal(mergeThreeWay({ ours: 'a\nB-team\nc\n', base, theirs: 'a\nX\nc\n' }).conflict, true);
+  assert.equal(mergeThreeWay({ ours: base, base, theirs: base }).merged, base);
+});
+// 번들 템플릿을 잠시 바꿔 "새 버전"을 흉내 낸다 — 계획은 번들 파일을 읽으므로 실제 업데이트와 같은 경로를 탄다.
+const withBundleTemplate = (t, name, mutate) => {
+  const path = join(bundleRoot, `skills/history/assets/templates/${name}.md`);
+  const original = readFileSync(path, 'utf8');
+  writeFileSync(path, mutate(original));
+  t.after(() => writeFileSync(path, original));
+  return original;
+};
+test('설치는 템플릿 원본 사본을 .agents/harness-base/에 두고, 제거는 사본을 지운다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  const base = join(root, '.agents/harness-base/docs/templates/history.md');
+  assert.equal(readFileSync(base, 'utf8'), readFileSync(join(root, 'docs/templates/history.md'), 'utf8'));
+  applyPlan(createPlan(root, { mode: 'remove' }));
+  assert.equal(existsSync(base), false);
+  assert.equal(existsSync(join(root, 'docs/templates/history.md')), true, '문서 자체는 보존한다');
+});
+test('팀이 고친 템플릿은 새 버전과 3-way 병합되고 사본이 갱신된다', async t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  const teamEdit = content => content.replace('## 5. 주의사항', '## 5. 주의사항\n\n{팀 추가: 담당자 이름}');
+  write(root, 'docs/templates/history.md', teamEdit(readFileSync(join(root, 'docs/templates/history.md'), 'utf8')));
+  assert.equal((await status(root)).files.find(f => f.path === 'docs/templates/history.md').state, 'modified');
+  const original = withBundleTemplate(t, 'history', content => content.replace('# {작업명}', '# {작업명} (v-next)'));
+  const plan = createPlan(root);
+  const op = plan.operations.find(op => op.path === 'docs/templates/history.md');
+  assert.equal(op.action, 'merge', op.reason);
+  assert.ok(op.after.includes('(v-next)') && op.after.includes('{팀 추가: 담당자 이름}'), '팀 수정과 코어 변경이 모두 남는다');
+  assert.equal(plan.operations.find(op => op.path === '.agents/harness-base/docs/templates/history.md').action, 'update');
+  applyPlan(plan);
+  assert.equal(readFileSync(join(root, '.agents/harness-base/docs/templates/history.md'), 'utf8'), readFileSync(join(bundleRoot, 'skills/history/assets/templates/history.md'), 'utf8'));
+  const after = await status(root);
+  const file = after.files.find(f => f.path === 'docs/templates/history.md');
+  assert.equal(file.state, 'customized');
+  assert.equal(file.base, 'present');
+  assert.equal(applyPlan(createPlan(root)).changed, 0, '병합 결과를 추적하므로 재적용은 멱등이다');
+  void original;
+});
+test('같은 곳을 고쳤으면 충돌로 보존하고 사본도 바꾸지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  write(root, 'docs/templates/history.md', readFileSync(join(root, 'docs/templates/history.md'), 'utf8').replace('# {작업명}', '# {작업명} — 팀'));
+  withBundleTemplate(t, 'history', content => content.replace('# {작업명}', '# {작업명} — 코어'));
+  const plan = createPlan(root);
+  const op = plan.operations.find(op => op.path === 'docs/templates/history.md');
+  assert.equal(op.action, 'conflict');
+  assert.match(op.reason, /같은 곳/);
+  assert.ok(!plan.operations.some(op => op.path.startsWith('.agents/harness-base/')), '충돌이면 사본을 갱신하지 않는다');
+  assert.throws(() => applyPlan(plan), /충돌/);
+});
+test('사본이 없는 설치본(v4.0)의 수정 템플릿은 보존하고 사본을 등록해 다음부터 병합한다', async t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  rmSync(join(root, '.agents/harness-base'), { recursive: true });
+  write(root, 'docs/templates/handoff.md', `${readFileSync(join(root, 'docs/templates/handoff.md'), 'utf8')}\n팀 추가 줄\n`);
+  const plan = createPlan(root);
+  const op = plan.operations.find(op => op.path === 'docs/templates/handoff.md');
+  assert.equal(op.action, 'preserve');
+  assert.equal(plan.operations.find(op => op.path === '.agents/harness-base/docs/templates/handoff.md').action, 'create');
+  applyPlan(plan);
+  assert.ok(readFileSync(join(root, 'docs/templates/handoff.md'), 'utf8').endsWith('팀 추가 줄\n'));
+  assert.equal((await status(root)).files.find(f => f.path === 'docs/templates/handoff.md').state, 'customized');
+  // 다음 버전이 나오면 병합된다 — 코어는 파일 앞쪽을, 팀은 끝을 고쳤으므로 겹치지 않는다
+  withBundleTemplate(t, 'handoff', content => `<!-- 코어 추가 줄 -->\n${content}`);
+  const next = createPlan(root);
+  assert.equal(next.operations.find(op => op.path === 'docs/templates/handoff.md').action, 'merge');
+});
+test('복원은 병합 원본 사본도 되돌린다', t => {
+  const root = fixture(t);
+  const result = applyPlan(createPlan(root));
+  rollback(root, result.backup);
+  assert.equal(existsSync(join(root, '.agents/harness-base')), false || existsSync(join(root, '.agents/harness-base/docs/templates/history.md')) === false);
+});
+
+// ── --ci: 워크플로 파일은 프로젝트 파일이다 ────────────────────────────────
+test('ci 옵션은 워크플로를 없을 때만 만들고 이후 건드리지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { ci: true }));
+  const path = join(root, '.github/workflows/harness-check.yml');
+  assert.ok(readFileSync(path, 'utf8').includes('guksu-harness'));
+  write(root, '.github/workflows/harness-check.yml', 'name: mine\n');
+  applyPlan(createPlan(root, { ci: true }));
+  assert.equal(readFileSync(path, 'utf8'), 'name: mine\n');
+  assert.ok(!createPlan(root).operations.some(op => op.path.startsWith('.github/')), 'ci를 다시 주지 않으면 계획에 오르지 않는다');
 });

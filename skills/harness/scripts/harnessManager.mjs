@@ -2,8 +2,8 @@
 // 번들 자산만 추적한다. 도메인 스킬·사용자 기록·개인 설정은 관리 대상이 아니다.
 // 파일 소유권 (docs/design/2026-09-21-scaffold.md):
 //   코어 파일   — 훅 스크립트, 코어 규칙 사본(.agents/harness-core-rules.md). 미수정이면 교체, 수정됐으면 충돌. eject로 소유 전환.
-//   공동 파일   — 문서 템플릿, 앱 등록 파일. 이 도구가 넣은 부분만 갱신.
-//   프로젝트 파일 — 팀 규칙(docs/harness-rules.md), 규칙 포인터(CLAUDE.md·AGENTS.md). 없을 때 한 번 만들고 이후 건드리지 않는다.
+//   공동 파일   — 문서 템플릿, 앱 등록 파일. 템플릿은 팀이 고쳤으면 원본 사본(.agents/harness-base/)과 3-way 병합. 등록 파일은 이 도구가 넣은 부분만 갱신.
+//   프로젝트 파일 — 팀 규칙(docs/harness-rules.md), 규칙 포인터(CLAUDE.md·AGENTS.md), CI 워크플로(--ci). 없을 때 한 번 만들고 이후 건드리지 않는다.
 // 관리 파일(훅·추적 기록·백업)은 앱 중립 위치 .agents/에 둔다. 훅 등록만 앱별 파일에 쓴다:
 //   claude → .claude/settings.json (hooks + permissions.deny), codex → .codex/hooks.json (hooks)
 // v2.x(.claude/hooks/·.claude/harness-install.json)와 v3.x(docs/harness-rules.md를 코어 사본으로 추적)는 업데이트 계획에서 변환한다.
@@ -11,6 +11,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, realpath
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateHarness } from './validateHarness.mjs';
 
@@ -20,6 +22,11 @@ const legacyHooksDir = '.claude/hooks';
 const manifestPath = '.agents/harness-install.json';
 const legacyManifestPath = '.claude/harness-install.json';
 const backupDir = '.agents/harness-backups';
+export const baseDir = '.agents/harness-base'; // 3-way 병합용 원본 사본. 커밋한다 — 팀원 모두가 같은 원본 기준을 가져야 한다
+export const ciWorkflowPath = '.github/workflows/harness-check.yml';
+const ciAsset = 'skills/harness/assets/harness-check.yml';
+const templateDir = 'docs/templates/';
+const basePathOf = path => `${baseDir}/${path}`;
 export const coreRulesPath = '.agents/harness-core-rules.md';
 export const teamRulesPath = 'docs/harness-rules.md';
 const rulesAsset = 'skills/harness/assets/harness-rules.md';
@@ -73,17 +80,38 @@ function catalog({ profile = 'basic', verifier = false } = {}) {
   return files;
 }
 // 프로젝트 파일: 없을 때만 만든다. 추적하지 않으며 업데이트·제거에서 건드리지 않는다.
-function projectFiles(selectedApps) {
+function projectFiles(selectedApps, { ci = false } = {}) {
   const files = { [teamRulesPath]: teamRulesAsset };
   for (const app of selectedApps) files[apps[app].pointer] = pointerAsset;
+  if (ci) files[ciWorkflowPath] = ciAsset;
   return files;
+}
+const templatePaths = [...Object.keys(catalog({ profile: 'collaboration' }))].filter(path => path.startsWith(templateDir));
+
+// 3-way 병합: 팀 수정본(ours)·설치 시점 원본(base)·새 원본(theirs). git merge-file이 겹침 없이 합치면 결과를,
+// 겹치면(종료 코드 = 충돌 수) conflict를, git이 없으면 error를 돌려준다. 결과는 결정적이라 계획 재계산과 일치한다.
+export function mergeThreeWay({ ours, base, theirs }) {
+  const dir = mkdtempSync(join(tmpdir(), 'harness-merge-'));
+  try {
+    const files = { ours, base, theirs };
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
+    try {
+      const merged = execFileSync('git', ['merge-file', '-p', '-L', '팀 수정본', '-L', '설치 원본', '-L', '새 버전', join(dir, 'ours'), join(dir, 'base'), join(dir, 'theirs')],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { merged };
+    } catch (error) {
+      if (typeof error.status === 'number' && error.status > 0 && error.status < 128) return { conflict: true };
+      return { error: 'git merge-file을 실행할 수 없습니다' };
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 const allPaths = new Set(Object.keys(catalog({ profile: 'collaboration', verifier: true })));
 export const corePaths = new Set([...allHookNames.map(hookPath), coreRulesPath]);
 const legacyPaths = new Set([...allHookNames.map(legacyHookPath), teamRulesPath]);
 // 복원 대상으로 인정하는 경로: 번들 파일, 이전 위치 파일, 훅 설정(이동), 등록 파일, 추적 기록, 프로젝트 파일(최초 생성).
 const restorablePaths = new Set([
-  ...allPaths, ...legacyPaths, manifestPath, legacyManifestPath, teamRulesPath,
+  ...allPaths, ...legacyPaths, manifestPath, legacyManifestPath, teamRulesPath, ciWorkflowPath,
+  ...templatePaths.map(basePathOf),
   ...appNames.flatMap(app => [apps[app].registry, apps[app].pointer]),
   ...allHookNames.flatMap(name => [configPath(hooksDir, name), configPath(legacyHooksDir, name)]),
 ]);
@@ -164,7 +192,8 @@ export function createPlan(project, options = {}) {
   const only = options.only ?? null;
   if (only != null && (!Array.isArray(only) || only.some(p => !allPaths.has(p)))) throw new Error('only에는 번들 관리 경로만 지정하세요');
   const selectedApps = resolveApps(options.app ?? null, previous, root);
-  const request = { mode, profile, verifier, only, app: options.app ?? null };
+  const ci = options.ci === true;
+  const request = { mode, profile, verifier, only, app: options.app ?? null, ci };
   const next = structuredClone(previous);
   Object.assign(next, { version: version(), profile, verifier, apps: selectedApps });
   const operations = [];
@@ -178,7 +207,11 @@ export function createPlan(project, options = {}) {
     const before = read(safePath(root, path));
     const tracked = previous.files[path];
     if (mode === 'remove') {
-      // 문서와 사용자 기록은 제거해도 보존한다. 추적만 해제한다.
+      // 문서와 사용자 기록은 제거해도 보존한다. 추적만 해제한다. 병합 원본 사본은 도구 소유라 지운다.
+      if (path.startsWith(templateDir)) {
+        const base = read(safePath(root, basePathOf(path)));
+        if (base != null) add(basePathOf(path), 'delete', base, null, '병합 원본 사본 제거');
+      }
       if (path.startsWith('docs/')) { delete next.files[path]; add(path, 'preserve', before, before, '문서 보존 · 추적 해제'); continue; }
       if (before != null && hash(before) !== tracked.hash) { add(path, 'conflict', before, before, '사용자가 수정한 파일'); continue; }
       delete next.files[path];
@@ -207,6 +240,25 @@ export function createPlan(project, options = {}) {
       }
     }
     const after = readFileSync(join(bundleRoot, source), 'utf8');
+    if (path.startsWith(templateDir)) {
+      // 공동 파일(템플릿): 팀 수정본은 설치 원본 사본과 3-way 병합한다. 사본이 없는 설치본(v4.0 이하)은 수정본을 보존하고 사본부터 등록한다.
+      const basePath = basePathOf(path);
+      const base = read(safePath(root, basePath));
+      const track = content => { next.files[path] = { hash: hash(content), version: version() }; };
+      const setBase = () => { if (base !== after) add(basePath, base == null ? 'create' : 'update', base, after, '병합 원본 사본'); };
+      if (before === after) { track(after); add(path, tracked ? 'unchanged' : 'adopt', before, after, tracked ? '최신 파일' : '번들과 동일한 기존 파일을 추적'); setBase(); continue; }
+      if (before == null) { track(after); add(path, 'create', null, after, '번들 파일 적용'); setBase(); continue; }
+      if (!tracked) { add(path, 'conflict', before, before, '출처를 확인할 수 없는 기존 파일 · 보존'); continue; }
+      // 미수정 판정은 설치 원본 사본과의 일치다. 추적 해시는 병합 결과도 가리키므로 그것만으로는 팀 수정을 놓친다.
+      const pristine = base != null ? before === base : hash(before) === tracked.hash;
+      if (pristine) { track(after); add(path, 'update', before, after, '번들 파일 적용'); setBase(); continue; }
+      if (base == null) { track(before); add(path, 'preserve', before, before, '팀 수정본 보존 · 병합 원본 사본을 등록해 다음 업데이트부터 3-way 병합'); setBase(); continue; }
+      if (base === after) { track(before); add(path, 'unchanged', before, before, '팀 수정본 · 새 버전과 원본이 같아 병합할 것 없음'); continue; }
+      const result = mergeThreeWay({ ours: before, base, theirs: after });
+      if (result.merged != null) { track(result.merged); add(path, result.merged === before ? 'unchanged' : 'merge', before, result.merged, '팀 수정과 새 버전을 3-way 병합'); setBase(); continue; }
+      add(path, 'conflict', before, before, result.conflict ? '팀 수정과 새 버전이 같은 곳을 바꿈 · 직접 병합한 뒤 다시 실행' : `${result.error} · 보존`);
+      continue;
+    }
     if (before === after) {
       next.files[path] = { hash: hash(after), version: version() };
       add(path, tracked ? 'unchanged' : 'adopt', before, after, tracked ? '최신 파일' : '번들과 동일한 기존 파일을 추적');
@@ -231,7 +283,7 @@ export function createPlan(project, options = {}) {
       }
     }
     // 프로젝트 파일은 없을 때만 만든다.
-    for (const [path, source] of Object.entries(projectFiles(selectedApps))) {
+    for (const [path, source] of Object.entries(projectFiles(selectedApps, { ci }))) {
       if (operations.some(op => op.path === path)) continue;
       if (read(safePath(root, path)) == null) add(path, 'create', null, readFileSync(join(bundleRoot, source), 'utf8'), '프로젝트 파일 · 최초 생성 후 관리하지 않음');
     }
@@ -405,8 +457,15 @@ export async function status(project) {
   const files = Object.entries(manifest.files).map(([path, entry]) => {
     const content = read(safePath(root, path));
     const expected = readFileSync(join(bundleRoot, all[path] ?? all[path.replace(legacyHooksDir, hooksDir)]), 'utf8');
-    return { path, installedVersion: entry.version ?? null, state: content == null ? 'missing' :
-      hash(content) !== entry.hash ? 'modified' : legacyPaths.has(path) ? 'legacy-location' : content === expected ? 'current' : 'update-available' };
+    const isTemplate = path.startsWith(templateDir);
+    const base = isTemplate ? existsSync(safePath(root, basePathOf(path))) : undefined;
+    const state = content == null ? 'missing'
+      : hash(content) !== entry.hash ? 'modified'
+      : legacyPaths.has(path) ? 'legacy-location'
+      : content === expected ? 'current'
+      : isTemplate && base && content !== read(safePath(root, basePathOf(path))) ? 'customized' // 팀 수정이 반영된 추적본 — 다음 업데이트 때 3-way 병합
+      : 'update-available';
+    return { path, installedVersion: entry.version ?? null, state, ...(isTemplate ? { base: base ? 'present' : 'missing' } : {}) };
   });
   const issues = await validateHarness({ rootDir: root });
   if (legacyManifest) issues.push({ level: 'warn', path: legacyManifestPath, message: `설치 기록이 이전 위치에 있습니다. update로 ${manifestPath}로 이동하세요` });
@@ -444,11 +503,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const [command, project = '.', ...args] = process.argv.slice(2);
     const value = flag => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1]; };
-    const allowed = { status: ['--json'], plan: ['--json', '--out', '--mode', '--profile', '--verifier', '--only', '--app'], apply: ['--plan'], rollback: ['--backup'] };
+    const allowed = { status: ['--json'], plan: ['--json', '--out', '--mode', '--profile', '--verifier', '--only', '--app', '--ci'], apply: ['--plan'], rollback: ['--backup'] };
     if (!allowed[command]) throw new Error('사용법: harnessManager.mjs status|plan|apply|rollback <프로젝트> [옵션]');
     for (let i = 0; i < args.length; i++) {
       if (!allowed[command].includes(args[i])) throw new Error(`알 수 없는 옵션: ${args[i]}`);
-      if (!['--json', '--verifier'].includes(args[i]) && (!args[++i] || args[i].startsWith('--'))) throw new Error('옵션 값이 필요합니다');
+      if (!['--json', '--verifier', '--ci'].includes(args[i]) && (!args[++i] || args[i].startsWith('--'))) throw new Error('옵션 값이 필요합니다');
     }
     if (command === 'status') {
       const result = await status(project);
@@ -466,7 +525,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       }
       process.exitCode = result.issues.some(i => i.level === 'error') ? 1 : 0;
     } else if (command === 'plan') {
-      const result = createPlan(project, { mode: value('--mode'), profile: value('--profile'), verifier: args.includes('--verifier') ? true : undefined, only: value('--only')?.split(','), app: value('--app') });
+      const result = createPlan(project, { mode: value('--mode'), profile: value('--profile'), verifier: args.includes('--verifier') ? true : undefined, only: value('--only')?.split(','), app: value('--app'), ci: args.includes('--ci') });
       if (value('--out')) writeFileSync(value('--out'), json(result), { flag: 'wx', mode: 0o600 });
       if (args.includes('--json')) console.log(json(result));
       else for (const op of result.operations) console.log(`${op.action}: ${op.path} — ${op.reason}`);

@@ -61,7 +61,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs plan <프로젝트> --out <�
 node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan <계획.json>
 ```
 
-파일 소유권: 코어 파일(훅·코어 규칙 사본)은 미수정일 때만 교체하고 수정본은 충돌로 보존한다. 팀이 의도적으로 고친 코어 파일은 `eject`로 소유를 전환한다. 프로젝트 파일(팀 규칙·CLAUDE.md·AGENTS.md)은 없을 때 한 번만 만든다.
+파일 소유권: 코어 파일(훅·코어 규칙 사본)은 미수정일 때만 교체하고 수정본은 충돌로 보존한다. 팀이 의도적으로 고친 코어 파일은 `eject`로 소유를 전환한다. 문서 템플릿은 팀 수정본을 새 버전과 3-way 병합한다. 프로젝트 파일(팀 규칙·CLAUDE.md·AGENTS.md·CI 워크플로)은 없을 때 한 번만 만든다. 팀이 저장소 쪽 강제를 원하면 `--ci`로 검사 워크플로를 추가한다.
 
 - `plan`은 추가·수정·충돌·보존 목록을 보여 준다. 프로젝트는 바꾸지 않는다. `--app claude|codex|both`로 등록할 앱을 고른다. 생략하면 프로젝트 파일로 추정한다.
 - 적용은 저장된 계획이 현재 파일·번들과 일치할 때만 한다. 사용자 수정 파일과 출처가 불명확한 파일은 덮어쓰지 않는다.
@@ -74,7 +74,7 @@ node {이 스킬 경로}/scripts/harnessManager.mjs apply <프로젝트> --plan 
 2. 협업 구성이면 실제로 재사용할 역할 정의와 진행표만 만든다 → `references/orchestrator-template.md`.
 3. 프로젝트의 보호 브랜치·커밋 허용·기록·작성자 표기 정책을 확인한다. 기존 설정은 보존하며 영구 권한 확대는 요청 범위에 포함됐을 때만 한다 → `references/hooks-and-permissions.md`.
 4. 프론트엔드 프로젝트면 구현 중 `fe-craft`, 배포 전 `fe-predeploy`를 연결한다. 외부 라이브러리 연동은 `references/frontend-domain.md`를 따른다.
-5. `_workspace/`, `.agents/harness-backups/`, `.agents/hooks/verifierGate.*.state.json`과 임시 파일을 `.gitignore`에 추가한다. 백업에는 설정 사본이 있으므로 커밋하지 않는다.
+5. `_workspace/`, `.agents/harness-backups/`, `.agents/hooks/verifierGate.*.state.json`과 임시 파일을 `.gitignore`에 추가한다. 백업에는 설정 사본이 있으므로 커밋하지 않는다. `.agents/harness-base/`(템플릿 병합 원본)는 커밋한다.
 6. 규칙 포인터 파일에는 목표·호출 조건·규칙 파일 포인터만 등록한다. Claude Code는 `CLAUDE.md`, Codex는 `AGENTS.md`를 읽는다. `init`이 없는 파일만 기본 포인터로 만들어 준다. 두 앱을 함께 쓰면 둘 다 두되 내용은 같게 유지한다. 작업 기록은 `history`로 한 건에 모으고 변경 이력을 여러 곳에 중복 작성하지 않는다.
 
 ## 4. 검증과 완료

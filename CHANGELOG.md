@@ -2,6 +2,21 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [4.1.0] - 2026-09-21
+
+스캐폴딩 2단계: 팀이 고친 문서 템플릿도 코어 업데이트를 받는다. PR마다 검사하는 CI 워크플로를 뼈대에 넣을 수 있다.
+
+### Added
+
+- 문서 템플릿 3-way 병합: 설치·업데이트 때 원본 사본을 `.agents/harness-base/docs/templates/`에 둔다(커밋 대상). 팀 수정본은 사본·수정본·새 버전을 `git merge-file`로 합친다(계획 동작 `merge`). 같은 곳을 고쳤으면 충돌로 보존. 사본이 없는 4.0 설치본은 수정본을 보존(`preserve`)하고 사본을 등록해 다음 업데이트부터 병합. `status` 파일 상태 `customized`(팀 수정 반영본)와 템플릿별 `base` 유무 표시.
+- `init --ci`·`update --ci`·`plan --ci`: `.github/workflows/harness-check.yml`(프로젝트 파일, 없을 때 한 번 생성). PR·main 푸시마다 `npx --yes guksu-harness@4 check .` 실행. 자산 `harness-check.yml`.
+- 테스트 131→139 (순차 실행): 병합 성공·충돌·사본 없음·제거·복원, `--ci` 1회 생성, 명령 흐름.
+
+### Changed
+
+- 제거(`--mode remove`)가 병합 원본 사본을 함께 지운다. 문서 자체는 보존한다.
+- README·`installation.md`·harness SKILL.md에 병합 규칙과 `--ci`를 안내.
+
 ## [4.0.0] - 2026-09-21
 
 팀이 뼈대 위에 자기 규칙·스킬·훅을 얹고, 뼈대가 갱신되어도 팀 파일이 남는 스캐폴딩 구조(1단계). 설계: `docs/design/2026-09-21-scaffold.md`. 규칙 파일의 의미가 바뀌어 주 버전을 올렸다.

@@ -11,8 +11,8 @@ Node.js 22 이상이 필요합니다. 브랜치 기능에는 git 저장소가 �
 프로젝트에 뼈대를 만듭니다:
 
 ```bash
-npx guksu-harness init --app both    # claude · codex · both
-npx guksu-harness check              # 구조 검사 (CI에서도 씁니다)
+npx guksu-harness init --app both --ci   # claude · codex · both. --ci는 PR마다 검사하는 GitHub Actions 추가
+npx guksu-harness check                  # 구조 검사 (CI에서도 같은 명령)
 ```
 
 `init`이 만드는 것과 그 소유자입니다.
@@ -21,7 +21,8 @@ npx guksu-harness check              # 구조 검사 (CI에서도 씁니다)
 |---|---|---|
 | `.agents/hooks/*.mjs` 훅 4종, `.agents/harness-core-rules.md` 코어 규칙 | 뼈대 | 새 버전으로 바뀝니다. 고쳐져 있으면 멈추고 알립니다 |
 | `docs/harness-rules.md` 팀 규칙, `CLAUDE.md`·`AGENTS.md` 포인터, 훅 설정값 | 팀 | 건드리지 않습니다 |
-| `docs/templates/` 문서 양식, 앱 등록 파일 | 공동 | 뼈대가 넣은 부분만 바뀝니다 |
+| `docs/templates/` 문서 양식 | 공동 | 팀이 고친 부분과 새 버전을 합칩니다(3-way 병합). 같은 곳을 고쳤으면 멈추고 알립니다 |
+| 앱 등록 파일 | 공동 | 뼈대가 넣은 부분만 바뀝니다 |
 
 뼈대를 새 버전으로 올릴 때는 `npx guksu-harness update`를 실행합니다. 코어 파일을 꼭 직접 고쳐야 하면 `eject`로 그 파일을 팀 소유로 바꿉니다. 그 파일은 이후 업데이트를 받지 않습니다.
 
@@ -109,6 +110,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 
 ## 기존 사용자가 알아둘 변경
 
+- **v4.1.0:** 문서 양식을 팀이 고쳐도 업데이트가 합쳐 줍니다. 그 기준이 되는 원본 사본 `.agents/harness-base/`는 커밋하세요. 4.0 설치본은 첫 업데이트에서 사본만 등록하고 그다음부터 합칩니다.
 - **v4.0.0:** `docs/harness-rules.md`가 팀 규칙 파일이 됩니다. 코어 규칙은 `.agents/harness-core-rules.md`로 옮겨지고 관리 도구가 갱신합니다. `update`가 원본 그대로인 파일은 자동 전환하고, 팀이 고친 파일은 그대로 둔 채 정리 방법을 안내합니다.
 - **v3.0.0:** 훅·설정·추적 기록이 `.claude/hooks/`, `.claude/harness-install.json`에서 `.agents/`로 옮겨집니다. 업데이트 미리보기에 이동이 표시되고, 직접 수정한 파일은 옮기지 않고 보존합니다. `.gitignore`의 백업·상태 파일 경로를 `.agents/`로 바꾸세요.
 - 브랜치 전략은 프로젝트 관례를 따릅니다. `dev`나 `feat/`를 강제하지 않습니다.
@@ -126,7 +128,7 @@ node skills/harness/scripts/harnessManager.mjs apply /path/to/project --plan /tm
 | 커밋·푸시가 막힘 | 사용자 요청 범위, allowCommitPush, 작업 기록 요구 |
 | 훅이 실행되지 않음 | Node.js, 앱별 등록 파일(`.claude/settings.json`·`.codex/hooks.json`), Codex는 훅 기능 활성과 프로젝트 신뢰 |
 | 업데이트 후 훅 설정이 사라진 것처럼 보임 | 설정 파일이 `.claude/hooks/`에 남아 있는지. 상태 확인이 이동 대상을 알려 줍니다 |
-| 업데이트가 충돌로 멈춤 | 고친 코어 파일이 있는지. 의도한 수정이면 `eject`, 아니면 파일을 지우고 다시 `update` |
+| 업데이트가 충돌로 멈춤 | 고친 코어 파일이 있는지. 의도한 수정이면 `eject`, 아니면 파일을 지우고 다시 `update`. 문서 양식이면 팀 수정과 새 버전이 같은 줄을 고친 것이니 직접 합친 뒤 다시 `update` |
 | 업데이트 충돌 | 파일을 직접 수정했는지 확인하고 필요한 파일만 선택 적용 |
 | 반복 검사가 중단됨 | 남은 실패·최대 반복·같은 실패 누적·설정 오류 |
 | 배포 판정 보류 | 실행하지 못한 필수 검사와 필요한 환경 |
