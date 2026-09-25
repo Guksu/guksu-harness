@@ -10,7 +10,7 @@
 | 보호 브랜치, 커밋 허용, 기록 요구 | `.agents/hooks/*.config.json` | 건드리지 않음 |
 | 우리 도메인 작업 절차 | 팀 스킬 `.claude/skills/{이름}/` 또는 `.agents/skills/{이름}/` | 건드리지 않음 |
 | 우리만의 차단·검사 | 팀 훅 `.agents/hooks/{이름}.mjs` + 앱 등록 파일에 직접 등록 | 건드리지 않음 |
-| 작업 기록·인계 양식 | `docs/templates/*.md` | 팀 수정과 새 버전을 합침(3-way 병합) |
+| 작업 기록·인계 양식 | `docs/templates/*.md` | 추적 중인 양식만 팀 수정과 새 버전을 합침(3-way 병합). minimal에서 직접 복사한 양식은 건드리지 않음 |
 | 규칙 포인터 | `CLAUDE.md`·`AGENTS.md` | 건드리지 않음 |
 | CI 검사 트리거·노드 버전 | `.github/workflows/harness-check.yml` | 건드리지 않음 |
 
@@ -74,13 +74,14 @@ npx guksu-harness eject .agents/hooks/branchGuard.mjs --confirm
 npx guksu-harness export . --out team-preset.json
 
 # 다른 저장소에서 (먼저 init이 되어 있어야 한다)
-npx guksu-harness init . --app both
+npx guksu-harness init . --app both   # 기준 저장소가 basic·collaboration이면 같은 --profile을 준다
 npx guksu-harness import . --from team-preset.json
 ```
 
 - 묶음에 코어 파일은 들어가지 않는다. 코어는 각 저장소의 `update`가 준다.
 - 규칙 포인터(`CLAUDE.md`·`AGENTS.md`)와 작업 기록은 프로젝트 고유라 넣지 않는다.
-- 이미 있고 내용이 다른 파일은 건너뛴다. 덮어쓰려면 `--force`. 덮어쓰기 전 내용은 백업에 남는다. `init`이 만든 뒤 손대지 않은 파일(초기 양식 그대로인 팀 규칙·템플릿·CI 워크플로)은 그냥 덮어쓴다.
+- 묶음은 프로필을 옮기지 않는다. 고치지 않은 양식은 묶음에 없고, 같은 프로필로 `init`해야 생긴다.
+- 이미 있고 내용이 다른 파일은 건너뛴다. 덮어쓰려면 `--force`. 덮어쓰기 전 내용은 백업에 남는다. `init`이 만든 뒤 손대지 않은 파일(초기 양식 그대로인 팀 규칙·템플릿·CI 워크플로, 새 minimal 설치가 만든 초기값 그대로인 Git 설정)은 그냥 덮어쓴다.
 - 묶음 파일은 허용된 종류의 경로만 쓴다. 코어 훅 이름이나 프로젝트 밖 경로가 들어 있으면 거부한다.
 - 묶음 파일을 팀 저장소에 커밋해 두면 새 저장소를 만들 때 `init` + `import` 두 번으로 끝난다.
 
@@ -89,7 +90,7 @@ npx guksu-harness import . --from team-preset.json
 1. `npx guksu-harness update --dry-run`으로 무엇이 바뀌는지 본다.
 2. 충돌이 있으면 안내대로 정리한다. 코어 파일 충돌은 파일을 지우거나 `eject`, 템플릿 충돌은 직접 합친다.
 3. `npx guksu-harness update`로 적용한다.
-4. `npx guksu-harness check`가 error 0인지 본다. CI 워크플로가 있으면 PR에서도 같은 검사가 돈다.
+4. `npx guksu-harness check`가 error 0인지 본다. CI 워크플로가 있으면 PR에서도 같은 검사가 돈다. 워크플로는 `update`가 바꾸지 않으므로, 주 버전이 올랐으면 `guksu-harness@4` 같은 숫자를 새 주 버전으로 직접 바꾼다.
 5. `.agents/harness-install.json`, `.agents/harness-base/`, 바뀐 코어 파일을 함께 커밋한다.
 
 ## 9. 흔한 실수

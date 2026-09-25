@@ -2,15 +2,40 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
-## [Unreleased]
+## [5.0.0] - 2026-09-25
+
+기본 설치를 기록 양식 없는 최소 구성(minimal)으로 줄였다. 옵션 없이 `init`하면 설치되는 파일이 달라져 주 버전을 올렸다. 작업 기록: `docs/history/2026-09-25-lean-harness.md`, `docs/history/2026-09-25-release-5.0.0.md`. npm에 배포된 4.x는 4.2.0뿐이므로, 4.2.1의 npx 실행 수정도 이 버전부터 npm에서 받는다.
+
+### Changed
 
 - 새 설치 기본값을 기록 양식 없는 minimal로 변경. 기존 프로필·설정·문서는 보존하며 `update --profile`로 선택 변경 가능.
-- 기록·인계·프론트엔드·협업 절차를 선택 기능으로 정리하고 스킬 설명과 공통 규칙을 축소.
+- 새 minimal `init`은 `.agents/hooks/blockGitMutation.config.json`(`allowCommitPush: false`, `requireHistoryDoc: false`)을 만든다. 기존 Git 설정이나 수동 훅이 있으면 만들지 않는다.
+- 기록·인계·프론트엔드·협업 절차를 선택 기능으로 정리하고 스킬 설명과 공통 규칙을 축소. 코어 규칙 사본(`.agents/harness-core-rules.md`)은 번호 붙은 규칙 7개에서 번호 없는 정책 4항목으로 바뀌었다.
+- branch·pr: 팀 브랜치 규칙이 없을 때 `codex/…` 대신 `feat/`·`fix/`·`refactor/`·`docs/`를 쓴다.
+- fe-predeploy: 수정까지 요청받으면 실패 항목을 고치고 다시 검사한다. 이전에는 판정과 제안까지만 했다.
 - 일반 worktree 생성·조회와 작성자 검사 미사용 시 간접 커밋 메시지 허용. 파괴적 옵션은 계속 차단.
 - minimal에 가져온 팀 양식도 추적·병합·복원 지원. 구조 검사와 실제 앱·모델 평가의 보장 범위 구분.
-- 릴리스 버전은 변경하지 않음. 기존 기록 요구의 변경은 팀 규칙·포인터·훅 설정을 함께 검토해야 함.
+- `check`가 스킬 description의 후속 작업 키워드 누락 경고와, 규칙 개수로 코어 규칙 사본의 구버전을 추정하던 경고를 더 내지 않는다.
+- CI 워크플로 양식(`--ci`)이 `guksu-harness@5`로 검사한다.
+- **업데이트 주의:**
+  - 기존 basic·collaboration 설치는 `update` 때 프로필을 유지한다. 줄이려면 `update --profile minimal`을 쓴다.
+  - 기존 기록 의무는 `update`만으로 풀리지 않는다. 팀 규칙·앱 포인터·`requireHistoryDoc` 설정을 함께 고친다.
+  - 팀 규칙·에이전트 정의·팀 문서에서 "절대 규칙 N"처럼 코어 규칙 번호를 가리키던 곳은 고친다.
+  - `--ci`로 만든 `.github/workflows/harness-check.yml`은 `update`가 바꾸지 않는다. `guksu-harness@4`를 `@5`로 직접 바꾼다. `@4`는 npm의 4.2.0을 받고, 4.2.0은 npx로 실행하면 아무 검사 없이 통과한다.
+
+### Fixed
+
+- 새 minimal 설치에서 `init` → `import` 순서로 팀 묶음을 가져오면 Git 설정(`blockGitMutation.config.json`)이 "건너뜀"으로 빠지던 결함. init 초기값 그대로인 이 파일은 손대지 않은 파일로 보고 덮어쓴다(4.2.1과 같은 동작). 테스트 154→155.
+- 최소 구성 정리 뒤 남은 낡은 안내와 깨진 참조: 없어진 코어 규칙 번호("규칙 6"·"절대 규칙 7"), handoff·retro·fe-craft의 오케스트레이터 자동 연결 설명, 삭제된 개념(qa-report·워크로그·라이트/풀 티어·Workflow 모드)을 쓰던 양식과 검증 가이드, fe-craft의 feSkills 경로, harness 스킬에서 끊긴 design-dialogue·plain-output·context-economy 안내, 팀 묶음 안내의 프로필·양식 추적 범위.
+
+### 확인하지 못한 것
+
+- npm 배포는 이 변경에 포함되지 않는다. 머지 후 `npm publish`로 배포한다(`prepublishOnly`가 check와 test를 실행한다).
+- 실제 Claude Code·Codex 앱 안의 훅 실행.
 
 ## [4.2.1] - 2026-09-21
+
+npm에는 배포하지 않았다. 이 수정은 5.0.0부터 npm에서 받을 수 있다.
 
 ### Fixed
 

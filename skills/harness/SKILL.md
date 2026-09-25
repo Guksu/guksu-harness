@@ -41,6 +41,7 @@ npx guksu-harness update <프로젝트>
 - 기록·인계는 팀 정책 또는 사용자 요청이 있을 때만 해당 스킬을 사용한다.
 - 프론트엔드 품질·배포 점검을 선택했다면 `references/frontend-domain.md`를 읽는다. UI 프로젝트라는 이유만으로 필수 연결하지 않는다.
 - 명시적인 협업 구성에만 `references/execution-modes.md`, `references/agent-design.md`, `references/orchestrator-template.md`를 사용한다. 일반 재검사는 협업·loop 설정 없이 진행한다.
+- 요구가 모호하거나 충돌하면 `references/design-dialogue.md`에 따라 필요한 결정만 묻는다. 결과 보고는 `references/plain-output.md`, 지침 크기 점검은 `references/context-economy.md`를 따른다.
 
 ## 확인과 제거
 
