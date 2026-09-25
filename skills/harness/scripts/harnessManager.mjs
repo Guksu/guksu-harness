@@ -70,12 +70,12 @@ function safePath(root, path) {
   return result;
 }
 // 추적하는 번들 파일(코어·공동). 프로젝트 파일은 포함하지 않는다.
-function catalog({ profile = 'basic', verifier = false } = {}) {
-  if (!['basic', 'collaboration'].includes(profile)) throw new Error('profile은 basic 또는 collaboration입니다');
+function catalog({ profile = 'minimal', verifier = false } = {}) {
+  if (!['minimal', 'basic', 'collaboration'].includes(profile)) throw new Error('profile은 minimal, basic 또는 collaboration입니다');
   const files = {};
   for (const name of [...hookNames, ...(verifier ? ['verifierGate'] : [])]) files[hookPath(name)] = hookSource(name);
   files[coreRulesPath] = rulesAsset;
-  for (const name of ['history', 'handoff', ...(profile === 'collaboration' ? ['retro', 'loop-spec'] : [])]) {
+  for (const name of profile === 'minimal' ? [] : ['history', 'handoff', ...(profile === 'collaboration' ? ['retro', 'loop-spec'] : [])]) {
     files[`docs/templates/${name}.md`] = `skills/history/assets/templates/${name}.md`;
   }
   return files;
@@ -188,7 +188,7 @@ export function createPlan(project, options = {}) {
   const { manifest: previous, legacyManifest } = loadManifest(root);
   const mode = options.mode ?? 'update';
   if (!['update', 'remove'].includes(mode)) throw new Error('mode는 update 또는 remove입니다');
-  const profile = options.profile ?? previous.profile ?? 'basic';
+  const profile = options.profile ?? previous.profile ?? (Object.keys(previous.files).length ? 'basic' : 'minimal');
   const verifier = options.verifier ?? previous.verifier ?? false;
   const only = options.only ?? null;
   if (only != null && (!Array.isArray(only) || only.some(p => !allPaths.has(p)))) throw new Error('only에는 번들 관리 경로만 지정하세요');
@@ -201,6 +201,11 @@ export function createPlan(project, options = {}) {
   const add = (path, action, before, after, reason) => operations.push({ path, action, beforeHash: hash(before), after, reason });
   const selected = path => only == null || only.includes(path);
   const target = catalog({ profile, verifier });
+  // 프로필을 줄여도 이미 관리 중인 양식은 계속 갱신한다. 기록·팀 수정본을 잃지 않는다.
+  const completeCatalog = catalog({ profile: 'collaboration', verifier: true });
+  for (const path of Object.keys(previous.files)) {
+    if (path.startsWith(templateDir)) target[path] = completeCatalog[path];
+  }
   for (const path of previous.ejected) delete target[path]; // eject한 코어 파일은 프로젝트 소유 — 갱신하지 않는다
   const activeHooks = [...hookNames, ...(verifier ? ['verifierGate'] : [])];
   for (const [path, source] of Object.entries(mode === 'remove' ? previous.files : target)) {
@@ -282,6 +287,15 @@ export function createPlan(project, options = {}) {
       } else if (before != null) {
         add(teamRulesPath, 'preserve', before, before, `팀이 수정한 규칙 파일 보존 · 추적 해제. 코어 규칙 7개를 지우고 ${coreRulesPath} 포인터를 남기세요`);
       }
+    }
+    // 새 minimal 설치만 기록 게이트를 명시적으로 끈다. 기존 설치·수동 훅의 암묵적 정책은 보존한다.
+    const gitConfig = configPath(hooksDir, 'blockGitMutation');
+    if (profile === 'minimal' && Object.keys(previous.files).length === 0 &&
+        read(safePath(root, hookPath('blockGitMutation'))) == null &&
+        read(safePath(root, legacyHookPath('blockGitMutation'))) == null &&
+        read(safePath(root, configPath(legacyHooksDir, 'blockGitMutation'))) == null &&
+        read(safePath(root, gitConfig)) == null) {
+      add(gitConfig, 'create', null, json({ allowCommitPush: false, requireHistoryDoc: false }), '새 최소 구성 · 기록 게이트 선택 사용');
     }
     // 프로젝트 파일은 없을 때만 만든다.
     for (const [path, source] of Object.entries(projectFiles(selectedApps, { ci }))) {
@@ -500,6 +514,11 @@ export function importPreset(project, preset, { force = false } = {}) {
   }
   const written = [], skipped = [], rejected = [];
   const records = [];
+  const updates = { ...preset.files };
+  const { manifest, legacyManifest } = loadManifest(root);
+  const manifestFile = legacyManifest ? legacyManifestPath : manifestPath;
+  const manifestBefore = read(safePath(root, manifestFile));
+  if (manifestBefore == null) throw new Error('먼저 init을 실행하세요');
   for (const [path, content] of Object.entries(preset.files)) {
     if (typeof content !== 'string' || !presetKind(path)) { rejected.push(path); continue; }
     let target;
@@ -510,11 +529,25 @@ export function importPreset(project, preset, { force = false } = {}) {
     records.push({ path, before, afterHash: hash(content) });
     written.push(path);
   }
+  // minimal에 처음 가져오는 양식도 팀 수정본으로 추적한다. 현재 번들을 다음 병합의 기준으로 저장한다.
+  for (const path of written.filter(path => templatePaths.includes(path) && !manifest.files[path])) {
+    const basePath = basePathOf(path);
+    const base = read(safePath(root, basePath));
+    if (base == null) {
+      updates[basePath] = readFileSync(join(bundleRoot, catalog({ profile: 'collaboration' })[path]), 'utf8');
+      records.push({ path: basePath, before: null, afterHash: hash(updates[basePath]) });
+    }
+    manifest.files[path] = { hash: hash(updates[path]), version: version() };
+  }
+  if (json(manifest) !== manifestBefore && written.some(path => templatePaths.includes(path))) {
+    updates[manifestFile] = json(manifest);
+    records.push({ path: manifestFile, before: manifestBefore, afterHash: hash(updates[manifestFile]) });
+  }
   if (records.length) {
     const backup = `${backupDir}/${randomUUID()}.json`;
     atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records }));
     try {
-      for (const record of records) atomicWrite(safePath(root, record.path), preset.files[record.path]);
+      for (const record of records) atomicWrite(safePath(root, record.path), updates[record.path]);
     } catch (error) {
       for (const record of [...records].reverse()) atomicWrite(safePath(root, record.path), record.before);
       throw error;
@@ -565,7 +598,7 @@ export async function status(project) {
   if (legacyManifest) issues.push({ level: 'warn', path: legacyManifestPath, message: `설치 기록이 이전 위치에 있습니다. update로 ${manifestPath}로 이동하세요` });
   if (manifest.files[teamRulesPath]) issues.push({ level: 'warn', path: teamRulesPath, message: `v3 구조입니다. update가 코어 규칙을 ${coreRulesPath}로 옮기고 이 파일을 팀 규칙 파일로 바꿉니다` });
   const teamRules = read(safePath(root, teamRulesPath));
-  if (Object.keys(manifest.files).length && !manifest.files[teamRulesPath] && teamRules != null && countRules(teamRules) >= countRules(readFileSync(join(bundleRoot, rulesAsset), 'utf8'))) {
+  if (Object.keys(manifest.files).length && !manifest.files[teamRulesPath] && teamRules != null && countRules(teamRules) >= 7) {
     issues.push({ level: 'warn', path: teamRulesPath, message: `팀 규칙 파일에 코어 규칙 전문이 남아 있습니다. 코어 규칙은 ${coreRulesPath}가 정본이니 이 파일에는 포인터와 팀 규칙만 남기세요` });
   }
   for (const hook of hooks) {

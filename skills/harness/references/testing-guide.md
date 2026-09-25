@@ -18,16 +18,16 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 - 스킬: SKILL.md 존재, frontmatter `name`/`description` 존재(멀티라인 값 지원), name=디렉토리명 일치, 본문이 참조하는 `references/` 파일 실존, 500줄 초과 경고
 - 스킬 경로: 프로젝트 `.claude/skills/`(claude)와 `.agents/skills/`(codex) 양쪽을 검사한다
 - 에이전트 참조: 스킬 본문의 `agentType`/`agent_type`/`subagent_type` 값이 빌트인이 아니면 `.claude/agents/{name}.md` 실존 검사 — 누락 시 경고 (새 빌트인 타입 오탐 가능성 때문에 error가 아니라 warn이며, 커스텀 타입의 dead link면 반드시 수정한다)
-- description: 후속 작업 키워드(다시·재실행·수정·보완 등) 누락 시 경고
+- description: 길이를 검사한다. 특정 트리거 키워드는 강제하지 않는다
 - 규칙 파일: 하네스(에이전트/스킬)가 존재하는데 CLAUDE.md·AGENTS.md가 둘 다 없거나, 있는 파일에 포인터 섹션(`## 하네스:`)이 없으면 경고
 - 에이전트: frontmatter `name`/`description` 존재
 - 훅·권한: 하네스가 존재하는데 `.claude/settings.json`·`.codex/hooks.json` 어느 쪽에도 git 차단 훅(blockGitMutation)·시크릿 Bash 차단 훅(blockSecretAccess)·브랜치 가드 훅(branchGuard)이 없으면 각각 경고. 시크릿 deny는 claude 설정에서 검사하며 codex 등록만 있는 프로젝트에는 요구하지 않는다 (`hooks-and-permissions.md`)
-- 공통 템플릿: 기본 구성은 history·handoff, 협업 구성은 retro·loop-spec까지 검사한다. 추적 기록이 없으면 기존 4종 검사와 호환한다
+- 공통 템플릿: minimal은 양식을 요구하지 않는다. basic은 history·handoff, collaboration은 retro·loop-spec까지 검사한다. 추적 기록이 없으면 기존 4종 검사와 호환한다
 - 오케스트레이터: name에 `orchestrator`가 포함된 스킬에 `## 테스트 시나리오` 섹션이 없으면 경고
 - `.claude/commands/`: 파일이 존재하면 경고 (하네스는 여기에 아무것도 생성하지 않는다)
 - 플러그인 repo: `.claude-plugin/plugin.json` ↔ `marketplace.json` 버전 일치, `.codex-plugin/plugin.json` 필수 항목(name·version·description·author·interface)과 `.agents/plugins/marketplace.json` 항목, 두 plugin.json의 버전 일치
 
-**error 0건이 통과 기준이다.** Phase 0 감사와 Phase 3 검증 양쪽에서 실행한다. warn 중 규칙 파일 포인터는 Phase 4에서 해소되므로 Phase 3 시점에는 남아 있어도 되지만, 훅·권한 경고는 Phase 2 누락이므로 Phase 3에서 해소한다.
+**error 0건이 구조 검사 통과 기준이다.** 경고는 프로젝트에 적용되는지 검토한다. 구조 통과만으로 실제 앱의 동작이나 모델 효과가 확인된 것은 아니다.
 
 ## 2. 트리거 검증
 
@@ -56,7 +56,7 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 3. 사용자가 만족하거나 의미 있는 개선이 없을 때까지 반복한다.
 4. 에이전트들이 공통으로 작성하는 코드가 발견되면 `scripts/`로 번들링한다.
 
-최종 작업 기록은 history 문서 한 건에 모은다. 같은 변경을 CLAUDE.md와 여러 기록에 반복 작성하지 않는다.
+팀에서 작업 기록을 요구하면 history 문서 한 건에 모은다. 같은 변경을 CLAUDE.md와 여러 기록에 반복 작성하지 않는다.
 
 ## 5. 실제 요청 시나리오
 
@@ -69,7 +69,7 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 | “제안한 개선을 적용해줘” | 승인 범위의 변경 진행 | 같은 개선을 다시 승인 요청 |
 | “이 문구만 고쳐줘” | 해당 문구와 관련 검사 | 별도 설계서·반복 기록·에이전트 생성 |
 | “업데이트해줘. 수정한 규칙은 보존” | 충돌 보존, 적용 가능한 파일 미리보기 | 사용자 파일 덮어쓰기 |
-| “커밋·푸시까지 해줘” | 관련 검증·작업 기록·커밋·푸시 | 무요청 PR·머지 또는 커밋 직전 재확인 |
+| “커밋·푸시까지 해줘” | 관련 검증·팀에서 요구한 경우 기록·커밋·푸시 | 무요청 PR·머지 또는 커밋 직전 재확인 |
 | “배포해도 돼?” (브라우저 검사 불가) | 필수 검사 누락이면 판정 보류 | fail 0건이라는 이유로 가능 판정 |
 
 CLI 회귀 검사는 실제 임시 프로젝트에서 설치·업데이트·충돌·제거·복원, claude·codex·both 앱 선택, v2 설치본 이동을 검증하고, Stop 이벤트 연속 입력과 codex 형식 훅 입력(`CLAUDE_PROJECT_DIR` 없음·`apply_patch`)도 검사한다. 실제 앱 안에서의 훅 실행은 검사하지 않는다 — 앱별 확인 절차는 `hooks-and-permissions.md` §8을 따른다:

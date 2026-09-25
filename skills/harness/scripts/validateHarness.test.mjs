@@ -158,7 +158,7 @@ agent('검수', { agentType: 'qa-inspector' })
   await rm(rootDir, { recursive: true, force: true });
 });
 
-test('description에 후속 작업 키워드가 없으면 경고', async () => {
+test('description에 특정 후속 키워드를 강제하지 않는다', async () => {
   const rootDir = await makeFixture({
     files: {
       '.claude/skills/demo-skill/SKILL.md': VALID_SKILL.replace(
@@ -169,7 +169,7 @@ test('description에 후속 작업 키워드가 없으면 경고', async () => {
   });
   const issues = await validateHarness({ rootDir });
   assert.ok(
-    issues.some((issue) => issue.level === 'warn' && issue.message.includes('후속 작업 키워드')),
+    !issues.some((issue) => issue.level === 'warn' && issue.message.includes('후속 작업 키워드')),
   );
   await rm(rootDir, { recursive: true, force: true });
 });
@@ -405,7 +405,7 @@ test('하네스가 있는데 절대 규칙 파일이 없으면 경고', async ()
   await rm(rootDir, { recursive: true, force: true });
 });
 
-test('절대 규칙 파일의 규칙 수가 플러그인 정본보다 적으면 구버전 경고', async () => {
+test('규칙 수로 버전을 추측하지 않는다', async () => {
   const staleRules = [
     '# 하네스 절대 규칙',
     '',
@@ -419,7 +419,7 @@ test('절대 규칙 파일의 규칙 수가 플러그인 정본보다 적으면 
     },
   });
   const issues = await validateHarness({ rootDir });
-  assert.ok(issues.some((issue) => issue.level === 'warn' && issue.message.includes('구버전')));
+  assert.ok(!issues.some((issue) => issue.level === 'warn' && issue.message.includes('구버전')));
   await rm(rootDir, { recursive: true, force: true });
 });
 
@@ -556,7 +556,7 @@ test('codex 마켓 목록에 플러그인 항목이 없으면 에러', async t =
 });
 
 test('v3 구조(팀 규칙 파일에 코어 전문, 코어 사본 없음)는 update 안내로 경고한다', async t => {
-  const canonicalRules = await readFile(new URL('../assets/harness-rules.md', import.meta.url), 'utf8');
+  const canonicalRules = Array.from({ length: 7 }, (_, i) => `${i + 1}. **기존 규칙 ${i + 1}.** 설명`).join('\n');
   const rootDir = await makeFixture({ files: {
     '.claude/agents/demo-agent.md': VALID_AGENT,
     'docs/harness-rules.md': canonicalRules,

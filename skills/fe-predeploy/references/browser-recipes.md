@@ -41,4 +41,4 @@ ToolSearch "select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome
 - **다이얼로그 금지**: alert/confirm/prompt가 뜨면 브라우저 세션이 멈춘다. `beforeunload` 핸들러가 있는 페이지의 이탈, confirm이 달린 삭제 버튼은 피하고, 불가피하면 사용자에게 먼저 알린다.
 - **부수효과**: 운영 환경에서 결제·발송·삭제류 액션 금지 (SKILL.md 원칙 4).
 - **실패 시**: 같은 조작이 2~3회 실패하면 반복하지 말고 상황을 기록하고 해당 항목을 skip(사유: 조작 불가)으로 넘긴 뒤 사용자에게 보고한다.
-- **콘솔 필터**: `read_console_messages`는 pattern 파라미터로 필터한다 — 전체 덤프는 컨텍스트 낭비다(절대 규칙 7).
+- **콘솔 필터**: `read_console_messages`는 pattern 파라미터로 필터한다 — 전체 덤프는 컨텍스트 낭비다.
