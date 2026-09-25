@@ -107,7 +107,7 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 
 ## 문서 템플릿 3-way 병합
 
-템플릿(`docs/templates/*.md`)은 팀이 고칠 수 있고 코어 업데이트도 받는 공동 파일이다. 설치·업데이트 때 원본 사본을 `.agents/harness-base/docs/templates/`에 둔다. 업데이트 때 파일 상태에 따라 이렇게 처리한다.
+추적 중인 템플릿(`docs/templates/*.md` — basic·collaboration으로 설치했거나 import로 가져온 양식)은 팀이 고칠 수 있고 코어 업데이트도 받는 공동 파일이다. minimal에서 직접 복사한 양식은 추적하지 않으므로 업데이트가 건드리지 않는다. 설치·업데이트 때 원본 사본을 `.agents/harness-base/docs/templates/`에 둔다. 업데이트 때 파일 상태에 따라 이렇게 처리한다.
 
 | 팀 수정 | 사본 | 처리 |
 |---|---|---|
@@ -119,7 +119,7 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 
 ## CI 검사 워크플로 (--ci)
 
-`init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@4 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. npm에 패키지가 배포되어 있어야 동작한다.
+`init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@5 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. `update`는 이 파일을 바꾸지 않으므로 주 버전이 오르면 `@` 뒤 숫자를 직접 바꾼다. npm에 패키지가 배포되어 있어야 동작한다.
 
 ## 팀 묶음 — export / import
 
@@ -141,7 +141,7 @@ npx guksu-harness import /path/to/target --from team-preset.json [--force]
 
 담지 않는 것: 코어 훅·코어 규칙 사본(각 저장소의 `update`가 준다), 규칙 포인터 `CLAUDE.md`·`AGENTS.md`(프로젝트 고유), 추적 기록·백업·사본, 작업 기록, 훅 상태 파일.
 
-`import` 규칙: 위 종류의 경로만 쓴다(코어 훅 이름·프로젝트 밖 경로·그 밖의 경로는 거부). 이미 있고 내용이 다른 파일은 `--force` 없이는 건너뛴다. 단 `init`이 만든 뒤 손대지 않은 파일(원본 사본이나 초기 양식과 같은 템플릿·팀 규칙·CI 워크플로)은 잃을 것이 없으므로 그냥 쓴다. 쓴 파일은 백업에 남아 `rollback`으로 되돌릴 수 있다. 가져온 템플릿은 다음 `update`에서 병합 대상이 된다. 팀 훅의 앱 등록은 묶음에 없으므로 직접 추가한다. 묶음 파일은 커밋해 두면 새 저장소를 `init` + `import`로 만들 수 있다. 훅 설정값에 비밀이 없는지 확인한 뒤 공유한다.
+`import` 규칙: 위 종류의 경로만 쓴다(코어 훅 이름·프로젝트 밖 경로·그 밖의 경로는 거부). 이미 있고 내용이 다른 파일은 `--force` 없이는 건너뛴다. 단 `init`이 만든 뒤 손대지 않은 파일(원본 사본이나 초기 양식과 같은 템플릿·팀 규칙·CI 워크플로, 새 minimal 설치가 만든 초기값 그대로인 Git 설정)은 잃을 것이 없으므로 그냥 쓴다. 쓴 파일은 백업에 남아 `rollback`으로 되돌릴 수 있다. 가져온 템플릿은 다음 `update`에서 병합 대상이 된다. 팀 훅의 앱 등록은 묶음에 없으므로 직접 추가한다. 묶음 파일은 커밋해 두면 새 저장소를 `init` + `import`로 만들 수 있다. 묶음은 프로필을 옮기지 않는다. 기준 저장소가 basic·collaboration이면 `init`에 같은 `--profile`을 준다. 훅 설정값에 비밀이 없는지 확인한 뒤 공유한다.
 
 ## eject — 코어 파일을 프로젝트 소유로
 

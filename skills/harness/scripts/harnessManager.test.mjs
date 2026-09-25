@@ -515,6 +515,19 @@ test('import는 새 저장소에 팀 묶음을 쓰고, 다른 내용의 기존 �
   assert.equal(applyPlan(createPlan(target)).changed, 0);
   assert.equal((await status(target)).files.find(f => f.path === 'docs/templates/history.md').state, 'customized');
 });
+test('import는 새 minimal init이 만든 초기 Git 설정을 덮어쓰고, 이 저장소가 고친 설정은 건너뛴다', t => {
+  const source = fixture(t), target = fixture(t), edited = fixture(t);
+  const gitConfig = '.agents/hooks/blockGitMutation.config.json';
+  applyPlan(createPlan(source, { app: 'claude' }));
+  write(source, gitConfig, '{"allowCommitPush":true,"requireHistoryDoc":true}');
+  const preset = exportPreset(source);
+  applyPlan(createPlan(target, { app: 'claude' }));
+  assert.ok(importPreset(target, preset).written.includes(gitConfig), 'init 초기값 그대로인 Git 설정은 덮어쓴다');
+  assert.equal(readFileSync(join(target, gitConfig), 'utf8'), preset.files[gitConfig]);
+  applyPlan(createPlan(edited, { app: 'claude' }));
+  write(edited, gitConfig, '{"allowCommitPush":false,"requireHistoryDoc":true}');
+  assert.ok(importPreset(edited, preset).skipped.includes(gitConfig), '이 저장소가 고친 Git 설정은 건너뛴다');
+});
 test('import는 코어 훅·프로젝트 밖·허용되지 않은 경로를 거부하고 잘못된 묶음은 에러다', t => {
   const target = fixture(t);
   applyPlan(createPlan(target));

@@ -1,7 +1,7 @@
 {
   "name": "guksu-harness",
   "description": "Claude Code·Codex의 팀 설정 관리 — 기존 설정을 보존하는 설치·업데이트, 보호 훅과 선택적 검증 도구",
-  "version": "4.2.1",
+  "version": "5.0.0",
   "author": {
     "name": "Guksu",
     "email": "yung3152@gmail.com",

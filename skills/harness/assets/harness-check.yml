@@ -16,4 +16,4 @@ jobs:
         with:
           node-version: 22
       # 구조 검사 + 상태 진단. error가 있으면 실패한다. 훅 설정값은 출력하지 않는다.
-      - run: npx --yes guksu-harness@4 check .
+      - run: npx --yes guksu-harness@5 check .

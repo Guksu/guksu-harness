@@ -4,8 +4,6 @@ Claude Code와 Codex의 **팀 설정을 설치하고, 팀 수정본을 보존하
 
 Node.js 22 이상 · MIT · 버전은 `package.json`과 플러그인 manifest에서 관리합니다.
 
-현재 브랜치의 `minimal` 기본값과 `update --profile`은 아직 릴리스되지 않았습니다. 아래 `npx` 명령은 해당 변경이 포함된 버전 배포 후 사용할 수 있습니다. 배포 전에는 저장소를 체크아웃하고 `node bin/guksu-harness.mjs <명령> /path/to/project`로 실행하세요.
-
 ## 시작하기
 
 ```bash
@@ -69,6 +67,7 @@ npx guksu-harness update --profile minimal
 - 스킬 이름은 유지합니다. branch·pr가 history·loop 등을 일괄 호출하지 않습니다.
 - 일반 worktree 생성·조회는 허용합니다. 강제 생성·삭제·이동·정리 등은 계속 차단합니다. `commit -F` 등 간접 메시지는 `blockAttribution: true`일 때만 제한하며 amend·fixup·squash는 계속 차단합니다.
 - 프로필 변경은 설치할 양식의 선택을 바꿉니다. 기존 기록 의무를 해제하려면 팀 규칙·앱 포인터를 정리하고 `.agents/hooks/blockGitMutation.config.json`의 `requireHistoryDoc`을 false로 설정하세요. 이때 기존 `allowCommitPush` 등 다른 설정은 유지합니다.
+- `--ci`로 만든 `.github/workflows/harness-check.yml`은 `update`가 바꾸지 않습니다. 파일 안의 `guksu-harness@4`를 `@5`로 직접 바꾸세요. `@4`는 npm의 4.2.0을 받는데, 4.2.0은 npx로 실행하면 아무 검사도 하지 않고 통과합니다.
 
 ## 선택적 대화 스킬
 

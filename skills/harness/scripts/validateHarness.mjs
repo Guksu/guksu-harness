@@ -271,7 +271,7 @@ const validateRulesFile = async ({ rootDir, issues }) => {
       path: corePath,
       message: teamHoldsCore
         ? '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — v3 구조다. npx guksu-harness update로 코어 사본을 만들고 docs/harness-rules.md를 팀 규칙 파일로 바꿔라'
-        : '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. npx guksu-harness update로 생성하라',
+        : '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — 규칙 포인터와 팀 규칙이 가리키는 파일이 없다. npx guksu-harness update로 생성하라',
     });
   } else {
     if (teamHoldsCore) {
@@ -352,7 +352,7 @@ const validateEnforcement = async ({ rootDir, issues }) => {
       level: 'warn',
       path: claude.path,
       message:
-        '시크릿 deny 권한(.env 등)이 구성되지 않았다 — 절대 규칙 6의 기계적 강제가 없다 (hooks-and-permissions.md)',
+        '시크릿 deny 권한(.env 등)이 구성되지 않았다 — Read 도구의 민감정보 읽기를 막는 설정이 없다 (hooks-and-permissions.md)',
     });
   }
 };

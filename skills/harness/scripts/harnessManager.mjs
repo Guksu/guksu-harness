@@ -50,6 +50,8 @@ const deny = ['Read(./.env)', 'Read(./.env.*)', 'Read(./**/credentials*)', 'Read
 const hookPath = name => `${hooksDir}/${name}.mjs`;
 const legacyHookPath = name => `${legacyHooksDir}/${name}.mjs`;
 const configPath = (dir, name) => `${dir}/${name}.config.json`;
+// 새 minimal 설치가 만드는 Git 훅 설정의 초기값. import는 이 값 그대로인 파일을 init 초기 상태로 본다.
+const minimalGitConfig = json({ allowCommitPush: false, requireHistoryDoc: false });
 const hookSource = name => `skills/harness/assets/hooks/${name}.mjs`;
 const countRules = content => content.split('\n').filter(line => /^\d+\.\s+\*\*/.test(line)).length;
 
@@ -295,7 +297,7 @@ export function createPlan(project, options = {}) {
         read(safePath(root, legacyHookPath('blockGitMutation'))) == null &&
         read(safePath(root, configPath(legacyHooksDir, 'blockGitMutation'))) == null &&
         read(safePath(root, gitConfig)) == null) {
-      add(gitConfig, 'create', null, json({ allowCommitPush: false, requireHistoryDoc: false }), '새 최소 구성 · 기록 게이트 선택 사용');
+      add(gitConfig, 'create', null, minimalGitConfig, '새 최소 구성 · 기록 게이트 선택 사용');
     }
     // 프로젝트 파일은 없을 때만 만든다.
     for (const [path, source] of Object.entries(projectFiles(selectedApps, { ci }))) {
@@ -485,7 +487,7 @@ export function exportPreset(project) {
     const kind = presetKind(path);
     if (!kind) { skipped.push(path); continue; }
     if (templatePaths.includes(path)) {
-      // 템플릿은 팀이 고친 것만 담는다. 원본 그대로면 update가 준다.
+      // 템플릿은 팀이 고친 것만 담는다. 원본 그대로면 같은 프로필의 init·update가 준다.
       const base = read(safePath(root, basePathOf(path)));
       const pristine = base != null ? content === base : content === readFileSync(join(bundleRoot, catalog({ profile: 'collaboration' })[path]), 'utf8');
       if (pristine) continue;
@@ -495,7 +497,7 @@ export function exportPreset(project) {
   }
   return { schemaVersion: 1, tool: 'guksu-harness', bundleVersion: version(), sourceVersion: manifest.version ?? null, files, skipped };
 }
-// init이 만든 뒤 손대지 않은 파일인가 — 템플릿은 사본(없으면 번들)과, 팀 규칙·CI 워크플로는 초기 양식과 같으면 그렇다.
+// init이 만든 뒤 손대지 않은 파일인가 — 템플릿은 사본(없으면 번들)과, 팀 규칙·CI 워크플로·minimal의 Git 설정은 초기값과 같으면 그렇다.
 // 이런 파일은 덮어써도 잃는 것이 없으므로 force 없이 가져온다.
 const untouched = (root, path, content) => {
   if (templatePaths.includes(path)) {
@@ -504,6 +506,7 @@ const untouched = (root, path, content) => {
   }
   if (path === teamRulesPath) return content === readFileSync(join(bundleRoot, teamRulesAsset), 'utf8');
   if (path === ciWorkflowPath) return content === readFileSync(join(bundleRoot, ciAsset), 'utf8');
+  if (path === configPath(hooksDir, 'blockGitMutation')) return content === minimalGitConfig;
   return false;
 };
 // 가져오기: 허용된 종류의 경로만 쓴다. 이미 있고 내용이 다른 파일은 force가 아니면 건너뛰고 보고한다(init 초기 상태 그대로인 파일은 예외).
