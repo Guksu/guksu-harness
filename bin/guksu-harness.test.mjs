@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -125,6 +125,20 @@ test('export → import 명령 흐름', t => {
   assert.equal(imported.status, 0, imported.stdout + imported.stderr);
   assert.equal(readFileSync(join(target, '.agents/hooks/branchGuard.config.json'), 'utf8'), '{"protectedBranches":["main","release"]}');
   assert.equal(run('check', target).status, 0);
+});
+
+// npx·npm은 node_modules/.bin 심볼릭 링크로 실행한다 — 링크 경유에서도 명령이 실제로 동작해야 한다(4.2.0 결함 재현).
+test('심볼릭 링크로 실행해도 명령이 동작한다 (npx 경로)', t => {
+  const root = fixture(t);
+  const bin = join(root, 'node_modules', '.bin');
+  mkdirSync(bin, { recursive: true });
+  symlinkSync(cli, join(bin, 'guksu-harness'));
+  const help = spawnSync(process.execPath, [join(bin, 'guksu-harness'), '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /init/, '링크 경유 실행이 조용히 끝나면 안 된다');
+  const init = spawnSync(process.execPath, [join(bin, 'guksu-harness'), 'init', root, '--app', 'claude'], { encoding: 'utf8' });
+  assert.equal(init.status, 0, init.stderr);
+  assert.ok(existsSync(join(root, '.agents', 'hooks', 'branchGuard.mjs')));
 });
 
 test('CLI 최소 설치에서 선택 양식 추가와 최소 구성 전환이 가능하다', t => {
