@@ -19,7 +19,7 @@
 - Git 훅: worktree 일반 생성·조회 허용, 강제 생성·삭제·이동·정리 차단 유지. `commit -F` 등 간접 메시지는 작성자 검사 선택 시에만 차단하며 이력 재작성·강제 push 차단은 유지한다.
 - 스킬 9개의 호출 이름은 보존하고 설명을 축소했다. branch·pr에서 일반 작업마다 다른 스킬을 연쇄 호출하지 않는다. history·handoff·프론트엔드·협업 절차는 선택 기능이다. fe-predeploy는 수정 요청까지 포함됐으면 수정·재검사를 이어간다.
 - 코어 정책·협업·스킬 작성·출력·컨텍스트 문서를 축소했다. 구조 검사에서 특정 후속 키워드를 강제하거나 규칙 개수로 버전을 추측하던 로직을 제거했다.
-- README·설치·보장 범위·플러그인 설명을 맞추고 CHANGELOG의 Unreleased에 기록했다. 버전은 4.2.0을 유지했다.
+- README·설치·보장 범위·플러그인 설명을 맞추고 CHANGELOG의 Unreleased에 기록했다. 버전은 main의 4.2.1로 유지했다.
 - PR 준비에서 README에 미출시 기능의 로컬 실행법, CLI와 플러그인의 역할, minimal 전환 명령과 기록 정책 변경 방법을 추가했다.
 - `docs/analysis/lean-harness-evaluation.md`: 기본 에이전트 / 변경 전 / 축소 후의 공정한 비교 조건과 측정 항목을 작성했다. 유료 모델 실행이나 평가 시스템 구축은 포함하지 않았다.
 
@@ -37,7 +37,7 @@
 
 | 검증 | 명령·범위 | 결과 |
 |------|------|------|
-| 전체 회귀 | `npm test` | 153개 통과 |
+| 전체 회귀 | `npm test` | 154개 통과 (main 병합 후) |
 | 마지막 호환성·Git 정책 보완 후 관련 회귀 | `node --test --test-concurrency=1 skills/harness/scripts/harnessManager.test.mjs skills/harness/scripts/hooks.test.mjs` | 75개 통과 |
 | 구조 | `npm run check` | error 0, warn 0 |
 | 스킬 형식 | skill-creator의 quick_validate.py, 9개 스킬 | 9개 통과 |
