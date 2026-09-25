@@ -4,7 +4,7 @@
 // 사용법: node scripts/validateHarness.mjs [하네스 루트 경로]
 
 import { readFile, readdir, access } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SKILL_BODY_MAX_LINES = 500;
@@ -16,7 +16,6 @@ const BUILTIN_AGENT_TYPES = new Set([
   'Plan',
   'statusline-setup',
 ]);
-const FOLLOW_UP_KEYWORDS = ['다시', '재실행', '재구성', '수정', '보완', '업데이트', '개선'];
 // description은 모든 세션에 상시 로딩된다 — 트리거에 필요한 것만 남기고 초과분은 본문으로 내린다.
 const DESCRIPTION_MAX_CHARS = 350;
 
@@ -91,13 +90,6 @@ const validateSkillFile = async ({ skillDir, dirName, agentNames, issues }) => {
     if (!frontmatter.description) {
       issues.push({ level: 'error', path: skillPath, message: 'frontmatter에 description이 없다' });
     } else {
-      if (!FOLLOW_UP_KEYWORDS.some((keyword) => frontmatter.description.includes(keyword))) {
-        issues.push({
-          level: 'warn',
-          path: skillPath,
-          message: `description에 후속 작업 키워드(${FOLLOW_UP_KEYWORDS.join('·')} 등)가 없다 — 재실행·수정 요청이 트리거되지 않는다`,
-        });
-      }
       if (frontmatter.description.length > DESCRIPTION_MAX_CHARS) {
         issues.push({
           level: 'warn',
@@ -208,7 +200,7 @@ const validatePointerFile = async ({ rootDir, issues }) => {
     issues.push({
       level: 'warn',
       path: join(rootDir, 'CLAUDE.md'),
-      message: 'CLAUDE.md 또는 AGENTS.md가 없다 — 하네스 포인터(목표·트리거·규칙 파일 포인터)를 등록하라 (Phase 4)',
+      message: 'CLAUDE.md 또는 AGENTS.md가 없다 — 하네스 포인터(목표·트리거·규칙 파일 포인터)를 등록하라',
     });
     return;
   }
@@ -219,7 +211,7 @@ const validatePointerFile = async ({ rootDir, issues }) => {
       issues.push({
         level: 'warn',
         path: pointerPath,
-        message: `${name}에 하네스 포인터 섹션(## 하네스: ...)이 없다 (Phase 4)`,
+        message: `${name}에 하네스 포인터 섹션(## 하네스: ...)이 없다`,
       });
     }
   }
@@ -238,6 +230,7 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
   if (await exists({ path: installPath })) {
     try {
       const install = JSON.parse(await readFile(installPath, 'utf8'));
+      if (install.profile === 'minimal') templates = [];
       if (install.profile === 'basic') templates = ['history.md', 'handoff.md'];
     } catch {
       issues.push({ level: 'error', path: installPath, message: '설치 추적 JSON을 읽을 수 없다' });
@@ -249,7 +242,7 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
       issues.push({
         level: 'warn',
         path: templatePath,
-        message: `공통 템플릿(${templateName})이 없다 — 절대 규칙 3의 기록 형식이 구성되지 않았다. history 스킬의 assets/templates/${templateName}을 복사하라 (Phase 2)`,
+        message: `공통 템플릿(${templateName})이 없다 — 선택한 프로필의 양식이 없다. history 스킬의 assets/templates/${templateName}을 복사하라`,
       });
     }
   }
@@ -257,12 +250,6 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
 
 // 절대 규칙 정본 — 하네스 구축 시 프로젝트 .agents/harness-core-rules.md(코어 사본)로 복사된다.
 // docs/harness-rules.md는 v4부터 팀 규칙 파일이다(코어 포인터 + 팀 규칙). v3 이하는 그 경로에 코어 전문이 있었다.
-const RULES_ASSET_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'assets',
-  'harness-rules.md',
-);
 const CORE_RULES_PATH = ['.agents', 'harness-core-rules.md'];
 const TEAM_RULES_PATH = ['docs', 'harness-rules.md'];
 const countRules = ({ content }) =>
@@ -271,19 +258,12 @@ const countRules = ({ content }) =>
 const validateRulesFile = async ({ rootDir, issues }) => {
   if (!(await hasProjectHarness({ rootDir }))) return;
 
-  let assetRuleCount;
-  try {
-    assetRuleCount = countRules({ content: await readFile(RULES_ASSET_PATH, 'utf8') });
-  } catch {
-    assetRuleCount = null; // 플러그인 정본을 찾지 못하면(비표준 설치) 개수 비교를 생략한다
-  }
-
   const corePath = join(rootDir, ...CORE_RULES_PATH);
   const teamPath = join(rootDir, ...TEAM_RULES_PATH);
   const hasCore = await exists({ path: corePath });
   const hasTeam = await exists({ path: teamPath });
   const teamRuleCount = hasTeam ? countRules({ content: await readFile(teamPath, 'utf8') }) : 0;
-  const teamHoldsCore = assetRuleCount != null && teamRuleCount >= assetRuleCount;
+  const teamHoldsCore = teamRuleCount >= 7;
 
   if (!hasCore) {
     issues.push({
@@ -291,17 +271,9 @@ const validateRulesFile = async ({ rootDir, issues }) => {
       path: corePath,
       message: teamHoldsCore
         ? '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — v3 구조다. npx guksu-harness update로 코어 사본을 만들고 docs/harness-rules.md를 팀 규칙 파일로 바꿔라'
-        : '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. npx guksu-harness update로 생성하라 (Phase 2)',
+        : '코어 규칙 사본(.agents/harness-core-rules.md)이 없다 — 오케스트레이터·에이전트 정의의 포인터가 가리킬 정본이 없다. npx guksu-harness update로 생성하라',
     });
-  } else if (assetRuleCount != null) {
-    const coreRuleCount = countRules({ content: await readFile(corePath, 'utf8') });
-    if (coreRuleCount < assetRuleCount) {
-      issues.push({
-        level: 'warn',
-        path: corePath,
-        message: `코어 규칙 사본이 구버전이다 — 프로젝트 ${coreRuleCount}종 vs 플러그인 정본 ${assetRuleCount}종. npx guksu-harness update로 갱신하라`,
-      });
-    }
+  } else {
     if (teamHoldsCore) {
       issues.push({
         level: 'warn',
@@ -351,7 +323,7 @@ const validateEnforcement = async ({ rootDir, issues }) => {
       level: 'warn',
       path: reportPath,
       message:
-        'git 차단 훅(blockGitMutation)이 구성되지 않았다 — 절대 규칙 1의 기계적 강제가 없다 (hooks-and-permissions.md)',
+        'git 차단 훅(blockGitMutation)이 구성되지 않았다 — 프로젝트의 git 차단 정책을 확인하라 (hooks-and-permissions.md)',
     });
   }
   if (!preToolUseCommands.includes('blockSecretAccess')) {

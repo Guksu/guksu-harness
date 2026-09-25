@@ -71,7 +71,7 @@ if (isDirectRun) {
   if (isProtectedBranch({ branch, protectedBranches })) {
     console.error(
       `차단됨: 보호 브랜치(${branch}) 위에서는 파일을 편집하지 않습니다. ` +
-        'branch 스킬로 작업 브랜치를 사용자에게 확인받으세요 — 승인 후 git switch -c <이름>(신규) 또는 git switch <이름>(기존)으로 이동한 뒤 편집을 재시도합니다. ' +
+        '요청된 구현 범위에서 프로젝트 관례에 맞는 작업 브랜치로 이동한 뒤 편집을 재시도하세요. 이미 승인된 브랜치 준비는 다시 확인하지 않습니다. ' +
         '보호 브랜치에서 계속하려면 사용자가 직접 branchGuard.config.json의 protectedBranches를 수정해야 합니다.',
     );
     process.exit(2);

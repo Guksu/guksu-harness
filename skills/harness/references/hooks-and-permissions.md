@@ -81,13 +81,13 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 | 설정 | 동작 |
 |---|---|
 | allowCommitPush | 기본 false. 영구 허용은 사용자가 요청한 경우에만 설정 |
-| requireHistoryDoc | commit·push 허용 시 기본 true. push할 변경에 `docs/history/*.md`를 요구 |
+| requireHistoryDoc | commit·push 허용 시 기존 설정에서 생략 시 true, 새 minimal 설치는 false를 명시. push할 변경에 `docs/history/*.md`를 요구 |
 | historyBase | 생략 시 dev·main·master 계열을 탐색. 프로젝트 기준 브랜치를 지정하는 편이 명확함 |
 | blockAttribution | 기본 false. true이면 Claude 작성자 표기 패턴을 차단 |
 
 설정 파일이 없거나 파싱에 실패하면 커밋·푸시 예외는 비활성이다. 기록 기준을 찾지 못하면 기록 게이트는 통과하므로 승인·보안 장치로 사용하지 않는다. 기록 게이트의 git 명령은 훅 입력의 `cwd`에서 실행한다. 기존 표기 제한을 유지하려면 업데이트 전에 `blockAttribution: true`를 설정한다.
 
-허용 상태에서도 force/delete push와 간접 커밋 메시지 옵션(`-F`, `-t`, `-c`, `-C`, amend/fixup 등)은 차단한다. 일반 커밋 메시지는 `-m`으로 전달한다. 이 검사는 셸 파서 전체를 대체하지 않는다.
+허용 상태에서도 force/delete push와 amend/fixup/squash는 차단한다. 간접 커밋 메시지 옵션(`-F`, `-t`, `-c`, `-C`)은 `blockAttribution: true`일 때만 차단한다. worktree 조회와 일반 생성은 허용하고 강제 생성·삭제·이동·정리는 차단한다. 이 검사는 셸 파서 전체를 대체하지 않는다.
 
 ## 3. 보호 브랜치
 
@@ -149,7 +149,7 @@ Stop 훅을 새로 등록하는 것과 한 작업에서 테스트를 재시도�
 
 | 항목 | Claude Code | Codex |
 |---|---|---|
-| 훅 기능 | 기본 활성 | 기능 설정이 필요할 수 있다(`~/.codex/config.toml`의 `[features] hooks = true`). 최신 버전은 기본 활성으로 알려져 있으나 확인하지 못했다 |
+| 훅 기능 | 기본 활성 | 기능 설정이 필요할 수 있다(`~/.codex/config.toml`의 `[features] hooks = true`). 사용 중인 앱 버전에서 활성 여부를 확인한다 |
 | 프로젝트 등록 파일 신뢰 | 공유 설정은 바로 적용 | 프로젝트 `.codex/hooks.json`은 프로젝트를 신뢰한 뒤 적용된다 |
 | 훅 프로세스의 현재 디렉터리 | 프로젝트 루트 | 프로젝트 루트로 가정한다. 다르면 상대 경로 명령이 실패한다 |
 | 편집 차단 | 동작 | Codex 0.133에서 `apply_patch` 차단이 적용되지 않는 버그 보고가 있다(openai/codex #27833). 사용 중인 버전에서 직접 확인한다 |
@@ -161,4 +161,8 @@ Stop 훅을 새로 등록하는 것과 한 작업에서 테스트를 재시도�
 2. `git commit -m test`를 요청한다. 차단 메시지("git 변경 작업은 사용자 전담")가 나오면 blockGitMutation이 동작한다.
 3. `cat .env`를 요청한다. 차단 메시지("시크릿 파일")가 나오면 blockSecretAccess가 동작한다.
 
-하나라도 차단되지 않으면 그 앱에서는 규칙 문서(`.agents/harness-core-rules.md`·`docs/harness-rules.md`)만 적용되는 상태다. 결과를 작업 기록에 남긴다.
+하나라도 차단되지 않으면 그 앱에서는 규칙 문서(`.agents/harness-core-rules.md`·`docs/harness-rules.md`)만 적용되는 상태다. 결과를 보고하고 팀에서 기록을 요구할 때 해당 문서에 남긴다.
+
+## 승인과 지속 정책
+
+사용자의 단발 커밋·푸시 요청과 `allowCommitPush` 영구 설정은 별개다. 앱 권한은 실행 시 승인 여부를 다루고 훅은 저장소에 정한 지속 정책을 적용한다. 단발 요청만으로 설정을 변경하지 않는다. 현재 설정이 요청을 막으면 원인을 알리고, 팀이 지속 정책 변경까지 요청했을 때만 수정한다. 승인 판독이나 일회성 우회 토큰을 훅에 구현하지 않는다.

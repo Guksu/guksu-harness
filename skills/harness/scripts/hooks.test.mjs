@@ -34,7 +34,7 @@ test('git 변경 명령을 차단한다', () => {
     'git clean -fd',
     'git branch -D old',
     'git stash',
-    'git worktree add ../wt',
+    'git worktree remove ../wt',
     'cd repo && git rebase main',
   ];
   for (const command of blocked) {
@@ -124,8 +124,8 @@ test('commit·push 예외 — 프로젝트가 선택한 작성 표기 제한을 
   assert.equal(judgeGitCommand('git commit -m "docs: claude 스킬 사용법 정리"', opt).blocked, false);
 });
 
-test('commit·push 예외 — 검사 불가 커밋 형태·force/delete push는 차단한다', () => {
-  const opt = { allowCommitPush: true };
+test('작성자 검사 선택 시 간접 메시지와 이력 재작성·force/delete push를 차단한다', () => {
+  const opt = { allowCommitPush: true, blockAttribution: true };
   const commitBlocked = [
     'git commit --amend --no-edit', // 히스토리 재작성
     'git commit -F message.txt', // 메시지가 명령문 밖 — 표기 검사 불가
@@ -351,6 +351,10 @@ test('git 훅 CLI — 기록 게이트는 stdin의 cwd에서 git을 실행한다
   const missing = await runGitMutationCli({ config, command: 'git push -u origin feat/x', cwd: repo });
   assert.equal(missing.status, 2, missing.stderr);
   assert.ok(missing.stderr.includes('작업 기록이 없습니다'));
+  const implicit = await runGitMutationCli({ config: '{"allowCommitPush":true,"historyBase":"main"}', command: 'git push -u origin feat/x', cwd: repo });
+  assert.equal(implicit.status, 2, '기존 생략값은 기록 요구를 유지한다');
+  const optional = await runGitMutationCli({ config: '{"allowCommitPush":true,"requireHistoryDoc":false,"historyBase":"main"}', command: 'git push -u origin feat/x', cwd: repo });
+  assert.equal(optional.status, 0, '기록 선택 해제 시 기록 없는 push도 허용한다');
   await mkdir(join(repo, 'docs', 'history'), { recursive: true });
   await writeFile(join(repo, 'docs', 'history', '2026-01-01-x.md'), '# x');
   git('add', '.'); git('commit', '-q', '-m', 'history');
@@ -532,4 +536,25 @@ test('검증자 게이트 — 검증 명령을 전부 실행해 실패만 수집
   assert.equal(failures.length, 1);
   assert.equal(failures[0].name, 'fail');
   assert.ok(failures[0].output.includes('42'));
+});
+
+test('worktree 조회·일반 생성은 허용하고 강제·삭제·이동은 차단한다', () => {
+  for (const allowCommitPush of [false, true]) {
+    for (const command of ['git worktree list', 'git worktree list --porcelain', 'git worktree add ../wt', 'git -C /repo worktree add -b feat/task ../wt']) {
+      assert.equal(judgeGitCommand(command, { allowCommitPush }).blocked, false, command);
+    }
+    for (const command of ['git worktree remove ../wt', 'git worktree prune', 'git worktree move ../wt ../new', 'git worktree add -f ../wt', 'git worktree add -B main ../wt', 'git worktree add --detach ../wt', 'git worktree list && git worktree remove ../wt']) {
+      assert.equal(judgeGitCommand(command, { allowCommitPush }).blocked, true, command);
+    }
+  }
+});
+test('작성자 검사 없이 간접 메시지를 허용하되 커밋 자체의 권한과 이력 보호는 유지한다', () => {
+  for (const command of ['git commit -F message.txt', 'git commit --file=message.txt', 'git commit -C HEAD', 'git commit -t template.txt']) {
+    assert.equal(judgeGitCommand(command, { allowCommitPush: true }).blocked, false, command);
+    assert.equal(judgeGitCommand(command, { allowCommitPush: true, blockAttribution: true }).blocked, true, command);
+    assert.equal(judgeGitCommand(command).blocked, true, command);
+  }
+  for (const command of ['git commit --amend --no-edit', 'git commit --fixup abc', 'git commit --squash abc']) {
+    assert.equal(judgeGitCommand(command, { allowCommitPush: true }).blocked, true, command);
+  }
 });

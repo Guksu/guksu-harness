@@ -146,7 +146,7 @@ test('CLI로 미리보기·적용·진단·제거·복원을 순서대로 실행
   assert.equal(run('plan', root, '--out', planFile).status, 1, '기존 계획을 덮어쓰지 않는다');
   const applied = run('apply', root, '--plan', planFile);
   assert.equal(applied.status, 0, applied.stderr);
-  assert.equal(JSON.parse(run('status', root, '--json').stdout).trackedFiles, 6);
+  assert.equal(JSON.parse(run('status', root, '--json').stdout).trackedFiles, 4);
   const removeFile = join(root, 'remove.json');
   assert.equal(run('plan', root, '--mode', 'remove', '--out', removeFile).status, 0);
   const removed = run('apply', root, '--plan', removeFile);
@@ -334,7 +334,7 @@ test('eject한 훅 파일은 제거 때도 지우지 않는다', t => {
 // ── v3.x(docs/harness-rules.md를 코어 사본으로 추적) 변환 ─────────────────────
 const installV3 = (root, { modifyRules = false } = {}) => {
   const { createHash } = require('node:crypto');
-  const rules = readFileSync(new URL('../assets/harness-rules.md', import.meta.url), 'utf8');
+  const rules = Array.from({ length: 7 }, (_, i) => `${i + 1}. **기존 규칙 ${i + 1}.** 설명`).join('\n');
   write(root, 'docs/harness-rules.md', modifyRules ? `${rules}\n8. **우리 팀 규칙.** 설명.\n` : rules);
   write(root, '.agents/harness-install.json', JSON.stringify({ schemaVersion: 1, version: '3.0.0', profile: 'basic', verifier: false, apps: ['claude'],
     files: { 'docs/harness-rules.md': { hash: createHash('sha256').update(rules).digest('hex'), version: '3.0.0' } }, ownedHooks: [], ownedDeny: [] }));
@@ -386,7 +386,7 @@ const withBundleTemplate = (t, name, mutate) => {
 };
 test('설치는 템플릿 원본 사본을 .agents/harness-base/에 두고, 제거는 사본을 지운다', t => {
   const root = fixture(t);
-  applyPlan(createPlan(root));
+  applyPlan(createPlan(root, { profile: 'basic' }));
   const base = join(root, '.agents/harness-base/docs/templates/history.md');
   assert.equal(readFileSync(base, 'utf8'), readFileSync(join(root, 'docs/templates/history.md'), 'utf8'));
   applyPlan(createPlan(root, { mode: 'remove' }));
@@ -395,7 +395,7 @@ test('설치는 템플릿 원본 사본을 .agents/harness-base/에 두고, 제�
 });
 test('팀이 고친 템플릿은 새 버전과 3-way 병합되고 사본이 갱신된다', async t => {
   const root = fixture(t);
-  applyPlan(createPlan(root));
+  applyPlan(createPlan(root, { profile: 'basic' }));
   const teamEdit = content => content.replace('## 5. 주의사항', '## 5. 주의사항\n\n{팀 추가: 담당자 이름}');
   write(root, 'docs/templates/history.md', teamEdit(readFileSync(join(root, 'docs/templates/history.md'), 'utf8')));
   assert.equal((await status(root)).files.find(f => f.path === 'docs/templates/history.md').state, 'modified');
@@ -416,7 +416,7 @@ test('팀이 고친 템플릿은 새 버전과 3-way 병합되고 사본이 갱�
 });
 test('같은 곳을 고쳤으면 충돌로 보존하고 사본도 바꾸지 않는다', t => {
   const root = fixture(t);
-  applyPlan(createPlan(root));
+  applyPlan(createPlan(root, { profile: 'basic' }));
   write(root, 'docs/templates/history.md', readFileSync(join(root, 'docs/templates/history.md'), 'utf8').replace('# {작업명}', '# {작업명} — 팀'));
   withBundleTemplate(t, 'history', content => content.replace('# {작업명}', '# {작업명} — 코어'));
   const plan = createPlan(root);
@@ -428,7 +428,7 @@ test('같은 곳을 고쳤으면 충돌로 보존하고 사본도 바꾸지 않�
 });
 test('사본이 없는 설치본(v4.0)의 수정 템플릿은 보존하고 사본을 등록해 다음부터 병합한다', async t => {
   const root = fixture(t);
-  applyPlan(createPlan(root));
+  applyPlan(createPlan(root, { profile: 'basic' }));
   rmSync(join(root, '.agents/harness-base'), { recursive: true });
   write(root, 'docs/templates/handoff.md', `${readFileSync(join(root, 'docs/templates/handoff.md'), 'utf8')}\n팀 추가 줄\n`);
   const plan = createPlan(root);
@@ -445,7 +445,7 @@ test('사본이 없는 설치본(v4.0)의 수정 템플릿은 보존하고 사�
 });
 test('복원은 병합 원본 사본도 되돌린다', t => {
   const root = fixture(t);
-  const result = applyPlan(createPlan(root));
+  const result = applyPlan(createPlan(root, { profile: 'basic' }));
   rollback(root, result.backup);
   assert.equal(existsSync(join(root, '.agents/harness-base')), false || existsSync(join(root, '.agents/harness-base/docs/templates/history.md')) === false);
 });
@@ -475,7 +475,7 @@ const customize = root => {
 };
 test('export는 팀이 소유·수정한 파일만 담고 코어·기록·포인터·상태 파일은 뺀다', t => {
   const root = fixture(t);
-  applyPlan(createPlan(root, { app: 'both', ci: true }));
+  applyPlan(createPlan(root, { app: 'both', ci: true, profile: 'basic' }));
   customize(root);
   const preset = exportPreset(root);
   const paths = Object.keys(preset.files);
@@ -492,7 +492,7 @@ test('export는 팀이 소유·수정한 파일만 담고 코어·기록·포인
 });
 test('import는 새 저장소에 팀 묶음을 쓰고, 다른 내용의 기존 파일은 --force 없이는 건너뛴다', async t => {
   const source = fixture(t), target = fixture(t);
-  applyPlan(createPlan(source, { app: 'both', ci: true }));
+  applyPlan(createPlan(source, { app: 'both', ci: true, profile: 'basic' }));
   customize(source);
   const preset = exportPreset(source);
   applyPlan(createPlan(target, { app: 'claude' }));
@@ -511,8 +511,8 @@ test('import는 새 저장소에 팀 묶음을 쓰고, 다른 내용의 기존 �
   assert.equal(readFileSync(join(target, 'docs/harness-rules.md'), 'utf8'), '# 이 저장소만의 규칙\n', '복원하면 덮어쓰기 전으로 돌아간다');
   assert.equal(importPreset(target, preset).written.length, 0, '같은 내용은 다시 쓰지 않는다');
   const s = await status(target);
-  assert.equal(s.files.find(f => f.path === 'docs/templates/history.md').state, 'modified', '가져온 템플릿은 다음 update에서 병합 대상이다');
-  assert.equal(applyPlan(createPlan(target)).changed > 0, true);
+  assert.equal(s.files.find(f => f.path === 'docs/templates/history.md').state, 'customized', '처음 가져온 템플릿도 병합 대상으로 추적한다');
+  assert.equal(applyPlan(createPlan(target)).changed, 0);
   assert.equal((await status(target)).files.find(f => f.path === 'docs/templates/history.md').state, 'customized');
 });
 test('import는 코어 훅·프로젝트 밖·허용되지 않은 경로를 거부하고 잘못된 묶음은 에러다', t => {
@@ -531,4 +531,85 @@ test('import는 코어 훅·프로젝트 밖·허용되지 않은 경로를 거�
   assert.equal(readFileSync(join(target, '.agents/hooks/branchGuard.mjs'), 'utf8').includes('덮어쓰기'), false);
   assert.throws(() => importPreset(target, { schemaVersion: 2, files: {} }), /지원하지 않는/);
   assert.throws(() => importPreset(target, { schemaVersion: 1, tool: 'other', files: {} }), /지원하지 않는/);
+});
+
+for (const app of ['claude', 'codex', 'both']) {
+  test(`새 ${app} 최소 설치는 양식 없이 설정하고 재적용·복원 가능하다`, async t => {
+    const root = fixture(t);
+    const result = applyPlan(createPlan(root, { app }));
+    const manifest = JSON.parse(readFileSync(join(root, '.agents/harness-install.json')));
+    assert.equal(manifest.profile, 'minimal');
+    assert.equal(existsSync(join(root, 'docs/templates')), false);
+    assert.equal(existsSync(join(root, '.agents/harness-base')), false);
+    assert.deepEqual(JSON.parse(readFileSync(join(root, '.agents/hooks/blockGitMutation.config.json'))),
+      { allowCommitPush: false, requireHistoryDoc: false });
+    assert.deepEqual((await status(root)).issues, []);
+    assert.equal(applyPlan(createPlan(root)).changed, 0);
+    rollback(root, result.backup);
+    assert.equal(existsSync(join(root, '.agents/hooks/blockGitMutation.config.json')), false);
+    assert.equal(existsSync(join(root, '.agents/harness-install.json')), false);
+  });
+}
+test('기존 설치의 생략된 기록 정책과 프로필 없는 추적 기록을 보존한다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { profile: 'basic' }));
+  const config = '{"allowCommitPush":true}';
+  write(root, '.agents/hooks/blockGitMutation.config.json', config);
+  const path = join(root, '.agents/harness-install.json');
+  const manifest = JSON.parse(readFileSync(path));
+  delete manifest.profile;
+  writeFileSync(path, JSON.stringify(manifest));
+  applyPlan(createPlan(root));
+  assert.equal(JSON.parse(readFileSync(path)).profile, 'basic');
+  assert.equal(readFileSync(join(root, '.agents/hooks/blockGitMutation.config.json'), 'utf8'), config);
+});
+test('최소 구성 전환은 기존 양식·팀 포인터를 보존하며 선택 제거 후 재설치하지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { profile: 'collaboration', app: 'both' }));
+  write(root, 'AGENTS.md', '팀 기록 정책');
+  const path = 'docs/templates/history.md';
+  const custom = `${readFileSync(join(root, path), 'utf8')}\n팀 추가\n`;
+  write(root, path, custom);
+  applyPlan(createPlan(root, { profile: 'minimal' }));
+  assert.equal(readFileSync(join(root, path), 'utf8'), custom);
+  assert.equal(readFileSync(join(root, 'AGENTS.md'), 'utf8'), '팀 기록 정책');
+  assert.ok(existsSync(join(root, 'docs/templates/retro.md')));
+  assert.equal(applyPlan(createPlan(root)).changed, 0);
+  applyPlan(createPlan(root, { mode: 'remove', only: [path] }));
+  assert.equal(existsSync(join(root, `.agents/harness-base/${path}`)), false);
+  assert.equal(readFileSync(join(root, path), 'utf8'), custom);
+  applyPlan(createPlan(root));
+  assert.equal(JSON.parse(readFileSync(join(root, '.agents/harness-install.json'))).files[path], undefined);
+});
+test('수동 훅과 기존 설정에는 최소 구성 기본값을 덧씌우지 않는다', t => {
+  for (const manual of ['.agents/hooks/blockGitMutation.mjs', '.claude/hooks/blockGitMutation.config.json']) {
+    const root = fixture(t);
+    write(root, manual, manual.endsWith('.mjs') ? '// custom' : '{"allowCommitPush":true}');
+    const plan = createPlan(root);
+    assert.ok(!plan.operations.some(op => op.path === '.agents/hooks/blockGitMutation.config.json'));
+  }
+  const root = fixture(t);
+  const config = '{"requireHistoryDoc":true,"allowCommitPush":true}';
+  write(root, '.agents/hooks/blockGitMutation.config.json', config);
+  applyPlan(createPlan(root));
+  assert.equal(readFileSync(join(root, '.agents/hooks/blockGitMutation.config.json'), 'utf8'), config);
+});
+test('minimal로 가져온 양식은 이후 병합 가능하고 import 복원이 추적·사본도 되돌린다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root));
+  const path = 'docs/templates/history.md';
+  const original = readFileSync(join(bundleRoot, 'skills/history/assets/templates/history.md'), 'utf8');
+  const content = `${original}\n팀 가져오기\n`;
+  const preset = { schemaVersion: 1, tool: 'guksu-harness', files: { [path]: content } };
+  const imported = importPreset(root, preset);
+  assert.equal(applyPlan(createPlan(root)).changed, 0);
+  rollback(root, imported.backup);
+  assert.equal(existsSync(join(root, path)), false);
+  assert.equal(existsSync(join(root, `.agents/harness-base/${path}`)), false);
+  assert.equal(JSON.parse(readFileSync(join(root, '.agents/harness-install.json'))).files[path], undefined);
+  importPreset(root, preset);
+  withBundleTemplate(t, 'history', text => text.replace('# {작업명}', '# {작업명} 새 버전'));
+  applyPlan(createPlan(root));
+  assert.match(readFileSync(join(root, path), 'utf8'), /새 버전/);
+  assert.ok(readFileSync(join(root, path), 'utf8').endsWith('팀 가져오기\n'));
 });

@@ -96,7 +96,7 @@ test('프로젝트 디렉터리가 없으면 실패한다', () => {
 
 test('init --ci는 워크플로를 만들고, update는 팀이 고친 템플릿을 보존한다', t => {
   const root = fixture(t);
-  const init = run('init', root, '--ci', '--app', 'claude');
+  const init = run('init', root, '--ci', '--app', 'claude', '--profile', 'basic');
   assert.equal(init.status, 0, init.stderr + init.stdout);
   assert.ok(existsSync(join(root, '.github/workflows/harness-check.yml')));
   assert.ok(existsSync(join(root, '.agents/harness-base/docs/templates/history.md')));
@@ -139,4 +139,15 @@ test('심볼릭 링크로 실행해도 명령이 동작한다 (npx 경로)', t =
   const init = spawnSync(process.execPath, [join(bin, 'guksu-harness'), 'init', root, '--app', 'claude'], { encoding: 'utf8' });
   assert.equal(init.status, 0, init.stderr);
   assert.ok(existsSync(join(root, '.agents', 'hooks', 'branchGuard.mjs')));
+});
+
+test('CLI 최소 설치에서 선택 양식 추가와 최소 구성 전환이 가능하다', t => {
+  const root = fixture(t);
+  assert.equal(run('init', root, '--app', 'both').status, 0);
+  assert.equal(existsSync(join(root, 'docs/templates')), false);
+  assert.equal(run('update', root, '--profile', 'basic').status, 0);
+  assert.equal(existsSync(join(root, 'docs/templates/history.md')), true);
+  assert.equal(run('update', root, '--profile', 'minimal').status, 0);
+  assert.equal(existsSync(join(root, 'docs/templates/history.md')), true);
+  assert.equal(run('update', root, '--profile', 'invalid').status, 1);
 });

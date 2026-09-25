@@ -16,7 +16,7 @@ npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
 | 파일 | 위치 | 소유 |
 |---|---|---|
 | 훅 스크립트 | `.agents/hooks/` | 코어 — 미수정이면 교체, 수정본은 충돌. `eject` 가능 |
-| 코어 규칙 사본 | `.agents/harness-core-rules.md` | 코어 — 항상 새 버전으로 교체 |
+| 코어 규칙 사본 | `.agents/harness-core-rules.md` | 코어 — 미수정이면 교체, 수정본은 충돌 |
 | 팀 규칙 | `docs/harness-rules.md` | 프로젝트 — 없을 때 한 번 생성, 이후 안 건드림 |
 | 규칙 포인터 | `CLAUDE.md`·`AGENTS.md` | 프로젝트 — 없을 때 한 번 생성 |
 | 문서 템플릿 | `docs/templates/` | 공동 — 미수정이면 교체, 팀 수정본은 설치 원본 사본과 3-way 병합. 같은 곳을 고쳤으면 충돌 |
@@ -46,7 +46,7 @@ node "$MANAGER" plan /path/to/project --out /tmp/harness-plan.json
 node "$MANAGER" apply /path/to/project --plan /tmp/harness-plan.json
 ```
 
-- 기본은 `basic`: 보호 훅 3종·규칙 파일·history/handoff 템플릿.
+- 새 설치 기본은 `minimal`: 보호 훅 3종·규칙 파일. `basic`을 선택하면 history/handoff 양식을 추가한다.
 - `--app claude|codex|both`: 훅을 등록할 앱. 생략하면 프로젝트의 `.claude/`·`CLAUDE.md`(claude), `.codex/`·`AGENTS.md`·`.agents/skills/`(codex) 유무로 추정하고 둘 다 없으면 claude다. 한 번 적용하면 추적 기록의 값을 재사용한다. codex 등록에는 Read deny가 없다(Claude Code 전용 권한).
 - `--profile collaboration`: retro/loop-spec 템플릿 추가. 에이전트는 자동 생성하지 않는다.
 - `--verifier`: 종료 검사 훅 파일·Stop 등록 추가. 검사 명령 config는 자동 생성하지 않는다. `loop` 스킬의 예시를 프로젝트 검증 명령에 맞게 구성해야 활성화된다.
@@ -178,3 +178,13 @@ v2.x는 훅을 `.claude/hooks/`, 추적 기록을 `.claude/harness-install.json`
 ## 변경된 기본 정책
 
 v2.3.0부터 Claude 작성자 표기 제한은 `blockAttribution: true`를 설정한 경우에만 적용된다. 이전 정책을 유지하려는 프로젝트는 훅 업데이트와 함께 해당 설정을 추가한다. 커밋 허용(`allowCommitPush`)과 기록 요구(`requireHistoryDoc`)는 기존 설정을 그대로 따른다. 관리자는 이 권한 설정을 자동 변경하지 않는다.
+
+## 최소 구성으로 전환
+
+새 설치는 minimal이며 기록 양식을 만들지 않는다. basic은 history·handoff, collaboration은 retro·loop-spec까지 설치한다. 기존 설치의 프로필은 유지하며 프로필 없는 추적 기록은 basic으로 처리한다.
+
+`npx guksu-harness update . --profile minimal`은 앞으로의 기본 선택을 바꾼다. 이미 추적한 양식은 계속 병합·갱신하고 삭제하지 않는다. 양식 관리까지 중단하려면 관리자 `plan --mode remove --only docs/templates/history.md,docs/templates/handoff.md`로 문서는 보존하고 추적과 병합 원본만 제거할 수 있다. minimal에서는 다음 update가 그 양식을 재설치하지 않는다.
+
+새 minimal 설치는 Git 설정이 없고 기존·수동 Git 훅도 없을 때만 `allowCommitPush: false`, `requireHistoryDoc: false` 설정을 생성한다. 기존 설정은 수정하지 않는다. 과거 설정의 기록 요구 생략값(true)도 보존한다. 기존 규칙 포인터의 기록 지침은 팀 소유이므로 별도 검토한다.
+
+`--ci`는 구조 검사만 추가한다. 제품 테스트나 실제 앱에서 훅이 실행되는지는 별도로 검증한다.
