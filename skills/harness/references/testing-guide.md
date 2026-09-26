@@ -79,4 +79,4 @@ npm test   # = node --test --test-concurrency=1 skills/harness/scripts/*.test.mj
 # 순차 실행 이유: 병합 테스트가 번들 템플릿을 잠시 바꾸므로 파일을 병렬로 돌리면 다른 테스트가 바뀐 번들을 읽는다.
 ```
 
-`bin/guksu-harness.test.mjs`는 `npx guksu-harness` 명령(init·update·check·eject·status)의 실제 실행을 임시 프로젝트에서 검사한다.
+`bin/guksu-harness.test.mjs`는 `npx guksu-harness` 명령(init·update·check·eject·status·diagnose·compose·verify)의 실제 실행을 임시 프로젝트에서 검사한다. `teamCompose.test.mjs`는 팀 맞춤 구성의 인수 시나리오 3종(지침 없는 프로젝트, 규칙·CI·테스트가 있는 프로젝트, 지침·설정이 충돌하고 명령을 실행할 수 없는 프로젝트)과 재적용·정책 변경·드리프트 충돌·미리보기 이후 변경·복원을 파일 내용·해시·상태로 검사한다. 모델이 실제로 pending 항목만 묻는지는 `docs/analysis/team-compose-evaluation.md`의 별도 평가다.

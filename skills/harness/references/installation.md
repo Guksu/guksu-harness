@@ -1,6 +1,6 @@
 # 상태 확인과 안전한 업데이트
 
-일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)·`export`/`import`(팀 묶음)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다.
+일상 명령은 `npx guksu-harness`다. `init`(최초 설치)·`update`(갱신)·`status`·`check`(CI용 검사)·`eject`(코어 파일 소유 전환)·`export`/`import`(팀 묶음)를 제공하며 아래 관리자를 감싼다. `--dry-run`을 붙이면 미리보기만 한다. 저장소를 진단해 팀 결정만 묻고 설정·규칙을 함께 만드는 `diagnose`·`compose`·`verify`는 `team-compose.md`에 있다.
 
 ```bash
 npx guksu-harness init /path/to/project --app both --ci
@@ -22,7 +22,8 @@ npx guksu-harness eject /path/to/project .agents/hooks/branchGuard.mjs --confirm
 | 문서 템플릿 | `docs/templates/` | 공동 — 미수정이면 교체, 팀 수정본은 설치 원본 사본과 3-way 병합. 같은 곳을 고쳤으면 충돌 |
 | 병합 원본 사본 | `.agents/harness-base/docs/templates/` | 관리 도구 — 커밋한다(팀원 모두 같은 원본 기준) |
 | CI 워크플로 | `.github/workflows/harness-check.yml` | 프로젝트 — `init --ci`·`update --ci`로 없을 때 한 번 생성 |
-| 훅 설정값 | `.agents/hooks/*.config.json` | 프로젝트 |
+| 훅 설정값 | `.agents/hooks/*.config.json` | 프로젝트. `compose`는 명세의 관리 키만 맞춘다 |
+| 팀 구성 명세 | `.agents/harness-team.json` | 프로젝트 — `compose`가 만든다. 커밋하고 팀 묶음에 포함 (`team-compose.md`) |
 | 설치 추적 기록 | `.agents/harness-install.json` | 관리 도구 |
 | 백업 | `.agents/harness-backups/` | 관리 도구 |
 | Claude Code 등록 | `.claude/settings.json` | 공동 — 이 도구가 넣은 항목만 갱신 |

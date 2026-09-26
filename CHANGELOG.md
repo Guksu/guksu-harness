@@ -2,6 +2,28 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
+## [Unreleased]
+
+팀 맞춤 구성의 첫 MVP: 저장소를 진단하고 팀만 아는 결정을 묻고, 한 명세에서 설정·규칙·포인터를 만들고, 어디까지 작동하는지 네 상태로 보여 준다. 설계와 인수 시나리오: `docs/design/2026-09-26-team-compose.md`. 작업 기록: `docs/history/2026-09-26-team-compose-mvp.md`.
+
+### Added
+
+- `npx guksu-harness diagnose [--json]`: 기본 브랜치·브랜치 관례, 기존 지침(CLAUDE.md·AGENTS.md·CONTRIBUTING·PR 템플릿), package.json 스크립트(자리표시자·의존성 미설치 구분), CI 워크플로 `run:` 명령과 감시 브랜치, Makefile, 기존 훅 설정·등록·설치 기록을 읽어 확인된 사실·추정·팀이 정할 것·충돌·검증 명령 후보를 나눈다. 파일을 바꾸지 않고 민감정보 값은 읽지 않는다.
+- `npx guksu-harness compose [--app] [--set 키=값]... [--decisions 답.json] [--ci] [--force] [--dry-run] [--json]`: 진단과 팀 결정으로 명세 `.agents/harness-team.json`을 만들고, 명세에서 훅 설정값 3종, `docs/harness-rules.md`의 생성 구간, `CLAUDE.md`·`AGENTS.md`의 포인터 구간을 만든다. 훅·코어 규칙·등록·양식은 기존 `createPlan`으로 함께 계획해 백업 한 건으로 적용한다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 표시하며, 기존 파일이 허용이고 지침이 금지하면 값을 바꾸지 않고 충돌로 보인다. 재적용은 변경 0건, 정책 변경은 닿는 파일만 바뀐다. 생성 구간·설정 파일을 손으로 고쳤으면(드리프트) 멈추고 `--set` 확정 또는 `--force`로 해소한다.
+- `npx guksu-harness verify [--run] [--json]`: 설정 완료(파일·등록·구조 검사·명세 일치) / 실행 확인(임시 저장소와 가짜 명령으로 설치된 훅 스크립트 실행, `--run`의 검증 명령 실행) / 확인 필요(실제 앱 안의 훅 실행 절차, 실행하지 않은 명령, 기록 게이트) / 실패를 구분한다.
+- `skills/harness/scripts/teamCompose.mjs`와 테스트 15건(인수 시나리오 3종, 재적용·정책 변경·충돌·미리보기 이후 변경·복원·팀 묶음·값 파싱·워크플로 읽기), CLI 흐름 테스트 1건. 테스트 155→170.
+- harness 스킬의 "팀 맞춤 구성" 절과 `references/team-compose.md`. 모델 평가 시나리오 `docs/analysis/team-compose-evaluation.md`(미실행).
+
+### Changed
+
+- `harnessManager.mjs`: `applyPlan`·`importPreset`이 공유하던 백업·원자 쓰기·실패 되돌림을 `commitChanges`로 추출. `safePath`·`atomicWrite`·`hash`·`json`·`read`·`hookPath`·`configPath`·`appFiles`·`readManifest`·`teamSpecPath` 내보내기. 팀 구성 명세를 export/import 묶음과 복원 대상에 추가. 기존 명령 동작은 같다.
+- `init`의 "다음 할 일"에 `diagnose → compose → verify` 안내 한 줄.
+
+### 확인하지 못한 것
+
+- 실제 Claude Code·Codex 앱 안의 훅 실행. `verify`는 절차만 제공한다.
+- 모델의 질문 품질과 정책 준수(평가 명세 미실행).
+
 ## [5.0.0] - 2026-09-25
 
 기본 설치를 기록 양식 없는 최소 구성(minimal)으로 줄였다. 옵션 없이 `init`하면 설치되는 파일이 달라져 주 버전을 올렸다. 작업 기록: `docs/history/2026-09-25-lean-harness.md`, `docs/history/2026-09-25-release-5.0.0.md`. npm에 배포된 4.x는 4.2.0뿐이므로, 4.2.1의 npx 실행 수정도 이 버전부터 npm에서 받는다.

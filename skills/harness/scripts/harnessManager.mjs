@@ -5,6 +5,8 @@
 //   공동 파일   — 문서 템플릿, 앱 등록 파일. 템플릿은 팀이 고쳤으면 원본 사본(.agents/harness-base/)과 3-way 병합. 등록 파일은 이 도구가 넣은 부분만 갱신.
 //   프로젝트 파일 — 팀 규칙(docs/harness-rules.md), 규칙 포인터(CLAUDE.md·AGENTS.md), CI 워크플로(--ci). 없을 때 한 번 만들고 이후 건드리지 않는다.
 // 팀 묶음(export/import): 팀이 소유·수정한 파일만 한 JSON으로 묶어 다른 저장소로 옮긴다. 코어 파일·추적 기록·백업·사본은 제외한다.
+// 팀 구성 명세(.agents/harness-team.json)는 teamCompose.mjs가 만들고 훅 설정값·규칙 문서의 생성 구간을 그 명세에서 만든다.
+//   이 파일은 명세를 프로젝트 파일(팀 소유)로 보고 묶음·복원 대상에만 넣는다 (docs/design/2026-09-26-team-compose.md).
 // 관리 파일(훅·추적 기록·백업)은 앱 중립 위치 .agents/에 둔다. 훅 등록만 앱별 파일에 쓴다:
 //   claude → .claude/settings.json (hooks + permissions.deny), codex → .codex/hooks.json (hooks)
 // v2.x(.claude/hooks/·.claude/harness-install.json)와 v3.x(docs/harness-rules.md를 코어 사본으로 추적)는 업데이트 계획에서 변환한다.
@@ -30,6 +32,7 @@ const templateDir = 'docs/templates/';
 const basePathOf = path => `${baseDir}/${path}`;
 export const coreRulesPath = '.agents/harness-core-rules.md';
 export const teamRulesPath = 'docs/harness-rules.md';
+export const teamSpecPath = '.agents/harness-team.json'; // 팀 구성 명세(teamCompose.mjs). 팀 소유 · 커밋한다
 const rulesAsset = 'skills/harness/assets/harness-rules.md';
 const teamRulesAsset = 'skills/harness/assets/harness-team-rules.md';
 const pointerAsset = 'skills/harness/assets/pointer.md';
@@ -39,24 +42,26 @@ const apps = {
   codex: { registry: '.codex/hooks.json', pointer: 'AGENTS.md', signals: ['.codex', 'AGENTS.md', '.agents/skills', '.agents/plugins'] },
 };
 const appNames = Object.keys(apps);
-const hash = value => value == null ? null : createHash('sha256').update(value).digest('hex');
-const json = value => `${JSON.stringify(value, null, 2)}\n`;
-const read = path => existsSync(path) ? readFileSync(path, 'utf8') : null;
+export const hash = value => value == null ? null : createHash('sha256').update(value).digest('hex');
+export const json = value => `${JSON.stringify(value, null, 2)}\n`;
+export const read = path => existsSync(path) ? readFileSync(path, 'utf8') : null;
 const parse = (text, fallback) => text == null ? fallback : JSON.parse(text);
 export const version = () => JSON.parse(readFileSync(join(bundleRoot, '.claude-plugin/plugin.json'), 'utf8')).version;
 const hookNames = ['blockGitMutation', 'blockSecretAccess', 'branchGuard'];
 const allHookNames = [...hookNames, 'verifierGate'];
 const deny = ['Read(./.env)', 'Read(./.env.*)', 'Read(./**/credentials*)', 'Read(./**/*.pem)', 'Read(./**/secrets/**)'];
-const hookPath = name => `${hooksDir}/${name}.mjs`;
+export const hookPath = name => `${hooksDir}/${name}.mjs`;
 const legacyHookPath = name => `${legacyHooksDir}/${name}.mjs`;
-const configPath = (dir, name) => `${dir}/${name}.config.json`;
+export const configPath = (dir = hooksDir, name) => `${dir}/${name}.config.json`;
+// teamCompose.mjs가 쓰는 앱별 등록·포인터 경로. 읽기 전용 사본이다.
+export const appFiles = () => structuredClone(apps);
 // 새 minimal 설치가 만드는 Git 훅 설정의 초기값. import는 이 값 그대로인 파일을 init 초기 상태로 본다.
 const minimalGitConfig = json({ allowCommitPush: false, requireHistoryDoc: false });
 const hookSource = name => `skills/harness/assets/hooks/${name}.mjs`;
 const countRules = content => content.split('\n').filter(line => /^\d+\.\s+\*\*/.test(line)).length;
 
 // 계획·설치 기록에서 읽은 경로도 프로젝트 밖이나 심볼릭 링크를 따라가지 않는다.
-function safePath(root, path) {
+export function safePath(root, path) {
   if (!path || isAbsolute(path) || path.split(/[\\/]/).some(part => part === '..' || part === '.' || !part)) {
     throw new Error(`허용되지 않는 상대 경로: ${path}`);
   }
@@ -166,6 +171,12 @@ export function isInstalled(project) {
   const root = realpathSync(project);
   return Object.keys(loadManifest(root).manifest.files).length > 0;
 }
+// 설치 기록의 읽기 전용 사본(버전·프로필·verifier·앱·추적 파일). teamCompose.mjs가 기존 설치 상태를 근거로 쓴다.
+export function readManifest(project) {
+  const root = realpathSync(project);
+  const { manifest, legacyManifest } = loadManifest(root);
+  return { ...structuredClone(manifest), legacyManifest, installed: Object.keys(manifest.files).length > 0 };
+}
 export function detectApps(root) {
   const found = appNames.filter(app => apps[app].signals.some(signal => existsSync(join(root, signal))));
   return found.length ? found : ['claude'];
@@ -176,13 +187,28 @@ function resolveApps(option, previous, root) {
   if (!appNames.includes(option)) throw new Error('app은 claude, codex 또는 both입니다');
   return [option];
 }
-function atomicWrite(path, content) {
+export function atomicWrite(path, content) {
   if (content == null) { if (existsSync(path)) unlinkSync(path); return; }
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${randomUUID()}.tmp`;
   const mode = existsSync(path) ? lstatSync(path).mode & 0o777 : 0o600;
   writeFileSync(tmp, content, { mode });
   renameSync(tmp, path);
+}
+// 변경 묶음을 백업 한 건과 함께 쓴다. changes: [{ path, before, after }] (after가 null이면 삭제).
+// 쓰기 도중 실패하면 이미 쓴 파일을 이전 내용으로 되돌린다. 백업은 rollback()이 읽는 형식이다.
+export function commitChanges(root, changes) {
+  if (!changes.length) return { changed: 0, backup: null };
+  const records = changes.map(change => ({ path: change.path, before: change.before, afterHash: hash(change.after) }));
+  const backup = `${backupDir}/${randomUUID()}.json`;
+  atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records }));
+  try {
+    for (const change of changes) atomicWrite(safePath(root, change.path), change.after);
+  } catch (error) {
+    for (const record of [...records].reverse()) atomicWrite(safePath(root, record.path), record.before);
+    throw error;
+  }
+  return { changed: changes.length, backup };
 }
 
 export function createPlan(project, options = {}) {
@@ -403,19 +429,10 @@ export function applyPlan(plan) {
   const current = createPlan(plan.root, plan.request);
   if (!same(current, plan)) throw new Error('미리보기 이후 파일 또는 번들이 바뀌었습니다. 계획을 다시 만드세요');
   if (plan.operations.some(op => op.action === 'conflict')) throw new Error('충돌 파일을 보존했습니다. --only로 적용할 파일을 선택해 계획을 다시 만드세요');
-  const changes = plan.operations.filter(op => hash(op.after) !== op.beforeHash);
-  if (!changes.length) return { changed: 0, backup: null };
   const root = realpathSync(plan.root);
-  const backup = `${backupDir}/${randomUUID()}.json`;
-  const records = changes.map(op => ({ path: op.path, before: read(safePath(root, op.path)), afterHash: hash(op.after) }));
-  atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records }));
-  try {
-    for (const op of changes) atomicWrite(safePath(root, op.path), op.after);
-  } catch (error) {
-    for (const record of [...records].reverse()) atomicWrite(safePath(root, record.path), record.before);
-    throw error;
-  }
-  return { changed: changes.length, backup };
+  const changes = plan.operations.filter(op => hash(op.after) !== op.beforeHash)
+    .map(op => ({ path: op.path, before: read(safePath(root, op.path)), after: op.after }));
+  return commitChanges(root, changes);
 }
 export function rollback(project, backup) {
   const root = realpathSync(project);
@@ -453,6 +470,7 @@ const coreHookFiles = new Set(allHookNames.map(hookPath));
 const skillRoots = ['.claude/skills', '.agents/skills'];
 const presetRules = [
   { test: path => path === teamRulesPath, why: '팀 규칙' },
+  { test: path => path === teamSpecPath, why: '팀 구성 명세' },
   { test: path => path === ciWorkflowPath, why: 'CI 워크플로' },
   { test: path => /^\.agents\/hooks\/[\w.-]+\.config\.json$/.test(path), why: '훅 설정값' },
   { test: path => /^\.agents\/hooks\/[\w.-]+\.mjs$/.test(path) && !coreHookFiles.has(path), why: '팀 훅' },
@@ -478,7 +496,7 @@ const listFiles = (root, dir) => {
 export function exportPreset(project) {
   const root = realpathSync(project);
   const { manifest } = loadManifest(root);
-  const candidates = new Set([teamRulesPath, ciWorkflowPath, ...listFiles(root, hooksDir), ...skillRoots.flatMap(dir => listFiles(root, dir)), ...templatePaths]);
+  const candidates = new Set([teamRulesPath, teamSpecPath, ciWorkflowPath, ...listFiles(root, hooksDir), ...skillRoots.flatMap(dir => listFiles(root, dir)), ...templatePaths]);
   const files = {};
   const skipped = [];
   for (const path of [...candidates].sort()) {
@@ -546,18 +564,8 @@ export function importPreset(project, preset, { force = false } = {}) {
     updates[manifestFile] = json(manifest);
     records.push({ path: manifestFile, before: manifestBefore, afterHash: hash(updates[manifestFile]) });
   }
-  if (records.length) {
-    const backup = `${backupDir}/${randomUUID()}.json`;
-    atomicWrite(safePath(root, backup), json({ schemaVersion: 1, root, records }));
-    try {
-      for (const record of records) atomicWrite(safePath(root, record.path), updates[record.path]);
-    } catch (error) {
-      for (const record of [...records].reverse()) atomicWrite(safePath(root, record.path), record.before);
-      throw error;
-    }
-    return { written, skipped, rejected, backup };
-  }
-  return { written, skipped, rejected, backup: null };
+  const { backup } = commitChanges(root, records.map(record => ({ path: record.path, before: record.before, after: updates[record.path] })));
+  return { written, skipped, rejected, backup };
 }
 export async function status(project) {
   const root = realpathSync(project);
