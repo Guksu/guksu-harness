@@ -2,9 +2,9 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따른다.
 
-## [Unreleased]
+## [5.1.0] - 2026-09-26
 
-팀 맞춤 구성의 첫 MVP: 저장소를 진단하고 팀만 아는 결정을 묻고, 한 명세에서 설정·규칙·포인터를 만들고, 어디까지 작동하는지 네 상태로 보여 준다. 설계와 인수 시나리오: `docs/design/2026-09-26-team-compose.md`. 작업 기록: `docs/history/2026-09-26-team-compose-mvp.md`.
+팀 맞춤 구성의 첫 MVP: 저장소를 진단하고 팀만 아는 결정을 묻고, 한 명세에서 설정·규칙·포인터를 만들고, 어디까지 작동하는지 네 상태로 보여 준다. 설계와 인수 시나리오: `docs/design/2026-09-26-team-compose.md`. 작업 기록: `docs/history/2026-09-26-team-compose-mvp.md`, `docs/history/2026-09-26-release-5.1.0.md`. 기존 명령의 동작은 바뀌지 않아 부 버전을 올렸다.
 
 ### Added
 
@@ -18,9 +18,11 @@
 
 - `harnessManager.mjs`: `applyPlan`·`importPreset`이 공유하던 백업·원자 쓰기·실패 되돌림을 `commitChanges`로 추출. `safePath`·`atomicWrite`·`hash`·`json`·`read`·`hookPath`·`configPath`·`appFiles`·`readManifest`·`teamSpecPath` 내보내기. 팀 구성 명세를 export/import 묶음과 복원 대상에 추가. 기존 명령 동작은 같다.
 - `init`의 "다음 할 일"에 `diagnose → compose → verify` 안내 한 줄.
+- **업데이트 주의:** 없다. `update`의 동작은 5.0.0과 같다. 이미 설치된 프로젝트에서 `compose`를 실행하면 설치를 그대로 잇고 프로필을 낮추지 않는다. 훅 스크립트는 바뀌지 않았다.
 
 ### 확인하지 못한 것
 
+- npm 배포는 이 변경에 포함되지 않는다. 머지 후 `npm publish`로 배포한다(`prepublishOnly`가 check와 test를 실행한다).
 - 실제 Claude Code·Codex 앱 안의 훅 실행. `verify`는 절차만 제공한다.
 - 모델의 질문 품질과 정책 준수(평가 명세 미실행).
 
