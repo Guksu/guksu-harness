@@ -4,7 +4,7 @@
 |------|------|
 | 날짜 | 2026-09-26 |
 | 브랜치 | feat/team-harness-compose |
-| PR | 미생성 |
+| PR | https://github.com/Guksu/guksu-harness/pull/27 |
 | 기준 | origin/main의 2878070 (v5.0.0) |
 | 관련 경로 | skills/harness/scripts/teamCompose.mjs, bin/guksu-harness.mjs, skills/harness/scripts/harnessManager.mjs, skills/harness/references/team-compose.md, docs/design/2026-09-26-team-compose.md, docs/analysis/team-compose-evaluation.md |
 
