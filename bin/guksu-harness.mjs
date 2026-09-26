@@ -9,10 +9,15 @@
 //   npx guksu-harness eject  [프로젝트] <코어 파일 경로> --confirm
 //   npx guksu-harness export [프로젝트] --out <묶음.json>       팀이 소유·수정한 파일을 한 파일로
 //   npx guksu-harness import [프로젝트] --from <묶음.json> [--force]   다른 저장소의 팀 묶음을 가져오기
+//   npx guksu-harness diagnose [프로젝트] [--json]                저장소 진단: 사실·추정·팀이 정할 것·충돌·검증 명령 후보 (읽기만)
+//   npx guksu-harness compose  [프로젝트] [--app …] [--set 키=값]… [--decisions <답.json>] [--ci] [--force] [--dry-run] [--json]
+//                                                                진단 + 팀 결정 → 명세(.agents/harness-team.json) → 설정·규칙·포인터·훅 생성
+//   npx guksu-harness verify   [프로젝트] [--run] [--json]        작동 확인: 설정 완료 / 실행 확인 / 확인 필요 / 실패
 import { realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPlan, applyPlan, status, eject, isInstalled, version, corePaths, exportPreset, importPreset } from '../skills/harness/scripts/harnessManager.mjs';
+import { diagnose, createCompose, applyCompose, verify, STATES, decisionCatalog, statusLabel } from '../skills/harness/scripts/teamCompose.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { validateHarness } from '../skills/harness/scripts/validateHarness.mjs';
 
@@ -35,6 +40,18 @@ const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로�
   import [프로젝트] --from <묶음.json> [--force]
          묶음을 프로젝트에 쓴다. 이미 있고 내용이 다른 파일은 --force 없이는 건너뛴다. 먼저 init이 되어 있어야 한다.
 
+팀 맞춤 구성 (진단 → 결정 → 명세 → 적용 → 작동 확인):
+  diagnose [프로젝트] [--json]
+         저장소를 읽어 확인된 사실·추정·팀이 정할 것·충돌·검증 명령 후보를 나눈다. 파일을 바꾸지 않고 민감정보 값은 읽지 않는다.
+  compose  [프로젝트] [--app claude|codex|both] [--set 키=값]... [--decisions <답.json>] [--ci] [--force] [--dry-run] [--json]
+         진단과 팀 결정으로 명세(.agents/harness-team.json)를 만들고, 명세에서 훅 설정값·팀 규칙 문서의 생성 구간·규칙 포인터를 만든다.
+         훅·코어 규칙·등록은 init/update와 같은 방식으로 함께 설치한다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 표시한다.
+         --set 예: --set protection.allowCommitPush=false --set records.history=none --set 'verification.checks=["npm test"]'
+         --force는 compose 이후 직접 고친 생성 구간·설정 파일을 명세대로 다시 만든다(백업 남김).
+  verify   [프로젝트] [--run] [--json]
+         설정 완료 / 실행 확인 / 확인 필요 / 실패로 나눠 보여 준다. 훅 스크립트는 임시 저장소와 가짜 명령으로 시험한다.
+         --run이면 명세의 검증 명령을 프로젝트에서 실제 실행한다. 실제 앱 안의 훅 실행은 항상 "확인 필요"다.
+
 프로젝트를 생략하면 현재 디렉터리다. 세밀한 미리보기·복원은 skills/harness/scripts/harnessManager.mjs의 plan·apply·rollback을 쓴다.`;
 
 const FLAGS = {
@@ -45,6 +62,9 @@ const FLAGS = {
   eject: { '--confirm': 'flag' },
   export: { '--out': 'value' },
   import: { '--from': 'value', '--force': 'flag' },
+  diagnose: { '--json': 'flag' },
+  compose: { '--app': 'value', '--set': 'list', '--decisions': 'value', '--ci': 'flag', '--force': 'flag', '--dry-run': 'flag', '--json': 'flag' },
+  verify: { '--run': 'flag', '--json': 'flag' },
 };
 
 export function parseArgs(argv) {
@@ -61,6 +81,7 @@ export function parseArgs(argv) {
     if (kind === 'flag') { options[arg] = true; continue; }
     const next = rest[++i];
     if (!next || next.startsWith('--')) throw new Error(`${arg}에는 값이 필요합니다`);
+    if (kind === 'list') { (options[arg] ??= []).push(next); continue; } // 반복 가능한 옵션(--set 키=값 …)
     options[arg] = next;
   }
   return { command, positional, options };
@@ -108,6 +129,7 @@ export async function run(argv) {
       console.log(`\n다음 할 일:
   1. 팀 규칙을 docs/harness-rules.md에 쓴다. 코어 규칙(.agents/harness-core-rules.md)은 고치지 않는다.
   2. 훅 설정값(.agents/hooks/*.config.json)을 프로젝트에 맞춘다 — 보호 브랜치, 커밋 허용 여부.
+     저장소를 진단해 팀 결정만 묻고 설정·규칙을 함께 만들려면 npx guksu-harness diagnose → compose → verify 를 쓴다.
   3. .gitignore에 .agents/harness-backups/ 와 .agents/hooks/verifierGate.*.state.json 을 추가한다. .agents/harness-base/ 는 커밋한다.
   4. 앱에서 실제로 차단되는지 확인한다 (skills/harness/references/hooks-and-permissions.md §8).`);
     }
@@ -163,7 +185,107 @@ export async function run(argv) {
     const issues = await validateHarness({ rootDir: project });
     return printIssues(issues) && result.rejected.length === 0 ? 0 : 1;
   }
+  if (command === 'diagnose') {
+    const report = diagnose(project);
+    if (options['--json']) { console.log(JSON.stringify(report, null, 2)); return 0; }
+    printDiagnose(report);
+    return 0;
+  }
+  if (command === 'compose') {
+    const set = {};
+    if (options['--decisions']) {
+      const answers = JSON.parse(readFileSync(options['--decisions'], 'utf8'));
+      if (!answers || typeof answers !== 'object' || Array.isArray(answers)) throw new Error('--decisions 파일은 {"키": 값} 객체여야 합니다');
+      Object.assign(set, answers);
+    }
+    for (const pair of options['--set'] ?? []) {
+      const at = pair.indexOf('=');
+      if (at <= 0) throw new Error(`--set은 키=값 형태입니다: ${pair}`);
+      set[pair.slice(0, at).trim()] = pair.slice(at + 1);
+    }
+    const plan = createCompose(project, { app: options['--app'], set, force: options['--force'] === true, ci: options['--ci'] === true });
+    if (options['--json'] && options['--dry-run']) { console.log(JSON.stringify(plan, null, 2)); return plan.conflicts.some(c => c.blocking) ? 1 : 0; }
+    const clean = printCompose(plan);
+    if (options['--dry-run']) { console.log('\n--dry-run: 적용하지 않았습니다.'); return clean ? 0 : 1; }
+    if (!clean) return 1;
+    const result = applyCompose(plan);
+    console.log(result.changed ? `\n적용 ${result.changed}건. 백업: ${result.backup} (되돌리기: harnessManager.mjs rollback --backup)` : '\n변경 없음 — 명세와 파일이 이미 일치합니다.');
+    const issues = await validateHarness({ rootDir: project });
+    const ok = printIssues(issues);
+    if (plan.questions.length) console.log(`\n미확인 항목 ${plan.questions.length}건은 기본값으로 적용됐습니다: ${plan.questions.map(q => q.key).join(', ')}. 팀이 정하면 compose --set 키=값 으로 다시 구성합니다.`);
+    console.log('다음: npx guksu-harness verify 로 작동을 확인합니다. --run을 붙이면 검증 명령을 실제 실행합니다.');
+    if (options['--json']) console.log(JSON.stringify({ applied: result, issues }, null, 2));
+    return ok ? 0 : 1;
+  }
+  if (command === 'verify') {
+    const report = await verify(project, { run: options['--run'] === true });
+    if (options['--json']) { console.log(JSON.stringify(report, null, 2)); return report.ok ? 0 : 1; }
+    printVerify(report);
+    return report.ok ? 0 : 1;
+  }
   return 1;
+}
+
+const fmt = value => Array.isArray(value) ? (value.length ? value.map(v => typeof v === 'string' ? v : v.command ?? JSON.stringify(v)).join(', ') : '(없음)') : String(value);
+function printDiagnose(report) {
+  console.log(`진단 — ${report.root} (번들 ${report.bundleVersion})`);
+  console.log(`\n확인된 사실 ${report.facts.length}건`);
+  for (const fact of report.facts) console.log(`  - ${fact.summary}  [${fact.evidence.join(', ')}]`);
+  console.log(`\n추정 ${report.assumptions.length}건 (팀이 바꿀 수 있음)`);
+  for (const item of report.assumptions) console.log(`  - ${item.summary}  [${item.basis}]`);
+  console.log(`\n충돌 ${report.conflicts.length}건`);
+  for (const item of report.conflicts) console.log(`  - ${item.blocking ? '[적용 차단] ' : ''}${item.summary}  [${item.sources.join(', ')}]\n    → ${item.resolution}`);
+  console.log(`\n검증 명령 후보 ${report.commands.length}건 (존재와 실행 가능은 다르다 — 실제 실행은 verify --run)`);
+  for (const item of report.commands) console.log(`  - ${item.command}  [${item.source}] · ${item.note}`);
+  for (const note of report.notes) console.log(`  · ${note}`);
+  console.log(`\n팀이 정할 것 ${report.questions.length}건${report.questions.length ? '' : ' — 저장소 근거로 모두 정해졌다'}`);
+  report.questions.forEach((q, index) => {
+    console.log(`  ${index + 1}. [${q.key}] ${q.question}  (지금 기본값: ${fmt(q.default)}${q.conflict ? ' · 충돌' : ''})`);
+    console.log(`     근거: ${q.basis}${q.evidence?.length ? ` [${q.evidence.join(', ')}]` : ''}`);
+    for (const option of q.options ?? []) console.log(`     - ${fmt(option.value)}: ${option.label} — ${option.impact}`);
+    if (q.impact && !q.options) console.log(`     영향: ${q.impact}`);
+    if (q.hint) console.log(`     ${q.hint}`);
+  });
+  console.log(`\n결정 초안 (compose가 적용할 값)`);
+  for (const [key, item] of Object.entries(report.decisions)) console.log(`  - ${key} = ${fmt(item.value)}  (${statusLabel(item)} — ${item.basis})`);
+  console.log(`\n다음: npx guksu-harness compose <프로젝트> --dry-run 으로 변경을 미리 보고, 답은 --set 키=값 으로 넘긴다.`);
+}
+function printCompose(plan) {
+  console.log(`구성 — 앱 ${plan.plan.app} · 프로필 ${plan.plan.profile}${plan.plan.verifier ? ' · 종료 검사 훅' : ''}`);
+  console.log('\n결정');
+  for (const [key, item] of Object.entries(plan.decisions)) {
+    if (decisionCatalog[key]?.ask === false) continue;
+    console.log(`  - ${key} = ${fmt(item.value)}  (${statusLabel(item)} — ${item.basis})`);
+  }
+  const changes = plan.operations.filter(op => op.action !== 'unchanged');
+  console.log(`\n변경 ${changes.length}건`);
+  for (const op of changes) console.log(`  ${op.action.padEnd(9)} ${op.path} — ${op.reason}`);
+  if (!changes.length) console.log('  (없음)');
+  const blocking = plan.conflicts.filter(c => c.blocking);
+  const informational = plan.conflicts.filter(c => !c.blocking);
+  if (blocking.length) {
+    console.log(`\n적용을 막는 충돌 ${blocking.length}건`);
+    for (const item of blocking) console.log(`  - ${item.summary}\n    → ${item.resolution}`);
+  }
+  if (informational.length) {
+    console.log(`\n팀이 정리할 불일치 ${informational.length}건 (적용은 진행된다)`);
+    for (const item of informational) console.log(`  - ${item.summary}\n    → ${item.resolution}`);
+  }
+  if (plan.questions.length) {
+    console.log(`\n미확인 ${plan.questions.length}건 — 답이 없으면 아래 값으로 적용된다(충돌 항목은 기존 파일 값 유지)`);
+    for (const q of plan.questions) console.log(`  - ${q.key} = ${fmt(q.default)}${q.conflict ? ' (충돌)' : ''} : ${q.question}`);
+  }
+  return blocking.length === 0;
+}
+function printVerify(report) {
+  console.log(`작동 확인 — ${report.root} (번들 ${report.bundleVersion}${report.run ? ' · 검증 명령 실행함' : ''})`);
+  for (const state of Object.keys(STATES)) {
+    const items = report.items.filter(item => item.state === state);
+    console.log(`\n${STATES[state]} ${items.length}건`);
+    for (const item of items) console.log(`  - ${item.area} · ${item.subject}: ${item.detail.split('\n').join('\n      ')}`);
+  }
+  if (report.pending.length) console.log(`\n남은 팀 결정 ${report.pending.length}건: ${report.pending.join(', ')} (compose --set 키=값)`);
+  console.log(`\n설정 완료는 파일·등록 검사, 실행 확인은 이 도구가 실제로 실행한 결과다. 확인 필요는 앱이나 팀 환경에서만 확인할 수 있다. ${report.ok ? '실패 없음.' : `실패 ${report.summary.failed}건.`}`);
 }
 
 // npx·npm은 node_modules/.bin/guksu-harness 심볼릭 링크로 실행한다. argv[1]은 링크 경로, import.meta.url은 실제 경로라

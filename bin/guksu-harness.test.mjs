@@ -151,3 +151,46 @@ test('CLI 최소 설치에서 선택 양식 추가와 최소 구성 전환이 �
   assert.equal(existsSync(join(root, 'docs/templates/history.md')), true);
   assert.equal(run('update', root, '--profile', 'invalid').status, 1);
 });
+
+// 팀 맞춤 구성 — 진단 → 미리보기 → 적용 → 작동 확인 명령 흐름
+test('diagnose → compose --dry-run → compose --set → verify 흐름', t => {
+  const root = fixture(t);
+  spawnSync('git', ['init', '-q', '-b', 'main', root]);
+  write(root, 'CLAUDE.md', '# 우리 서비스\n\nAI는 커밋하지 않는다.\n');
+  write(root, 'package.json', JSON.stringify({ name: 'demo', scripts: { test: 'node -e "process.exit(0)"' } }));
+  const diag = run('diagnose', root, '--json');
+  assert.equal(diag.status, 0, diag.stderr);
+  const report = JSON.parse(diag.stdout);
+  assert.deepEqual(report.questions.map(q => q.key), ['verification.gate', 'records.history']);
+  assert.equal(report.decisions['protection.allowCommitPush'].status, 'evidence');
+  assert.match(run('diagnose', root).stdout, /팀이 정할 것 2건/);
+
+  const dry = run('compose', root, '--dry-run');
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.equal(existsSync(join(root, '.agents')), false, 'dry-run은 파일을 만들지 않는다');
+  assert.match(dry.stdout, /미확인 2건/);
+
+  const bad = run('compose', root, '--set', 'records.history=always', '--dry-run');
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /값이 잘못/);
+
+  const applied = run('compose', root, '--set', 'records.history=none', '--set', 'verification.gate=rules');
+  assert.equal(applied.status, 0, applied.stderr + applied.stdout);
+  assert.match(applied.stdout, /검사 완료 — error 0건/);
+  assert.ok(existsSync(join(root, '.agents/harness-team.json')));
+  assert.ok(readFileSync(join(root, 'CLAUDE.md'), 'utf8').startsWith('# 우리 서비스\n\nAI는 커밋하지 않는다.\n'), '기존 포인터 파일 내용은 보존한다');
+  const again = run('compose', root);
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /변경 없음/);
+
+  const verified = run('verify', root, '--json');
+  assert.equal(verified.status, 0, verified.stderr + verified.stdout);
+  const result = JSON.parse(verified.stdout);
+  assert.equal(result.summary.failed, 0);
+  assert.ok(result.items.some(item => item.state === 'verified' && /branchGuard/.test(item.subject)));
+  assert.ok(result.items.some(item => item.state === 'unverified' && /앱 안에서/.test(item.subject)));
+  const text = run('verify', root, '--run');
+  assert.equal(text.status, 0, text.stdout);
+  assert.match(text.stdout, /검증 명령 npm test: exit 0/);
+  assert.equal(run('check', root).status, 0);
+});

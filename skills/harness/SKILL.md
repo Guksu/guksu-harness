@@ -32,6 +32,17 @@ npx guksu-harness update <프로젝트>
 
 프로필은 양식 선택이며 기록 의무를 뜻하지 않는다. 기존 설치는 기록된 프로필을 유지하고 추적 기록에 프로필이 없으면 기존 basic으로 취급한다. 프로필을 낮춰도 기존 양식과 기록은 보존한다. 기록 요구는 팀 규칙과 훅 설정으로 정한다.
 
+## 팀 맞춤 구성
+
+"우리 저장소를 분석하고 팀에 필요한 하네스를 구성해줘" 요청은 `references/team-compose.md`의 흐름을 따른다. `diagnose --json`으로 사실·추정·충돌·검증 명령 후보를 읽고, `questions`에 있는 결정만 영향 설명과 함께 묶어서 묻는다. 저장소 근거나 이전 팀 확정으로 정해진 항목은 다시 묻지 않는다. 답은 `compose --set 키=값`으로 넘기고, `--dry-run`으로 변경을 보여 준 뒤 적용한다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 보고한다. 적용 뒤 `verify`(가능하면 `--run`)로 설정 완료·실행 확인·확인 필요·실패를 구분해 보고한다. 훅 스크립트 시험을 앱 통합 확인으로 말하지 않는다.
+
+```bash
+npx guksu-harness diagnose <프로젝트> --json
+npx guksu-harness compose <프로젝트> --dry-run
+npx guksu-harness compose <프로젝트> --set protection.allowCommitPush=false --set records.history=none
+npx guksu-harness verify <프로젝트> --run
+```
+
 ## 팀 고유 내용만 추가
 
 - 팀 소유 `docs/harness-rules.md`에 기본값과 다른 브랜치·기록 정책, 검증 명령, 배포 조건을 적는다. 코어 사본은 직접 고치지 않는다.
