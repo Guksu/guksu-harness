@@ -5,7 +5,7 @@
 | 날짜 | 2026-09-30 |
 | 유형 | 기능, 정책 |
 | 브랜치 | feat/history-record-scope |
-| PR | 미생성 |
+| PR | https://github.com/Guksu/guksu-harness/pull/29 |
 | 관련 경로 | `skills/history/`, `skills/harness/assets/hooks/blockGitMutation.mjs`, `docs/history/README.md` |
 
 ## 1. 개요
