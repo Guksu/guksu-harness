@@ -576,3 +576,22 @@ test('package.json 버전이 plugin.json과 다르면 에러', async t => {
   const issues = await validateHarness({ rootDir });
   assert.ok(issues.some(issue => issue.level === 'error' && issue.message.includes('버전이 다르다')));
 });
+
+test('작업 기록 색인에 없는 기록 문서는 경고한다', async t => {
+  const rootDir = await makeFixture({ files: {
+    'docs/history/README.md': '| 2026-01-01 | 버그 | - | [a](2026-01-01-a.md) | x |',
+    'docs/history/2026-01-01-a.md': '# a',
+    'docs/history/2026-01-02-b.md': '# b',
+  } });
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const messages = (await validateHarness({ rootDir })).map(issue => issue.message);
+  assert.ok(messages.some(message => message.includes('2026-01-02-b.md이 색인에 없다')), messages.join('\n'));
+  assert.ok(!messages.some(message => message.includes('2026-01-01-a.md')), messages.join('\n'));
+});
+
+test('작업 기록 색인이 없으면 색인 검사를 하지 않는다', async t => {
+  const rootDir = await makeFixture({ files: { 'docs/history/2026-01-01-a.md': '# a' } });
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const issues = await validateHarness({ rootDir });
+  assert.equal(issues.some(issue => issue.message.includes('색인')), false);
+});

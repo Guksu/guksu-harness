@@ -2,7 +2,8 @@
 // PreToolUse(Bash)의 Git 명령 패턴 검사. 등록된 도구 경로만 검사하며 승인 판독기는 아니다.
 // switch와 일반 worktree 생성·조회는 허용한다. commit·push는 allowCommitPush가 true일 때 허용한다.
 // 이력 재작성·강제·삭제 옵션은 차단한다. 간접 메시지는 blockAttribution을 선택한 경우만 제한한다.
-// requireHistoryDoc은 push할 변경에 기록 파일이 있는지 확인하며 내용 품질을 판정하지 않는다.
+// requireHistoryDoc은 기록 대상 커밋(historyCommitTypes)이 있는 push에 기록 파일이 있는지 확인하며
+// 내용 품질을 판정하지 않는다.
 // 설정 생략 시 기존 정책을 유지한다. 새 minimal 설치는 requireHistoryDoc: false를 명시한다.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -84,19 +85,53 @@ export const isGitMutation = (command) => {
   );
 };
 
-// 기록 게이트 — PR 하나당 docs/history/ 문서 하나(history 스킬). base...HEAD 변경 경로에
-// 기록 문서가 없으면 그 push는 기록되지 않은 작업을 올리는 것이다.
+// 기록 게이트 — 기록 대상 작업의 PR 하나당 docs/history/ 문서 하나(history 스킬). base...HEAD 변경 경로에
+// 기록 문서가 없으면 그 push는 기록되지 않은 작업을 올리는 것이다. 색인(README.md)만 고친 것은 기록이 아니다.
 export const HISTORY_DIR = 'docs/history/';
+export const HISTORY_INDEX = `${HISTORY_DIR}README.md`;
 export const hasHistoryChange = (changedPaths) =>
-  changedPaths.some((path) => path.startsWith(HISTORY_DIR) && path.endsWith('.md'));
+  changedPaths.some((path) => path.startsWith(HISTORY_DIR) && path.endsWith('.md') && path !== HISTORY_INDEX);
+
+// 기록 대상 판정 — base..HEAD의 커밋 메시지(병합 커밋 제외)를 Conventional Commits로 읽는다.
+// 기본 대상: fix(버그)·hotfix(핫픽스)·feat(기능, 부 버전)·policy(정책 변경)와 호환성 변경(type! 또는
+// BREAKING CHANGE 꼬리말, 주 버전). 형식을 읽을 수 없는 커밋은 기록 대상으로 본다 — Conventional Commits를
+// 쓰지 않는 팀에서 게이트가 조용히 꺼지지 않게 한다. ["*"]는 모든 push에 기록을 요구한다(이전 동작).
+export const DEFAULT_HISTORY_COMMIT_TYPES = ['fix', 'hotfix', 'feat', 'policy'];
+const CONVENTIONAL_SUBJECT = /^([A-Za-z]+)(?:\([^)]*\))?(!)?\s*:/;
+const BREAKING_FOOTER = /^BREAKING[ -]CHANGE\s*:/m;
+
+export const normalizeHistoryCommitTypes = (value) => {
+  if (value == null) return { types: DEFAULT_HISTORY_COMMIT_TYPES };
+  if (Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim())) {
+    return { types: value.map((item) => item.trim().toLowerCase()) };
+  }
+  // 잘못된 설정은 넓게(모든 push) 해석한다 — 오타로 게이트가 꺼지지 않게 한다.
+  return { types: ['*'], invalid: true };
+};
+
+// 기록이 필요한 첫 커밋을 { reason, subject }로 돌려준다. 없으면 null.
+// reason: 'all' | 'unknown-format' | 'breaking' | 'type'
+export const findHistoryTrigger = (messages, types = DEFAULT_HISTORY_COMMIT_TYPES) => {
+  for (const message of messages) {
+    const [subjectLine = '', ...bodyLines] = message.trim().split('\n');
+    const subject = subjectLine.trim();
+    if (types.includes('*')) return { reason: 'all', subject };
+    const match = CONVENTIONAL_SUBJECT.exec(subject);
+    if (!match) return { reason: 'unknown-format', subject };
+    if (match[2] || BREAKING_FOOTER.test(bodyLines.join('\n'))) return { reason: 'breaking', subject };
+    if (types.includes(match[1].toLowerCase())) return { reason: 'type', subject };
+  }
+  return null;
+};
 
 // 판정 결과를 사유와 함께 돌려준다 — CLI가 사유별 안내 메시지를 낸다.
 // rule: 'mutation' | 'attribution' | 'commit-flags' | 'push-flags' | 'history-missing'
 // historyChanged: true(기록 있음) | false(없음) | null(판정 불가 — 게이트를 통과시킨다.
 // base 브랜치를 못 찾는 환경에서 push를 막으면 가드가 아니라 고장이다)
+// historyRequired: 이 push에 기록 대상 커밋이 있는가. 생략하면 true(모든 push에 요구하던 이전 동작).
 export const judgeGitCommand = (
   command,
-  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null, blockAttribution = false } = {},
+  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null, historyRequired = true, blockAttribution = false } = {},
 ) => {
   if (!allowCommitPush) {
     return isGitMutation(command) ? { blocked: true, rule: 'mutation' } : { blocked: false };
@@ -119,19 +154,19 @@ export const judgeGitCommand = (
     if (pushes.some((m) => tailHasFlag(m[1], UNSAFE_PUSH_LONG, UNSAFE_PUSH_SHORT))) {
       return { blocked: true, rule: 'push-flags' };
     }
-    if (requireHistoryDoc && historyChanged === false) {
+    if (requireHistoryDoc && historyRequired && historyChanged === false) {
       return { blocked: true, rule: 'history-missing' };
     }
   }
   return { blocked: false };
 };
 
-// base...HEAD 사이에 변경된 경로 목록. base를 못 찾거나 git 호출이 실패하면 null을 돌려
-// 게이트를 통과시킨다 — 기록 게이트는 문서 위생 장치이므로, 판정 불가를 차단으로 처리하면
-// git 환경이 다른 곳에서 push 자체가 막힌다(시크릿·변경 명령 가드의 fail-closed와 다른 성격).
+// base...HEAD 사이에 변경된 경로 목록과 base..HEAD의 커밋 메시지(병합 제외). base를 못 찾거나 git 호출이
+// 실패하면 null을 돌려 게이트를 통과시킨다 — 기록 게이트는 문서 위생 장치이므로, 판정 불가를 차단으로
+// 처리하면 git 환경이 다른 곳에서 push 자체가 막힌다(시크릿·변경 명령 가드의 fail-closed와 다른 성격).
 const DEFAULT_HISTORY_BASES = ['origin/dev', 'dev', 'origin/main', 'main', 'origin/master', 'master'];
 // cwd: 훅 입력의 프로젝트 경로. 앱이 훅 프로세스를 프로젝트 루트에서 실행한다고 가정하지 않는다.
-const changedPathsSinceBase = (configuredBase, cwd) => {
+const changesSinceBase = (configuredBase, cwd) => {
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     const currentBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
@@ -143,7 +178,10 @@ const changedPathsSinceBase = (configuredBase, cwd) => {
       } catch {
         continue;
       }
-      return git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
+      const paths = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
+      const messages = git(['log', '--no-merges', '--format=%B%x1e', `${base}..HEAD`])
+        .split('\x1e').map((message) => message.trim()).filter(Boolean);
+      return { paths, messages };
     }
   } catch {
     // git이 없거나 저장소가 아니다 — 판정하지 않는다
@@ -178,15 +216,25 @@ if (isDirectRun) {
   const allowCommitPush = config.allowCommitPush === true;
   // 기록 게이트는 commit·push 예외를 켠 하네스의 기본값이다 — 명시적으로 false일 때만 끈다.
   const requireHistoryDoc = allowCommitPush && config.requireHistoryDoc !== false;
-  const changedPaths = requireHistoryDoc ? changedPathsSinceBase(config.historyBase, projectDir) : null;
+  const changes = requireHistoryDoc ? changesSinceBase(config.historyBase, projectDir) : null;
+  const historyTypes = normalizeHistoryCommitTypes(config.historyCommitTypes);
+  if (historyTypes.invalid) configNote += ' (historyCommitTypes는 문자열 배열이어야 합니다 — 모든 push에 기록을 요구합니다)';
+  const trigger = changes === null ? null : findHistoryTrigger(changes.messages, historyTypes.types);
 
   const verdict = judgeGitCommand(command, {
     allowCommitPush,
     blockAttribution: config.blockAttribution === true,
     requireHistoryDoc,
-    historyChanged: changedPaths === null ? null : hasHistoryChange(changedPaths),
+    historyRequired: trigger !== null,
+    historyChanged: changes === null ? null : hasHistoryChange(changes.paths),
   });
   if (verdict.blocked) {
+    const triggerReasons = {
+      all: '모든 push에 기록을 요구하는 설정',
+      'unknown-format': 'Conventional Commits 형식이 아니어서 기록 대상으로 판정',
+      breaking: '호환성 변경',
+      type: `기록 대상 커밋 타입 ${historyTypes.types.join('·')}`,
+    };
     const messages = {
       mutation: allowCommitPush
         ? 'commit·push 외의 git 변경 작업(merge·rebase·reset·checkout 등)은 여전히 사용자 전담입니다. 변경 요약을 보고하고 사용자에게 안내하세요.'
@@ -201,8 +249,8 @@ if (isDirectRun) {
       'push-flags':
         'force/delete push는 허용되지 않습니다 — 일반 push(-u 포함)만 가능합니다. 히스토리 재작성·원격 브랜치 삭제가 필요하면 사용자에게 안내하세요.',
       'history-missing':
-        '이 브랜치에 작업 기록이 없습니다 — PR 하나당 docs/history/ 문서 하나가 필요합니다. ' +
-        'history 스킬로 docs/history/{YYYY-MM-DD}-{slug}.md를 작성(또는 갱신)해 커밋한 뒤 다시 push하세요.',
+        `이 브랜치에 작업 기록이 없습니다 — 기록 대상 커밋이 있습니다: "${trigger?.subject ?? ''}" (${triggerReasons[trigger?.reason] ?? ''}). ` +
+        'history 스킬로 docs/history/{YYYY-MM-DD}-{slug}.md를 작성(또는 갱신)하고 색인 docs/history/README.md에 한 줄을 추가해 커밋한 뒤 다시 push하세요.',
     };
     console.error(`차단됨: ${messages[verdict.rule]}${configNote}`);
     process.exit(2);

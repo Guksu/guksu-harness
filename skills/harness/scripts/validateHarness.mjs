@@ -248,6 +248,28 @@ const validateCommonTemplates = async ({ rootDir, issues }) => {
   }
 };
 
+// 작업 기록 색인 — docs/history/README.md가 있으면 모든 기록 문서가 색인에 있어야 한다.
+// 색인이 빠지면 에이전트가 다시 전체 기록을 grep하게 된다. 색인이 없는 프로젝트는 검사하지 않는다.
+const HISTORY_INDEX_PATH = ['docs', 'history', 'README.md'];
+
+const validateHistoryIndex = async ({ rootDir, issues }) => {
+  const indexPath = join(rootDir, ...HISTORY_INDEX_PATH);
+  if (!(await exists({ path: indexPath }))) return;
+  const index = await readFile(indexPath, 'utf8');
+  const docs = (await listDir({ path: join(rootDir, 'docs', 'history') }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'README.md')
+    .map((entry) => entry.name);
+  for (const name of docs) {
+    if (!index.includes(name)) {
+      issues.push({
+        level: 'warn',
+        path: indexPath,
+        message: `작업 기록 ${name}이 색인에 없다 — 색인 표에 한 줄을 추가하라 (history 스킬)`,
+      });
+    }
+  }
+};
+
 // 절대 규칙 정본 — 하네스 구축 시 프로젝트 .agents/harness-core-rules.md(코어 사본)로 복사된다.
 // docs/harness-rules.md는 v4부터 팀 규칙 파일이다(코어 포인터 + 팀 규칙). v3 이하는 그 경로에 코어 전문이 있었다.
 const CORE_RULES_PATH = ['.agents', 'harness-core-rules.md'];
@@ -458,6 +480,7 @@ export const validateHarness = async ({ rootDir }) => {
   await validateAgents({ agentsRoot: join(rootDir, 'agents'), issues });
   await validatePointerFile({ rootDir, issues });
   await validateCommonTemplates({ rootDir, issues });
+  await validateHistoryIndex({ rootDir, issues });
   await validateRulesFile({ rootDir, issues });
   await validateEnforcement({ rootDir, issues });
   await validateCommandsDir({ rootDir, issues });
