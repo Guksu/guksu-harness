@@ -72,6 +72,21 @@ npx guksu-harness verify . --run          # 설정 완료 / 실행 확인 / 확�
 
 기존 `CLAUDE.md`·`AGENTS.md`·`docs/harness-rules.md`는 생성 구간만 추가·갱신하고 나머지는 건드리지 않는다. 생성 구간이나 설정 파일을 손으로 고쳤으면 충돌로 멈추고, `--set`으로 명세를 맞추거나 `--force`로 다시 만든다. 자세한 결정 키와 상태는 [팀 맞춤 구성 안내](skills/harness/references/team-compose.md)에 있다.
 
+## 모노레포 검증
+
+npm·Yarn·Bun의 `package.json#workspaces`와 `pnpm-workspace.yaml`에서 패키지, 검증 스크립트, 내부 의존 관계를 찾습니다. 하위 디렉터리에서 실행해도 workspace 루트를 사용하고, 하위 `AGENTS.md`·`CLAUDE.md`는 경로별 지침으로 보존합니다.
+
+```bash
+npx guksu-harness diagnose apps/web --json
+npx guksu-harness compose --dry-run
+npx guksu-harness compose
+npx guksu-harness verify --plan --affected --base origin/main
+npx guksu-harness verify --run --affected --base origin/main --json
+npx guksu-harness verify --run --workspace @acme/web
+```
+
+변경 패키지와 이를 사용하는 패키지를 검사하며, 필요한 선행 패키지의 명세에 있는 검사도 포함합니다. 공용 설정·의존 선언 변경, Git 비교 실패, Nx·Turbo 감지는 전체 검증으로 돌아갑니다. `--workspace`는 지정 패키지와 루트 공통 검사만 실행하며 전체 저장소의 통과를 뜻하지 않습니다. 루트 task runner 명령은 그대로 사용할 수 있습니다. [범위·설정·지원 한계](skills/harness/references/monorepo.md)를 참고하세요.
+
 ## 업데이트와 팀 설정
 
 ```bash
@@ -160,9 +175,12 @@ codex plugin add guksu-harness@guksu-harness
 ## 개발과 평가
 
 ```bash
+npm ci
 npm run check
 npm test
 ```
+
+CLI는 workspace YAML과 glob 해석에 `yaml`·`picomatch`를 사용합니다. npm 설치 시 함께 설치됩니다. 프로젝트에 복사되는 보호 훅과 플러그인의 설치 관리자·구조 검사기는 Node 내장 모듈만 사용합니다.
 
 코드·구조 테스트 통과는 모델 생산성 향상의 증거가 아닙니다. [검증 가이드](skills/harness/references/testing-guide.md)와 [축소 전후 평가 명세](docs/analysis/lean-harness-evaluation.md)를 구분해 사용합니다.
 

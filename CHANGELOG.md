@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+- **안정화:** 하위 디렉터리·worktree에서 브랜치를 찾고 Codex 훅을 Git 루트 기준으로 실행한다. 5.1의 관리 등록은 update에서 옮기며 사용자 등록은 보존한다. 잘못된 보호 브랜치 배열을 차단하고 빈 배열은 명시적 비활성으로 취급한다. 포인터 추가 후 짧은 기존 지침이 진단에서 사라지는 재적용 문제도 수정했다.
+- **검증:** 지원하지 않는 transcript·빈 파일·손상된 수치를 토큰 0으로 처리하지 않는다. maxTokens를 지정했다면 미측정 사유를 보고하고 종료한다. 실패 시그니처에 전체 출력 해시·cwd·종료 코드·시그널을 사용한다. 의존성 없는 Node 명령은 node_modules가 없어도 실행 후보로 표시한다.
+- **모노레포:** npm/pnpm/Yarn/Bun workspace 발견, 하위 지침 경로 보존, 패키지별 검증 cwd·timeout·필수 여부, `verify --plan`, `--affected --base`, `--workspace`. 역방향 의존 관계와 선행 패키지를 포함하고 공통 설정 변경·비교 실패·Nx/Turbo에서는 전체 검증한다. [지원 범위](skills/harness/references/monorepo.md).
+- **평가 근거:** verify JSON에 명령별 ID·종료 코드·시간·범위와 Node·OS·Git·CLI 버전 근거를 제공한다. 실제 앱 훅 통합은 unverified, 모델·사용량은 미측정이다. 모델 평가 시나리오를 추가했으며 유료 모델 실행은 하지 않았다.
+- CLI의 YAML/glob 처리를 위해 `yaml`·`picomatch` 의존성을 추가했다. 소스에서 CLI·테스트를 실행할 때 `npm ci`가 필요하다. 배포되는 훅·설치 관리자·구조 검사기는 외부 의존성이 없다.
+- **업데이트:** `update --dry-run`에서 Codex 관리 등록 변경을 확인한다. 모노레포 검증 명세는 `diagnose` → `compose --dry-run` → `compose`로 생성한다. 기존 수동 등록·팀 명령·하위 지침은 유지한다. 버전 증가·npm 배포·실제 앱 통합 및 모델 평가는 이 작업에 포함하지 않는다.
+
 작업 기록 대상을 좁히고 색인을 추가했다. 모든 PR에 기록을 남기면 나중에 찾을 때 전체 기록을 읽어야 해서 토큰이 많이 든다. 작업 기록: `docs/history/2026-09-30-history-record-scope.md`.
 
 ### Added

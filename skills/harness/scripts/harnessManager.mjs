@@ -129,8 +129,8 @@ function hookEntry(name, app = 'claude') {
   const event = name === 'verifierGate' ? 'Stop' : 'PreToolUse';
   // codex는 파일 편집 도구를 apply_patch로 보고한다(matcher에 Edit·Write 별칭 허용). NotebookEdit은 claude 전용이다.
   const matcher = name === 'branchGuard' ? (app === 'codex' ? 'apply_patch|Edit|Write' : 'Edit|Write|NotebookEdit') : 'Bash';
-  // codex에는 CLAUDE_PROJECT_DIR가 없다. 프로젝트 hooks.json은 프로젝트 루트를 현재 디렉터리로 실행한다고 가정한다.
-  const command = app === 'codex' ? `node "${hookPath(name)}"` : `node "$CLAUDE_PROJECT_DIR/${hookPath(name)}"`;
+  // Codex는 세션 cwd에서 실행한다. 하위 패키지·worktree에서도 Git 루트의 훅을 찾는다.
+  const command = app === 'codex' ? `node "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/${hookPath(name)}"` : `node "$CLAUDE_PROJECT_DIR/${hookPath(name)}"`;
   return { app, event, entry: { ...(event === 'Stop' ? {} : { matcher }), hooks: [{ type: 'command', command }] } };
 }
 // v2.x 등록 형태(claude 전용, .claude/hooks 경로). 이동 판정에만 쓴다.
@@ -141,11 +141,17 @@ function legacyHookEntry(name) {
     hooks: [{ type: 'command', command: `node "$CLAUDE_PROJECT_DIR/${legacyHookPath(name)}"` }],
   } };
 }
+// <=5.1 Codex registrations were relative to the session cwd.
+function relativeCodexHookEntry(name) {
+  const item = hookEntry(name, 'codex');
+  item.entry.hooks[0].command = `node "${hookPath(name)}"`;
+  return item;
+}
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 const normalizeOwned = item => ({ app: item?.app ?? 'claude', event: item?.event, entry: item?.entry });
 const sameHook = (a, b) => same(normalizeOwned(a), normalizeOwned(b));
-const knownHook = item => allHookNames.some(name => appNames.some(app => sameHook(hookEntry(name, app), item)) || sameHook(legacyHookEntry(name), item));
-const hookNameOf = item => allHookNames.find(name => appNames.some(app => sameHook(hookEntry(name, app), item)) || sameHook(legacyHookEntry(name), item));
+const hookNameOf = item => allHookNames.find(name => appNames.some(app => sameHook(hookEntry(name, app), item)) || sameHook(legacyHookEntry(name), item) || sameHook(relativeCodexHookEntry(name), item));
+const knownHook = item => hookNameOf(item) != null;
 
 function loadManifest(root) {
   let text = read(safePath(root, manifestPath));
@@ -363,8 +369,8 @@ export function createPlan(project, options = {}) {
         if (!selected(hookPath(name))) continue;
         const item = hookEntry(name, app);
         // 이전 위치로 등록한 소유 항목은 새 등록으로 교체한다. 수동 등록은 건드리지 않는다.
-        const legacy = legacyHookEntry(name);
-        if (app === 'claude' && next.ownedHooks.some(owned => sameHook(owned, legacy))) {
+        const legacy = app === 'codex' ? relativeCodexHookEntry(name) : legacyHookEntry(name);
+        if (next.ownedHooks.some(owned => sameHook(owned, legacy))) {
           registry.data.hooks[item.event] = entriesOf(registry, item.event).filter(entry => !same(entry, legacy.entry));
           next.ownedHooks = next.ownedHooks.filter(owned => !sameHook(owned, legacy));
         }
@@ -579,8 +585,9 @@ export async function status(project) {
     const registered = Object.fromEntries(appNames.map(app => {
       const item = hookEntry(name, app);
       const entries = registries[app].hooks?.[item.event];
+      const commands = [item.entry.hooks[0].command, ...(app === 'codex' ? [relativeCodexHookEntry(name).entry.hooks[0].command] : [])];
       return [app, Array.isArray(entries) && entries.some(entry =>
-        (entry.matcher ?? '') === (item.entry.matcher ?? '') && entry.hooks?.some(hook => hook.command === item.entry.hooks[0].command))];
+        (entry.matcher ?? '') === (item.entry.matcher ?? '') && entry.hooks?.some(hook => commands.includes(hook.command)))];
     }));
     const configuration = existsSync(safePath(root, configPath(hooksDir, name))) ? 'present'
       : existsSync(safePath(root, configPath(legacyHooksDir, name))) ? 'legacy' : 'default';

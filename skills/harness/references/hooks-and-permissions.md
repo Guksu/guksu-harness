@@ -46,20 +46,20 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node \".agents/hooks/blockGitMutation.mjs\"" },
-          { "type": "command", "command": "node \".agents/hooks/blockSecretAccess.mjs\"" }
+          { "type": "command", "command": "node \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/blockGitMutation.mjs\"" },
+          { "type": "command", "command": "node \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/blockSecretAccess.mjs\"" }
         ]
       },
       {
         "matcher": "apply_patch|Edit|Write",
-        "hooks": [{ "type": "command", "command": "node \".agents/hooks/branchGuard.mjs\"" }]
+        "hooks": [{ "type": "command", "command": "node \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/branchGuard.mjs\"" }]
       }
     ]
   }
 }
 ```
 
-두 형식의 차이는 세 가지다. Codex에는 `CLAUDE_PROJECT_DIR` 환경변수가 없어 프로젝트 루트 기준 상대 경로를 쓴다. Codex는 파일 편집 도구를 `apply_patch`로 보고하므로 matcher가 다르다. `permissions.deny`는 Claude Code 전용 권한이다.
+두 형식의 차이는 세 가지다. Codex에는 `CLAUDE_PROJECT_DIR` 환경변수가 없어 Git 루트를 찾는 셸 명령을 쓴다. 하위 패키지·worktree에서도 루트의 훅을 실행한다. Git이 없는 프로젝트는 루트에서 실행해야 한다. Codex는 파일 편집 도구를 `apply_patch`로 보고하므로 matcher가 다르다. `permissions.deny`는 Claude Code 전용 권한이다.
 
 관리자는 같은 의미의 훅을 개별 등록 항목으로 추가한다. 수동 등록이나 다른 도구의 항목을 덮어쓰지 않는다. 개인 설정(`~/.claude`, `~/.codex`)은 자동 수정하지 않는다.
 
@@ -101,7 +101,7 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 { "protectedBranches": ["main", "master"] }
 ```
 
-설정 파일은 `.agents/hooks/branchGuard.config.json`이다. 없으면 main·master를 사용하며 JSON 파싱 오류는 편집을 차단한다. 브랜치 이름은 정확히 일치해야 하며 와일드카드를 지원하지 않는다. 프로젝트 경로는 훅 입력의 `cwd`를 먼저 쓰고, 없으면 `CLAUDE_PROJECT_DIR`, 현재 디렉터리 순으로 찾는다. git 저장소가 아니거나 detached HEAD·브랜치 조회 실패면 비활성이다. Bash로 파일을 쓰는 경로는 검사하지 않으므로 작업 시작 시 브랜치 확인을 병행한다.
+설정 파일은 `.agents/hooks/branchGuard.config.json`이다. 없으면 main·master를 사용하며 JSON 파싱 오류와 잘못된 배열 형식은 편집을 차단한다. 빈 배열은 보호 브랜치가 없다는 명시적 설정이다. 브랜치 이름은 정확히 일치해야 하며 와일드카드를 지원하지 않는다. 프로젝트 경로는 훅 입력의 `cwd`를 먼저 쓰고, 없으면 `CLAUDE_PROJECT_DIR`, 현재 디렉터리 순으로 찾는다. 시작 경로에서 부모를 따라 가장 가까운 `.git`을 찾는다. git 저장소가 아니거나 detached HEAD·브랜치 조회 실패면 비활성이다. Bash로 파일을 쓰는 경로는 검사하지 않으므로 작업 시작 시 브랜치 확인을 병행한다.
 
 ## 4. 민감정보 접근
 
@@ -133,8 +133,10 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 - 통과하면 종료한다. 실패 후 이어진 Stop도 재검사한다.
 - 최대 차단 횟수(기본 10)·같은 실패 횟수에 도달하면 중단 보고를 한 번 요청하고 다음 종료를 허용한다. `stop_hook_active`만으로 검사를 생략하지 않는다.
 - 상태는 세션별 파일에 기록한다. 다른 세션의 횟수를 공유하지 않는다. 동일 세션의 Stop 이벤트는 순서대로 처리해야 한다.
-- `maxTokens`는 선택이며 transcript 입력·출력·캐시 생성의 누적 근사치다. 과금액이나 실시간 상한이 아니다. 설정했지만 transcript를 읽지 못하면 사유를 보고하고 중단한다. Codex의 transcript 파일 형식은 확인하지 못했다. 형식이 다르면 합산이 0이 되어 예산 검사가 동작하지 않으므로 Codex에서는 `maxIterations`·`stuckAfter`만 믿는다.
+- `maxTokens`는 선택이며 transcript 입력·출력·캐시 생성의 누적 근사치다. 과금액이나 실시간 상한이 아니다. 설정했지만 transcript를 읽지 못하면 사유를 보고하고 중단한다. 지원하는 형식은 JSONL의 `message.usage`다. 알 수 없는 형식·빈 파일·손상된 레코드·잘못된 수치는 미측정이며 0이 아니다. 이때도 maxTokens가 있으면 사유를 보고하고 중단한다. Codex transcript의 사용량 어댑터는 아직 지원하지 않으므로 Codex에서는 maxTokens를 설정하지 않고 `maxIterations`·`stuckAfter`를 사용한다.
 - 설정 오류는 검사 성공으로 처리하지 않는다. 오류 보고 후 종료한다.
+- 각 검사는 상대 `cwd`·`workspace`·`timeoutMs`·`required`를 지원한다. 생략하면 루트·최대 5분·필수 검사다. 설치된 Stop 훅은 세션 cwd와 무관하게 하네스 루트를 기준으로 실행한다. 상세는 `monorepo.md`를 참고한다.
+- 실패 시그니처는 cwd·종료 코드·실패 출력 전체의 해시로 구분한다. 줄 번호·소요 시간 변동을 정규화하지만 테스트 이름의 숫자는 보존한다. 보고할 출력은 앞 500자·뒤 1500자로 제한한다.
 - 건당 검사 명령은 최대 5분이다. 한 번의 명령 실행 도중 예산 초과를 감지해 취소하지 않으며 강제 앱 종료까지 막지는 않는다.
 
 Stop 훅을 새로 등록하는 것과 한 작업에서 테스트를 재시도하는 것은 다르다. 일반적인 개발 재시도에는 이 설정을 요구하지 않는다.

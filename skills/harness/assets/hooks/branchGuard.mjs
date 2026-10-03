@@ -18,6 +18,12 @@ export const DEFAULT_PROTECTED_BRANCHES = ['main', 'master'];
 // detached HEAD·git 저장소 아님 → null (가드 비활성 — 무해).
 export const readCurrentBranch = ({ projectDir }) => {
   try {
+    projectDir = realpathSync(projectDir);
+    while (!existsSync(join(projectDir, '.git'))) {
+      const parent = dirname(projectDir);
+      if (parent === projectDir) return null;
+      projectDir = parent;
+    }
     const gitPath = join(projectDir, '.git');
     let headPath = join(gitPath, 'HEAD');
     if (!existsSync(headPath)) {
@@ -55,6 +61,9 @@ if (isDirectRun) {
       protectedBranches =
         JSON.parse(readFileSync(configPath, 'utf8')).protectedBranches ??
         DEFAULT_PROTECTED_BRANCHES;
+      if (!Array.isArray(protectedBranches) || protectedBranches.some(branch => typeof branch !== 'string' || !branch.trim())) {
+        throw new Error('protectedBranches는 브랜치 이름의 배열이어야 합니다');
+      }
     } catch (error) {
       // 가드 훅은 설정 오류에 fail-closed — 파싱 예외로 조용히 죽으면(exit≠2는 비차단)
       // 사용자가 설정을 만지려던 순간 보호가 사라진 걸 아무도 모른다.

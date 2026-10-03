@@ -9,7 +9,7 @@
 // 결정 상태: confirmed(팀이 답함) · evidence(저장소 근거) · assumed(추정) · pending(미확인 — 안전한 기본값 적용, 표시).
 // 미확인 결정을 승인으로 바꾸지 않는다. 권한을 넓히는 항목의 기본값은 차단이며, 기존 파일이 허용이고 지침과 충돌하면 값을 바꾸지 않는다.
 import { existsSync, readFileSync, readdirSync, realpathSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync, execSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,9 @@ import {
   hookPath, configPath, appFiles, teamRulesPath, teamSpecPath,
 } from './harnessManager.mjs';
 import { validateHarness } from './validateHarness.mjs';
+import { discoverWorkspaces, resolveProjectRoot, workspaceCommands, verificationPlan } from './workspaces.mjs';
+import { runtimeEvidence } from './runtimeEvidence.mjs';
+import { normalizeChecks, executeCheck } from '../assets/hooks/verifierGate.mjs';
 
 const apps = appFiles();
 const appNames = Object.keys(apps);
@@ -120,12 +123,19 @@ const decision = (value, status, basis, evidence = [], extra = {}) => ({ value, 
 
 // ── 진단 ───────────────────────────────────────────────────────────────────────
 export function diagnose(project) {
-  const root = realpathSync(project);
+  const workspaces = discoverWorkspaces(project);
+  const root = workspaces.root;
   const facts = [], assumptions = [], conflicts = [], notes = [];
   const fact = (id, summary, evidence, value) => facts.push({ id, summary, evidence: unique([].concat(evidence)), ...(value === undefined ? {} : { value }) });
   const assume = (id, summary, basis, value) => assumptions.push({ id, summary, basis, ...(value === undefined ? {} : { value }) });
   // blocking: 적용하면 안전하지 않거나 결과가 모호한 충돌(깨진 설정 파일·드리프트·게이트 불일치). 나머지는 팀이 정리할 불일치로 보고만 한다.
   const conflict = (id, summary, sources, resolution, blocking = false) => conflicts.push({ id, summary, sources: unique(sources), resolution, blocking });
+  for (const [index, issue] of workspaces.issues.entries()) conflict(`workspaces.${index}`, issue.message, [issue.path], 'workspace 설정을 고친 뒤 다시 진단한다', true);
+  if (workspaces.enabled) {
+    fact('workspaces.projects', `workspace ${workspaces.projects.length}개: ${workspaces.projects.map(item => item.name).join(', ')}`, ['package.json', ...(workspaces.patterns.length ? ['workspace 선언'] : [])]);
+    notes.push('하위 지침은 해당 경로에서만 적용한다. workspaces.guidance의 scope와 앱별 지침 로딩 규칙을 따른다.');
+    if (workspaces.runner) notes.push(`${workspaces.runner} 감지: 기존 태스크·캐시 설정을 유지한다. 암묵적 의존 관계를 확인하기 전에는 전체 검증한다.`);
+  }
 
   // 1. git — 기본 브랜치·브랜치 이름·원격. 원격 URL은 토큰이 들어갈 수 있어 이름만 본다.
   const isGit = existsSync(join(root, '.git'));
@@ -161,7 +171,7 @@ export function diagnose(project) {
     const pointer = /##\s*하네스/.test(text);
     // 포인터만 있는 파일(init이 만든 양식 그대로, 또는 compose가 붙인 구간뿐)은 팀 지침이 아니다.
     const remainder = stripGenerated(text).trim();
-    const pointerOnly = pointer && (remainder === '' || remainder === pointerAssetText().trim() || /^#[^\n]*$/.test(remainder));
+    const pointerOnly = pointer && (remainder === '' || remainder === pointerAssetText().trim());
     guidance.push({ path, pointer, pointerOnly, policySection: text.includes(markerStart('policy')) });
     // compose가 생성한 구간은 팀 지침이 아니다 — 정책 문구를 읽을 때 뺀다. 그래야 생성 결과가 다음 진단의 근거가 되지 않는다.
     for (const sentence of sentences(stripGenerated(text))) {
@@ -184,10 +194,7 @@ export function diagnose(project) {
   // 3. 검증 명령 후보 — package.json 스크립트, CI 워크플로 run 단계, Makefile, 다른 생태계 표지.
   const commands = [];
   const pkg = readJson(root, 'package.json');
-  let packageManager = 'npm';
-  if (existsSync(join(root, 'pnpm-lock.yaml'))) packageManager = 'pnpm';
-  else if (existsSync(join(root, 'yarn.lock'))) packageManager = 'yarn';
-  else if (existsSync(join(root, 'bun.lockb')) || existsSync(join(root, 'bun.lock'))) packageManager = 'bun';
+  const packageManager = workspaces.packageManager;
   const hasNodeModules = existsSync(join(root, 'node_modules'));
   const runScript = name => packageManager === 'yarn' ? `yarn ${name}` : name === 'test' ? `${packageManager} test` : `${packageManager} run ${name}`;
   const scripts = pkg.data?.scripts && typeof pkg.data.scripts === 'object' ? pkg.data.scripts : {};
@@ -201,7 +208,7 @@ export function diagnose(project) {
       const firstToken = script.split(/\s*(?:&&|\|\||;|\|)\s*/)[0].trim().split(/\s+/).filter(token => !token.includes('='))[0] ?? '';
       let runnable, note;
       if (placeholder) { runnable = 'placeholder'; note = 'npm 기본 자리표시자 — 실제 검사가 아니다'; }
-      else if (!hasNodeModules) { runnable = 'needs-install'; note = `node_modules 없음 — ${packageManager} install 후 실행 가능`; }
+      else if (!hasNodeModules && !['node', 'echo', 'sh', 'bash', 'git', 'true', 'false'].includes(firstToken)) { runnable = 'needs-install'; note = `node_modules 없음 — ${packageManager} install 후 실행 가능`; }
       else if (READY_BINS.has(firstToken) || firstToken.startsWith('./') || existsSync(join(root, 'node_modules', '.bin', firstToken))) { runnable = 'likely'; note = '정적 검사 통과 — 실제 통과 여부는 verify --run으로 확인'; }
       else { runnable = 'missing-dep'; note = `실행 파일 ${firstToken}을(를) node_modules/.bin에서 찾지 못함`; }
       commands.push({ name, command: runScript(name), source: `package.json#scripts.${name}`, runnable, note, script });
@@ -250,6 +257,7 @@ export function diagnose(project) {
     if (!existsSync(join(root, marker)) || commands.some(item => item.command === command)) continue;
     commands.push({ name, command, source: marker, runnable: 'unknown', note: `${marker}로 추정한 명령 — 팀 확인 필요` });
   }
+  commands.push(...workspaceCommands(workspaces));
 
   // 4. 기존 하네스·훅 설정·등록·명세·다른 로컬 훅·민감정보 경로(존재만).
   let manifest = null;
@@ -368,9 +376,12 @@ export function diagnose(project) {
   const usable = commands.filter(item => item.runnable !== 'placeholder');
   const verifierSelf = ours.has(verifierConfigPath);
   const configuredChecks = Array.isArray(verifierConfig.data?.checks) ? verifierConfig.data.checks.filter(check => check && typeof check.command === 'string') : null;
-  if (configuredChecks?.length) decisions['verification.checks'] = decision(configuredChecks.map(check => ({ name: String(check.name ?? check.command), command: check.command })), 'evidence', verifierSelf ? 'compose가 생성한 설정' : '기존 verifierGate 설정의 검사 명령', [verifierConfigPath], { self: verifierSelf });
-  else if (usable.length) decisions['verification.checks'] = decision(usable.map(item => ({ name: item.name, command: item.command })), 'evidence', '저장소에서 찾은 검증 명령(전부 선택)', unique(usable.flatMap(item => item.source.split(', '))));
-  else decisions['verification.checks'] = decision([], 'pending', '실행할 수 있는 검증 명령을 찾지 못했다', []);
+  if (configuredChecks?.length) {
+    try { decisions['verification.checks'] = decision(normalizeChecks(configuredChecks), 'evidence', verifierSelf ? 'compose가 생성한 설정' : '기존 verifierGate 설정의 검사 명령', [verifierConfigPath], { self: verifierSelf }); }
+    catch (error) { conflict('checks.invalid', error.message, [verifierConfigPath], '검증 설정을 고친다', true); }
+  }
+  if (!decisions['verification.checks'] && usable.length) decisions['verification.checks'] = decision(normalizeChecks(usable), 'evidence', '저장소에서 찾은 검증 명령(전부 선택)', unique(usable.flatMap(item => item.source.split(', '))));
+  if (!decisions['verification.checks']) decisions['verification.checks'] = decision([], 'pending', '실행할 수 있는 검증 명령을 찾지 못했다', []);
   decisions['verification.checks'] = carry('verification.checks', decisions['verification.checks']);
   if (verifierConfig.exists && !verifierConfig.error) decisions['verification.gate'] = decision('stop-hook', 'evidence', verifierSelf ? 'compose가 생성한 설정' : '기존 verifierGate 설정 파일', [verifierConfigPath], { self: verifierSelf });
   else if (decisions['verification.checks'].value.length) decisions['verification.gate'] = decision('rules', 'pending', '검증 명령은 있으나 강제 여부는 팀이 정한다', []);
@@ -400,7 +411,7 @@ export function diagnose(project) {
   for (const item of Object.values(decisions)) delete item.self;
 
   const questions = decisionKeys.filter(key => decisions[key].status === 'pending' && decisionCatalog[key].ask !== false).map(key => buildQuestion(key, decisions[key]));
-  return { schemaVersion: 1, root, bundleVersion: version(), facts, assumptions, conflicts, notes, commands, questions, decisions, guidance,
+  return { schemaVersion: 1, root, bundleVersion: version(), facts, assumptions, conflicts, notes, commands, questions, decisions, guidance, workspaces,
     environment: { packageManager: pkg.exists ? packageManager : null, nodeModules: hasNodeModules, currentBranch, detectedApps: detected } };
 }
 
@@ -500,10 +511,10 @@ export function renderPolicySection(decisions, { profile } = {}) {
   if (allow) lines.push(`- AI 작성 표기 차단: ${d('protection.blockAttribution').value ? '켬' : '끔'}. ${tag(d('protection.blockAttribution'))}`);
   lines.push('', '### 검증');
   if (checks.length) {
-    lines.push(`- 완료 조건: 아래 명령이 모두 통과해야 작업을 완료로 보고한다. 실행하지 못한 명령은 미실행으로 밝힌다. ${tag(d('verification.checks'))}`);
-    for (const check of checks) lines.push(`  - ${code(check.command)}`);
+    lines.push(`- 완료 조건: 아래 필수 명령이 모두 통과해야 작업을 완료로 보고한다. 실행 범위와 미실행·선택 검사 실패를 밝힌다. ${tag(d('verification.checks'))}`);
+    for (const check of checks) lines.push(`  - ${code(check.command)}${check.cwd ? ` (cwd: ${code(check.cwd)})` : ''}${check.workspace ? ` — ${code(check.workspace)}` : ''}${check.required === false ? ' · 선택 검사' : ''}`);
   } else lines.push(`- 완료 조건: 실행할 검증 명령이 정해지지 않았다. 요청 범위가 충족됐는지 확인하고, 실행한 검사와 하지 않은 검사를 밝힌다. ${tag(d('verification.checks'))}`);
-  lines.push(`- 종료 검사 훅(verifierGate): ${d('verification.gate').value === 'stop-hook' ? '사용 — 위 명령이 실패하면 턴 종료를 막는다' : '사용 안 함 — 규칙으로만 요구한다'}. ${tag(d('verification.gate'))}`);
+  lines.push(`- 종료 검사 훅(verifierGate): ${d('verification.gate').value === 'stop-hook' ? '사용 — 위 필수 명령이 실패하면 턴 종료를 막는다' : '사용 안 함 — 규칙으로만 요구한다'}. ${tag(d('verification.gate'))}`);
   lines.push('', '### 기록·인계');
   const history = d('records.history').value;
   const historyText = history === 'required' ? `버그·핫픽스·기능·호환성 변경·정책 변경 PR마다 ${code('docs/history/')} 기록 한 건과 색인 한 줄을 남긴다${allow ? '(훅이 커밋 타입으로 판정해 기록 없는 push를 차단)' : '(커밋·푸시가 차단되어 훅 게이트는 동작하지 않음)'}` : history === 'optional' ? `양식은 준비하되 작성 의무는 없다. 사용자가 요청할 때 ${code('docs/history/')}에 남긴다` : '요구하지 않는다. 사용자가 요청할 때만 작성한다';
@@ -550,11 +561,11 @@ export function normalizeDecisionValue(key, value) {
     case 'list': if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item.trim())) fail(); return unique(value.map(item => item.trim()));
     case 'checks': {
       if (!Array.isArray(value)) fail();
-      return value.map(item => {
+      return normalizeChecks(value.map(item => {
         if (typeof item === 'string' && item.trim()) return { name: checkName(item.trim()), command: item.trim() };
-        if (item && typeof item.command === 'string' && item.command.trim()) return { name: String(item.name ?? checkName(item.command)).trim() || checkName(item.command), command: item.command.trim() };
+        if (item && typeof item.command === 'string' && item.command.trim()) return { ...item, name: String(item.name ?? checkName(item.command)).trim() || checkName(item.command), command: item.command.trim() };
         return fail();
-      });
+      }));
     }
     default: return fail();
   }
@@ -567,7 +578,7 @@ const checkName = command => {
 // ── compose: 명세 만들기와 계획 ───────────────────────────────────────────────
 // request: { app?: 'claude'|'codex'|'both', set?: {키: 값}, force?: boolean, ci?: boolean }. 결과는 결정적이다 — apply가 다시 계산해 비교한다.
 export function createCompose(project, request = {}) {
-  const root = realpathSync(project);
+  const root = resolveProjectRoot(project);
   const report = diagnose(root);
   const decisions = structuredClone(report.decisions);
   const set = { ...(request.set ?? {}) };
@@ -646,8 +657,8 @@ export function createCompose(project, request = {}) {
     const checks = decisions['verification.checks'].value;
     if (checks.length) {
       teamOp(verifierConfigPath, mergeJson(afterPlan(verifierConfigPath), current => {
-        const wanted = checks.map(check => ({ name: check.name, command: check.command }));
-        const currentChecks = Array.isArray(current.checks) ? current.checks.map(check => ({ name: check?.name, command: check?.command })) : null;
+        const wanted = normalizeChecks(checks);
+        const currentChecks = Array.isArray(current.checks) ? current.checks : null;
         if (JSON.stringify(currentChecks) !== JSON.stringify(wanted)) current.checks = wanted;
         current.maxIterations ??= 10;
         current.stuckAfter ??= 3;
@@ -712,9 +723,15 @@ export function applyCompose(plan) {
 
 // ── verify: 작동 확인 ─────────────────────────────────────────────────────────
 // 네 상태: configured(설정 완료) · verified(실행 확인) · unverified(확인 필요) · failed(실패).
+export function planVerification(project, options = {}) {
+  const root = resolveProjectRoot(project);
+  const checks = readJson(root, teamSpecPath).data?.decisions?.['verification.checks']?.value ?? [];
+  return verificationPlan(root, normalizeChecks(checks), options);
+}
+
 // 정적 파일 검사, 훅 스크립트 시험(임시 저장소·가짜 명령), 검증 명령 실행(run), 앱 안 실행(항상 확인 필요)은 서로 다른 증거다.
-export async function verify(project, { run = false } = {}) {
-  const root = realpathSync(project);
+export async function verify(project, { run = false, affected = false, base = null, workspace = null } = {}) {
+  const root = resolveProjectRoot(project);
   const items = [];
   const item = (state, area, subject, detail, extra = {}) => items.push({ state, label: STATES[state], area, subject, detail, ...extra });
   const spec = readJson(root, teamSpecPath).data;
@@ -757,7 +774,7 @@ export async function verify(project, { run = false } = {}) {
 
   // 2. 훅 스크립트 시험 — 설치된 훅 파일을 임시 저장소(가짜 .git/HEAD)와 가짜 명령으로 실행한다. 실제 설정 파일을 그대로 읽는다.
   const branchConfig = readJson(root, branchConfigPath).data;
-  const protectedBranches = Array.isArray(branchConfig?.protectedBranches) && branchConfig.protectedBranches.length ? branchConfig.protectedBranches : ['main', 'master'];
+  const protectedBranches = Array.isArray(branchConfig?.protectedBranches) ? branchConfig.protectedBranches : ['main', 'master'];
   const gitConfig = readJson(root, gitConfigPath).data ?? {};
   const allow = gitConfig.allowCommitPush === true;
   const temp = mkdtempSync(join(tmpdir(), 'harness-verify-'));
@@ -777,8 +794,10 @@ export async function verify(project, { run = false } = {}) {
       const firstSentence = result.stderr ? result.stderr.split('\n')[0].split(/(?<=[.!])\s/)[0].slice(0, 90) : '';
       item(ok ? 'verified' : 'failed', area, subject, `${detail} → exit ${result.status}${ok ? ' (기대와 같음)' : ` (기대 ${expectedStatus})`}${firstSentence ? ` · ${firstSentence}` : ''}`, { evidence: '임시 저장소 · 가짜 명령' });
     };
-    onBranch(protectedBranches[0]);
-    expect('변경 보호', 'branchGuard 스크립트 — 보호 브랜치 편집', runHook('branchGuard', { tool_name: 'Edit', tool_input: { file_path: 'src/app.js' } }), 2, `${protectedBranches[0]} 위에서 Edit`);
+    if (protectedBranches.length) {
+      onBranch(protectedBranches[0]);
+      expect('변경 보호', 'branchGuard 스크립트 — 보호 브랜치 편집', runHook('branchGuard', { tool_name: 'Edit', tool_input: { file_path: 'src/app.js' } }), 2, `${protectedBranches[0]} 위에서 Edit`);
+    } else item('configured', '변경 보호', '보호 브랜치 없음', 'protectedBranches: [] — 팀 설정에 따라 브랜치 보호 비활성');
     onBranch('feat/verify-check');
     expect('변경 보호', 'branchGuard 스크립트 — 작업 브랜치 편집', runHook('branchGuard', { tool_name: 'Edit', tool_input: { file_path: 'src/app.js' } }), 0, 'feat/verify-check 위에서 Edit');
     expect('변경 보호', `blockGitMutation 스크립트 — 커밋 (${allow ? '허용 설정' : '차단 설정'})`, runHook('blockGitMutation', { tool_name: 'Bash', tool_input: { command: 'git commit -m "verify"' } }), allow ? 0 : 2, 'git commit -m');
@@ -792,17 +811,18 @@ export async function verify(project, { run = false } = {}) {
 
   // 3. 검증 명령 — run일 때만 실행한다. 아니면 확인 필요.
   const checks = decisions?.['verification.checks']?.value ?? [];
+  const plan = verificationPlan(root, normalizeChecks(checks), { affected, base, workspace });
+  const runtime = runtimeEvidence(root, targetApps, plan.checks);
+  const results = [];
+  for (const issue of plan.issues) item('unverified', '검증', issue.path, issue.message);
   if (!checks.length) item('unverified', '검증', '검증 명령', '명세에 검증 명령이 없다. 팀이 명령을 정하면 compose --set verification.checks=... 로 연결한다');
-  for (const check of checks) {
-    if (!run) { item('unverified', '검증', `검증 명령 ${check.command}`, 'verify --run으로 실행하거나 팀이 직접 실행해 결과를 확인한다'); continue; }
-    const started = Date.now();
-    try {
-      execSync(check.command, { cwd: root, stdio: 'pipe', timeout: 300000, encoding: 'utf8' });
-      item('verified', '검증', `검증 명령 ${check.command}`, `exit 0 · ${Date.now() - started}ms`, { evidence: '프로젝트에서 실제 실행' });
-    } catch (error) {
-      const output = `${error.stdout ?? ''}${error.stderr ?? ''}`.trim().split('\n').slice(-5).join('\n').slice(0, 600);
-      item('failed', '검증', `검증 명령 ${check.command}`, `exit ${error.status ?? '?'}${error.signal ? ` (${error.signal})` : ''}${output ? `\n${output}` : ''}`, { evidence: '프로젝트에서 실제 실행' });
-    }
+  for (const check of plan.checks) {
+    const subject = `검증 명령 ${check.command}${check.cwd ? ` (cwd: ${check.cwd})` : ''}`;
+    if (!run || plan.issues.length) { item('unverified', '검증', subject, plan.issues.length ? '검증 계획에 확인할 항목이 있어 실행하지 않았다' : 'verify --run으로 실행하거나 팀이 직접 실행해 결과를 확인한다'); continue; }
+    const result = executeCheck(check, root);
+    results.push({ ...result, id: check.id, cwd: check.cwd ?? '.', workspace: check.workspace ?? null });
+    item(result.state === 'pass' ? 'verified' : check.required === false ? 'unverified' : 'failed', '검증', subject,
+      `exit ${result.exitCode ?? '?'} · ${result.durationMs}ms${result.output ? `\n${result.output}` : ''}`, { evidence: '프로젝트에서 실제 실행', checkId: check.id });
   }
 
   // 4. 앱 안 실행 — 이 도구는 확인할 수 없다. 절차만 준다.
@@ -814,7 +834,9 @@ export async function verify(project, { run = false } = {}) {
   }
   const pending = decisions ? decisionKeys.filter(key => decisions[key]?.status === 'pending' && decisionCatalog[key].ask !== false) : [];
   const summary = Object.fromEntries(Object.keys(STATES).map(state => [state, items.filter(entry => entry.state === state).length]));
-  return { schemaVersion: 1, root, bundleVersion: version(), run, items, summary, pending, ok: summary.failed === 0 };
+  const verification = { state: plan.issues.length || !run ? 'unverified' : results.some(result => result.state === 'fail' && result.required !== false) ? 'failed' : plan.selection.mode === 'none' && !plan.checks.length ? 'not-applicable' : results.length ? 'passed' : 'unverified',
+    scope: plan.selection, changes: plan.changes, checks: plan.checks, issues: plan.issues, results, runtime };
+  return { schemaVersion: 1, root, bundleVersion: version(), run, items, summary, pending, verification, ok: summary.failed === 0 && (!run || verification.state !== 'unverified') };
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
