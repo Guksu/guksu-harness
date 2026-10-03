@@ -44,11 +44,16 @@ guksu-harness 자체는 지금 하나의 CLI 배포물과 함께 배포하는 �
 
 실행별 기록은 모델·앱·하네스 revision/patch·작업 ID·반복 번호·초기 상태·최종 diff·검사 결과·불필요한 질문 횟수·시간·실측 토큰/미측정·정책 위반·범위 누락을 포함한다. `verify --run --json`의 runtime/범위/명령 결과를 근거로 첨부한다. 모델의 완료 선언은 채점 근거가 아니다. 필수 회귀나 정책 위반이 늘면 속도가 빨라도 개선으로 판정하지 않는다.
 
-다음 단계는 Nx/Turbo 자체 graph·affected 명령 연결과 실제 앱별 훅 시험이다. 모델 라우팅·자동 프롬프트 최적화는 이 평가에서 이득을 확인한 뒤 추가한다.
+후속 구현에서 `--native-runner`로 Nx/Turbo 자체 graph·affected 명령을 연결했다. 기본 진단은 프로젝트 코드를 실행하지 않으며 조회 옵션을 명시해야 한다. Nx의 `project.json`·명시적 targets, Turbo의 교차 패키지 태스크 관계를 반영한다. 조회 실패는 전체 검증, 프로젝트 목록 불일치는 미검증으로 남긴다.
+
+Nx 23.2.1·Turbo 2.11.7, Node 22, macOS에서 실제 도구 연동을 시험했다. Nx의 암묵 관계, Turbo 태스크 관계, staged·unstaged·새 파일 포함, Nx target 실행을 확인했다. 이 결과는 실제 Claude Code·Codex 앱 이벤트나 모델 생산성 평가가 아니다. 추론된 프로젝트의 자동 명세 구성·다른 runner 버전은 별도 검증이 필요하다.
+
+다음 단계는 실제 앱별 훅 시험과 위 모델 평가다. 모델 라우팅·자동 프롬프트 최적화는 이 평가에서 이득을 확인한 뒤 추가한다.
 
 ## 설계에 사용한 기술 문서
 
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks): 세션 cwd와 프로젝트 루트 경로 해석을 구분한다.
 - [pnpm filtering](https://pnpm.io/filtering): 변경 패키지·사용 패키지·의존 패키지를 구분하는 선택 모델을 참고했다. pnpm 필터와 동일 구현이라고 주장하지 않는다.
-- [Nx affected](https://nx.dev/docs/features/ci-features/affected): 파일 목록만으로 runner의 전체 의존 그래프를 대체하지 않는다. 이번에는 Nx 감지 시 전체 검증한다.
+- [Nx affected](https://nx.dev/docs/features/ci-features/affected)·[Nx CLI](https://nx.dev/docs/reference/nx-commands): 파일 목록만으로 runner의 전체 의존 그래프를 대체하지 않는다. 명시적 조회가 없으면 전체 검증한다.
+- [Turbo ls](https://turborepo.dev/docs/reference/ls)·[Turbo dry-run](https://turborepo.dev/docs/reference/run): 패키지 그래프와 태스크 그래프를 함께 사용하며 조회 JSON의 형식을 확인한다.
 - [YAML parser](https://eemeli.org/yaml/)·[Picomatch](https://github.com/micromatch/picomatch): 자체 정규식 YAML/glob 파서 대신 검증된 라이브러리를 사용한다.
