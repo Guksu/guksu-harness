@@ -82,3 +82,13 @@ npm test   # = node --test --test-concurrency=1 skills/harness/scripts/*.test.mj
 `bin/guksu-harness.test.mjs`는 `npx guksu-harness` 명령(init·update·check·eject·status·diagnose·compose·verify)의 실제 실행을 임시 프로젝트에서 검사한다. `teamCompose.test.mjs`는 팀 맞춤 구성의 인수 시나리오 3종(지침 없는 프로젝트, 규칙·CI·테스트가 있는 프로젝트, 지침·설정이 충돌하고 명령을 실행할 수 없는 프로젝트)과 재적용·정책 변경·드리프트 충돌·미리보기 이후 변경·복원을 파일 내용·해시·상태로 검사한다. 모델이 실제로 pending 항목만 묻는지는 `docs/analysis/team-compose-evaluation.md`의 별도 평가다.
 
 `hardening.test.mjs`·`workspaces.test.mjs`는 하위 cwd·worktree·5.1 등록 갱신, usage 미측정, 긴 실패 로그, YAML/glob workspace, 의존 관계 선택·공통 경로 확대·누락된 검증을 검사한다. GPT·Claude 모델 세션용 추가 시나리오는 `docs/analysis/monorepo-harness-evaluation.md`에 있다. `verify --json`에 CLI 버전이 있더라도 실제 앱 훅 통합·모델 성능을 확인한 것으로 해석하지 않는다.
+
+`nativeRunners.test.mjs`는 기본 경로의 runner 미실행, Nx 암묵 의존 관계, Turbo 교차 태스크 관계, 손상·미설치·목록 불일치·공통 입력의 처리와 CLI 연결을 검사한다. 실제 runner 검사는 `GUKSU_RUNNER_MODULES`에 별도 설치 디렉터리의 node_modules 경로를 지정할 때만 실행한다. 기본 테스트에서는 이 2건을 명시적으로 skip하며 자동 설치하지 않는다.
+
+```bash
+# 임시 경로에 원하는 버전을 별도로 설치한 뒤 실행한다.
+GUKSU_RUNNER_MODULES=/tmp/guksu-runner-test/node_modules NX_DAEMON=false \
+  node --test --test-concurrency=1 skills/harness/scripts/nativeRunners.test.mjs
+```
+
+2026-10-03에 Nx 23.2.1·Turbo 2.11.7, Node 22, macOS에서 실제 조회와 Nx target 실행을 확인했다. 다른 버전·운영체제는 이 결과만으로 통과했다고 보고하지 않는다. CLI 응답 형식 변경은 축소 검증을 강행하지 않고 전체 검증 또는 명세 확인 필요로 처리한다.
