@@ -17,7 +17,8 @@ import { realpathSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPlan, applyPlan, status, eject, isInstalled, version, corePaths, exportPreset, importPreset } from '../skills/harness/scripts/harnessManager.mjs';
-import { diagnose, createCompose, applyCompose, verify, STATES, decisionCatalog, statusLabel } from '../skills/harness/scripts/teamCompose.mjs';
+import { diagnose, createCompose, applyCompose, verify, planVerification, STATES, decisionCatalog, statusLabel } from '../skills/harness/scripts/teamCompose.mjs';
+import { resolveProjectRoot } from '../skills/harness/scripts/workspaces.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { validateHarness } from '../skills/harness/scripts/validateHarness.mjs';
 
@@ -48,9 +49,11 @@ const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로�
          훅·코어 규칙·등록은 init/update와 같은 방식으로 함께 설치한다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 표시한다.
          --set 예: --set protection.allowCommitPush=false --set records.history=none --set 'verification.checks=["npm test"]'
          --force는 compose 이후 직접 고친 생성 구간·설정 파일을 명세대로 다시 만든다(백업 남김).
-  verify   [프로젝트] [--run] [--json]
+  verify   [프로젝트] [--run|--plan] [--affected --base <ref>] [--workspace <이름>] [--json]
          설정 완료 / 실행 확인 / 확인 필요 / 실패로 나눠 보여 준다. 훅 스크립트는 임시 저장소와 가짜 명령으로 시험한다.
          --run이면 명세의 검증 명령을 프로젝트에서 실제 실행한다. 실제 앱 안의 훅 실행은 항상 "확인 필요"다.
+         --plan은 명령을 실행하지 않고 대상·이유·cwd를 보여 준다. --affected는 로컬 변경과 사용 패키지를 포함한다.
+         --workspace는 지정 패키지만 검사한다. 전체 저장소의 검증 결과로 해석하지 않는다.
 
 프로젝트를 생략하면 현재 디렉터리다. 세밀한 미리보기·복원은 skills/harness/scripts/harnessManager.mjs의 plan·apply·rollback을 쓴다.`;
 
@@ -64,7 +67,7 @@ const FLAGS = {
   import: { '--from': 'value', '--force': 'flag' },
   diagnose: { '--json': 'flag' },
   compose: { '--app': 'value', '--set': 'list', '--decisions': 'value', '--ci': 'flag', '--force': 'flag', '--dry-run': 'flag', '--json': 'flag' },
-  verify: { '--run': 'flag', '--json': 'flag' },
+  verify: { '--run': 'flag', '--plan': 'flag', '--affected': 'flag', '--base': 'value', '--workspace': 'value', '--json': 'flag' },
 };
 
 export function parseArgs(argv) {
@@ -109,7 +112,7 @@ export async function run(argv) {
   const { command, positional, options } = parsed;
   const projectArg = command === 'eject' && positional.length === 1 ? '.' : (positional[0] ?? '.');
   if (!existsSync(projectArg)) throw new Error(`프로젝트 디렉터리가 없습니다: ${projectArg}`);
-  const project = realpathSync(projectArg);
+  const project = resolveProjectRoot(projectArg);
 
   if (command === 'init' || command === 'update') {
     const installed = isInstalled(project);
@@ -186,7 +189,7 @@ export async function run(argv) {
     return printIssues(issues) && result.rejected.length === 0 ? 0 : 1;
   }
   if (command === 'diagnose') {
-    const report = diagnose(project);
+    const report = diagnose(projectArg);
     if (options['--json']) { console.log(JSON.stringify(report, null, 2)); return 0; }
     printDiagnose(report);
     return 0;
@@ -218,7 +221,24 @@ export async function run(argv) {
     return ok ? 0 : 1;
   }
   if (command === 'verify') {
-    const report = await verify(project, { run: options['--run'] === true });
+    if (options['--run'] && options['--plan']) throw new Error('--run과 --plan은 함께 사용할 수 없습니다');
+    if (options['--affected'] && options['--workspace']) throw new Error('--affected와 --workspace는 함께 사용할 수 없습니다');
+    if (options['--base'] && !options['--affected']) throw new Error('--base는 --affected와 함께 사용합니다');
+    const selection = { affected: options['--affected'] === true, base: options['--base'], workspace: options['--workspace'] };
+    if (options['--plan']) {
+      const plan = planVerification(project, selection);
+      if (options['--json']) console.log(JSON.stringify(plan, null, 2));
+      else {
+        console.log(`검증 계획 — ${project} · ${plan.selection.mode}`);
+        console.log(`대상: ${plan.selection.projects.join(', ') || '(루트 또는 변경 없음)'}`);
+        if (plan.selection.prerequisites.length) console.log(`선행 패키지: ${plan.selection.prerequisites.join(', ')}`);
+        console.log(`근거: ${JSON.stringify(plan.selection.reasons)}`);
+        for (const check of plan.checks) console.log(`  ${check.name}: ${check.command} (cwd: ${check.cwd ?? '.'})`);
+        for (const issue of plan.issues) console.log(`  확인 필요: ${issue.path} — ${issue.message}`);
+      }
+      return plan.issues.length ? 1 : 0;
+    }
+    const report = await verify(project, { run: options['--run'] === true, ...selection });
     if (options['--json']) { console.log(JSON.stringify(report, null, 2)); return report.ok ? 0 : 1; }
     printVerify(report);
     return report.ok ? 0 : 1;
@@ -236,7 +256,8 @@ function printDiagnose(report) {
   console.log(`\n충돌 ${report.conflicts.length}건`);
   for (const item of report.conflicts) console.log(`  - ${item.blocking ? '[적용 차단] ' : ''}${item.summary}  [${item.sources.join(', ')}]\n    → ${item.resolution}`);
   console.log(`\n검증 명령 후보 ${report.commands.length}건 (존재와 실행 가능은 다르다 — 실제 실행은 verify --run)`);
-  for (const item of report.commands) console.log(`  - ${item.command}  [${item.source}] · ${item.note}`);
+  for (const item of report.commands) console.log(`  - ${item.command}${item.cwd ? ` (cwd: ${item.cwd})` : ''}  [${item.source}] · ${item.note}`);
+  for (const rule of report.workspaces?.guidance ?? []) console.log(`  지침: ${rule.path} · 적용 범위 ${rule.scope} · ${rule.app}`);
   for (const note of report.notes) console.log(`  · ${note}`);
   console.log(`\n팀이 정할 것 ${report.questions.length}건${report.questions.length ? '' : ' — 저장소 근거로 모두 정해졌다'}`);
   report.questions.forEach((q, index) => {
@@ -279,6 +300,7 @@ function printCompose(plan) {
 }
 function printVerify(report) {
   console.log(`작동 확인 — ${report.root} (번들 ${report.bundleVersion}${report.run ? ' · 검증 명령 실행함' : ''})`);
+  console.log(`검증 범위: ${report.verification.scope.mode} · ${report.verification.scope.projects.join(', ') || '루트'} · ${report.verification.state}`);
   for (const state of Object.keys(STATES)) {
     const items = report.items.filter(item => item.state === state);
     console.log(`\n${STATES[state]} ${items.length}건`);

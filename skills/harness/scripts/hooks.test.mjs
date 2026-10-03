@@ -13,6 +13,7 @@ import {
   failureSignature,
   runChecks,
   sumTranscriptTokens,
+  readTranscriptUsage,
 } from '../assets/hooks/verifierGate.mjs';
 import {
   DEFAULT_PROTECTED_BRANCHES,
@@ -514,10 +515,9 @@ test('실패 시그니처 — 출력 전체 기준: 숫자 변동은 무시, 내
   assert.equal(twoAB, twoBA);
 });
 
-test('검증자 게이트 — transcript 토큰 사용량을 합산한다 (손상 줄은 무시)', () => {
+test('검증자 게이트 — transcript 토큰 사용량을 합산한다', () => {
   const jsonl = [
     JSON.stringify({ message: { usage: { input_tokens: 100, output_tokens: 50 } } }),
-    'not-json-line',
     JSON.stringify({ type: 'user', message: { content: 'no usage' } }),
     JSON.stringify({
       message: { usage: { input_tokens: 200, output_tokens: 25, cache_creation_input_tokens: 10 } },

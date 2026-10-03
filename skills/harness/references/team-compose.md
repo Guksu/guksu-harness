@@ -35,6 +35,8 @@ npx guksu-harness verify   <프로젝트> [--run]          # 설정 완료 / 실
 
 `--set` 값 형식: 불리언은 `true`/`false`, 목록은 쉼표(`main,release`) 또는 JSON 배열, 검증 명령은 JSON 배열(`'["npm test","npm run lint"]'`) 또는 명령 하나, 없음은 `[]`. 앱은 `claude`·`codex`·`both`.
 
+검증 객체의 `cwd`·`workspace`·`timeoutMs`·`required`와 모노레포의 `verify --plan`·`--affected --base`·`--workspace`는 [모노레포 안내](monorepo.md)에 있다. workspace 탐색 오류·중복 이름은 적용을 차단한다. 변경 패키지 선택이 불확실하면 전체 검증하고 이유를 표시한다.
+
 ## 3. 결정 상태
 
 | 상태 | 뜻 | 다음 진단에서 |
@@ -64,7 +66,7 @@ compose가 만든 파일은 다음 진단의 근거가 되지 않는다. 기록�
 |---|---|---|
 | `.agents/hooks/branchGuard.config.json` | `protectedBranches` | 기존 파일은 관리 키만 맞추고 다른 키·형식을 보존. 실제 동작이 같으면 바꾸지 않는다. 새 파일은 관리 키를 명시 |
 | `.agents/hooks/blockGitMutation.config.json` | `allowCommitPush`, `requireHistoryDoc`, `blockAttribution`(허용일 때), `historyBase`(기준 브랜치를 팀이 확정했을 때만) | 같음 |
-| `.agents/hooks/verifierGate.config.json` | `checks`, `maxIterations 10`, `stuckAfter 3` | gate=stop-hook일 때만. 기존 다른 키 보존 |
+| `.agents/hooks/verifierGate.config.json` | `checks`(cwd·workspace·timeoutMs·required 포함), `maxIterations 10`, `stuckAfter 3` | gate=stop-hook일 때만. 기존 다른 키 보존 |
 | `docs/harness-rules.md` | `<!-- guksu-harness:team-policy start/end -->` 구간에 네 영역의 정책·근거·미확인 표시 | 구간 밖은 팀 자리. 파일이 없으면 팀 규칙 양식 뒤에 붙인다 |
 | `CLAUDE.md`·`AGENTS.md` | `## 하네스` 절이 없으면 `<!-- guksu-harness:pointer start/end -->` 구간 추가 | 기존 내용 보존. 절이 있으면 그대로 |
 | 훅·코어 규칙·등록·양식 | `init`/`update`와 같은 계획 | 프로필은 기존 설치를 유지하고, 팀이 기록을 선택(confirmed)했을 때만 basic으로 올린다 |

@@ -43,6 +43,8 @@ npx guksu-harness compose <프로젝트> --set protection.allowCommitPush=false 
 npx guksu-harness verify <프로젝트> --run
 ```
 
+모노레포라면 `references/monorepo.md`를 참고한다. workspace 루트·패키지별 cwd·하위 지침 범위를 확인하고 `verify --plan`으로 실행 범위를 먼저 본다. 부분 검증 결과를 저장소 전체 통과로 보고하지 않는다.
+
 ## 팀 고유 내용만 추가
 
 - 팀 소유 `docs/harness-rules.md`에 기본값과 다른 브랜치·기록 정책, 검증 명령, 배포 조건을 적는다. 코어 사본은 직접 고치지 않는다.

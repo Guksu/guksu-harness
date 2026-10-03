@@ -166,13 +166,13 @@ test('앱 추정 — 단서가 없으면 claude, AGENTS.md·.codex가 있으면 
   write(root, 'CLAUDE.md', '# 프로젝트');
   assert.deepEqual(detectApps(root), ['claude', 'codex']);
 });
-test('codex 설치는 .codex/hooks.json에 상대 경로 명령과 apply_patch matcher로 등록하고 settings.json은 만들지 않는다', async t => {
+test('codex 설치는 .codex/hooks.json에 Git 루트 기준 명령과 apply_patch matcher로 등록하고 settings.json은 만들지 않는다', async t => {
   const root = fixture(t);
   applyPlan(createPlan(root, { app: 'codex' }));
   assert.equal(existsSync(join(root, '.claude')), false);
   const hooks = JSON.parse(readFileSync(join(root, '.codex/hooks.json'), 'utf8')).hooks;
   const commands = hooks.PreToolUse.flatMap(entry => entry.hooks.map(hook => hook.command));
-  assert.ok(commands.includes('node ".agents/hooks/blockGitMutation.mjs"'));
+  assert.ok(commands.includes('node "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/blockGitMutation.mjs"'));
   assert.ok(commands.every(command => !command.includes('CLAUDE_PROJECT_DIR')));
   assert.equal(hooks.PreToolUse.find(entry => entry.matcher.includes('apply_patch')).matcher, 'apply_patch|Edit|Write');
   assert.equal(hooks.Stop, undefined, '--verifier 없이는 Stop을 등록하지 않는다');
@@ -192,7 +192,7 @@ test('both는 두 등록 파일을 모두 쓰고 훅 파일은 한 벌만 둔다
   const codex = JSON.parse(readFileSync(join(root, '.codex/hooks.json'), 'utf8')).hooks;
   const claude = JSON.parse(readFileSync(join(root, '.claude/settings.json'), 'utf8')).hooks;
   assert.equal(codex.PreToolUse[0].hooks[0].command, 'my-codex-hook', '기존 codex 등록을 보존한다');
-  assert.equal(codex.Stop[0].hooks[0].command, 'node ".agents/hooks/verifierGate.mjs"');
+  assert.equal(codex.Stop[0].hooks[0].command, 'node "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/verifierGate.mjs"');
   assert.equal(claude.Stop[0].hooks[0].command, 'node "$CLAUDE_PROJECT_DIR/.agents/hooks/verifierGate.mjs"');
   assert.equal(existsSync(join(root, '.agents/hooks/verifierGate.mjs')), true);
   assert.equal(existsSync(join(root, '.claude/hooks')), false);

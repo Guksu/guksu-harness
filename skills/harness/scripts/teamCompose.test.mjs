@@ -124,7 +124,7 @@ test('시나리오 2 — 명시된 정책은 다시 묻지 않고 근거로 쓴�
   assert.deepEqual(d.apps.value, ['claude']);
   assert.deepEqual(d['rules.guidance'].value, ['CLAUDE.md', 'CONTRIBUTING.md']);
   assert.deepEqual(d['verification.checks'].value.map(c => c.command), ['npm test', 'npm run lint', 'npm run build']);
-  assert.deepEqual(report.commands.map(c => [c.name, c.runnable]), [['test', 'needs-install'], ['lint', 'needs-install'], ['build', 'needs-install']], '존재와 실행 가능은 다르다');
+  assert.deepEqual(report.commands.map(c => [c.name, c.runnable]), [['test', 'likely'], ['lint', 'needs-install'], ['build', 'needs-install']], '내장 Node 검사는 설치 없이 실행 후보지만 통과 확인은 별도다');
   assert.equal(report.commands.find(c => c.name === 'test').source, 'package.json#scripts.test, .github/workflows/ci.yml', 'CI에서도 쓰는 명령은 출처를 합친다');
   assert.equal(report.facts.find(f => f.id === 'ci.branches').value[0], 'main');
   assert.deepEqual(report.conflicts, []);

@@ -10,7 +10,7 @@
 //   }
 // 설정 파일이 없으면 게이트는 비활성(무해)이다.
 // Claude Code·Codex 모두 Stop 입력에 session_id·cwd·stop_hook_active·transcript_path를 같은 이름으로 준다.
-//   transcript 파일 형식이 다른 앱에서는 maxTokens 합산이 0이 될 수 있다 — 그 경우 예산 검사는 동작하지 않는다.
+//   지원하지 않는 transcript 형식은 미측정이다. maxTokens를 설정했다면 보고 후 종료한다.
 // maxTokens는 세션 transcript 누적 합계 기준이다(루프 1회분 예산이 아니다) — 매 턴의 input_tokens에
 //   대화 전체가 다시 들어가므로 세션이 길수록 초선형으로 커진다. "이 세션을 여기서 끊는다"는 상한으로
 //   잡는다. 작업 1건의 예상 토큰으로 잡으면 정상 작업 중에 매 턴 발동한다.
@@ -19,47 +19,98 @@
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // transcript JSONL의 누적 토큰 사용량(입력+출력+캐시 생성)을 합산한다.
-export const sumTranscriptTokens = (jsonl) => {
+export const readTranscriptUsage = (jsonl) => {
   let total = 0;
+  let records = 0;
+  let invalid = false;
   for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue;
     try {
       const usage = JSON.parse(line)?.message?.usage;
       if (usage) {
-        total +=
-          (usage.input_tokens ?? 0) +
-          (usage.output_tokens ?? 0) +
-          (usage.cache_creation_input_tokens ?? 0);
+        const values = [usage.input_tokens, usage.output_tokens, usage.cache_creation_input_tokens];
+        if (!values.some(value => value != null) || values.some(value => value != null && (!Number.isSafeInteger(value) || value < 0))) {
+          invalid = true;
+          continue;
+        }
+        records++;
+        total += values.reduce((sum, value) => sum + (value ?? 0), 0);
       }
     } catch {
-      // 손상된 줄은 건너뛴다 — 토큰 집계는 근사치여도 안전장치로 충분하다
+      invalid = true;
     }
   }
-  return total;
+  const status = invalid || !Number.isSafeInteger(total) ? 'invalid' : records ? 'measured' : jsonl.trim() ? 'unsupported' : 'empty';
+  return { status, total: status === 'measured' ? total : null, records };
 };
+export const sumTranscriptTokens = jsonl => readTranscriptUsage(jsonl).total;
+
+const outputDigest = output => createHash('sha256').update(output
+  .replace(/\bline\s+\d+/gi, 'line #')
+  .replace(/\b\d+(?:\.\d+)?\s*(?:ms|milliseconds|seconds)\b/gi, '#ms')
+  .replace(/\s+/g, ' ').trim()).digest('hex');
+
+export function normalizeChecks(checks) {
+  if (!Array.isArray(checks)) throw new Error('checks는 배열이어야 합니다');
+  return checks.map(check => {
+    if (!check || typeof check.command !== 'string' || !check.command.trim()) throw new Error('검증 실행 명령이 필요합니다');
+    const item = { name: String(check.name ?? check.command).trim(), command: check.command.trim() };
+    if (!item.name) throw new Error('검증 이름이 필요합니다');
+    if (check.cwd != null) {
+      if (typeof check.cwd !== 'string' || !check.cwd || check.cwd.includes('\\') || isAbsolute(check.cwd) || /^[a-z]:/i.test(check.cwd) || check.cwd.split('/').includes('..')) throw new Error('cwd는 프로젝트 안의 상대 경로여야 합니다');
+      item.cwd = check.cwd;
+    }
+    if (check.workspace != null) {
+      if (typeof check.workspace !== 'string' || !check.workspace.trim()) throw new Error('workspace 이름이 필요합니다');
+      item.workspace = check.workspace;
+    }
+    if (check.timeoutMs != null) {
+      if (!Number.isSafeInteger(check.timeoutMs) || check.timeoutMs <= 0 || check.timeoutMs > 300000) throw new Error('timeoutMs는 1~300000 사이의 정수여야 합니다');
+      item.timeoutMs = check.timeoutMs;
+    }
+    if (check.required != null) {
+      if (typeof check.required !== 'boolean') throw new Error('required는 boolean이어야 합니다');
+      item.required = check.required;
+    }
+    return item;
+  });
+}
+
+export function executeCheck(check, root = process.cwd()) {
+  const started = Date.now();
+  try {
+    [check] = normalizeChecks([check]);
+    root = realpathSync(root);
+    const cwd = realpathSync(resolve(root, check.cwd ?? '.'));
+    const path = relative(root, cwd);
+    if (isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`)) throw new Error('검증 cwd가 프로젝트 밖을 가리킵니다');
+    execSync(check.command, { stdio: 'pipe', timeout: check.timeoutMs ?? 300000, cwd, maxBuffer: 16 * 1024 * 1024 });
+    return { name: check.name, cwd: check.cwd ?? '.', state: 'pass', durationMs: Date.now() - started, exitCode: 0 };
+  } catch (error) {
+    const output = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
+    return { name: check?.name, cwd: check?.cwd ?? '.', state: 'fail', required: check?.required !== false, durationMs: Date.now() - started,
+      exitCode: error.status ?? null, signal: error.signal ?? null,
+      output: output.length > 2000 ? `${output.slice(0, 500)}\n…\n${output.slice(-1500)}` : output,
+      digest: outputDigest(output) };
+  }
+}
 
 // 검증 명령을 전부 실행하고 실패만 수집한다 (전부 실행해야 실패 전체가 피드백된다).
 export const runChecks = ({ checks, cwd }) => {
   const failures = [];
   for (const check of checks) {
-    try {
-      execSync(check.command, { stdio: 'pipe', timeout: 300000, cwd });
-    } catch (error) {
-      failures.push({
-        name: check.name,
-        output: `${error.stdout ?? ''}${error.stderr ?? ''}`.slice(0, 2000),
-      });
-    }
+    const result = executeCheck(check, cwd);
+    if (result.state === 'fail') failures.push(result);
   }
   return failures;
 };
 
 // 실패 시그니처 — "같은 에러가 반복되는가"를 판정하는 지문. 실패한 검증 이름 + 출력 전체를
-// 정규화(숫자→#, 공백 압축)해 만든다. 첫 줄만 쓰면 안 된다 — npm의 "> pkg@1.0.0 test" 배너처럼
+// 정규화(줄 번호·소요 시간, 공백 압축)해 만든다. 첫 줄만 쓰면 안 된다 — npm의 "> pkg@1.0.0 test" 배너처럼
 // 고정된 첫 줄이 모든 실패를 동일 시그니처로 만들어, 수렴 중인 루프를 막힘으로 오판한다.
 // 전체 출력이어야 실패한 테스트 목록의 변화(= 진전)가 시그니처 변화로 감지된다.
 // 숫자 정규화는 줄 번호·소요 시간 변동에 시그니처가 흔들리지 않게 하기 위함이다.
@@ -67,11 +118,7 @@ export const failureSignature = (failures) =>
   failures
     .map(
       (failure) =>
-        `${failure.name}:${(failure.output ?? '')
-          .replace(/\d+/g, '#')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 500)}`,
+        `${failure.name}:${failure.cwd ?? '.'}:${failure.exitCode ?? ''}:${failure.signal ?? ''}:${failure.digest ?? outputDigest(failure.output ?? '')}`,
     )
     .sort()
     .join('|');
@@ -81,6 +128,7 @@ export const failureSignature = (failures) =>
 // (3) 실패 + 여력 있음 = 차단하고 계속.
 // sameFailureStreak: 현재 실패 시그니처가 직전까지 연속으로 몇 번 나왔는가(현재 포함).
 export const decide = ({ config, iterations, tokensUsed, failures, sameFailureStreak = 1 }) => {
+  failures = failures.filter(failure => failure.required !== false);
   if (failures.length === 0) return { action: 'allow' };
 
   const overTokens = config.maxTokens != null && tokensUsed >= config.maxTokens;
@@ -139,6 +187,7 @@ if (isDirectRun) {
   let config;
   try {
     config = JSON.parse(readFileSync(configPath, 'utf8'));
+    config.checks = normalizeChecks(config.checks);
     if (!Array.isArray(config.checks) || config.checks.length === 0 ||
         config.checks.some(check => !check || typeof check.name !== 'string' ||
           typeof check.command !== 'string' || !check.command.trim())) {
@@ -160,16 +209,21 @@ if (isDirectRun) {
   if (config.maxTokens != null) {
     try {
       if (!input.transcript_path) throw new Error('transcript 없음');
-      tokensUsed = sumTranscriptTokens(readFileSync(input.transcript_path, 'utf8'));
-    } catch {
+      const usage = readTranscriptUsage(readFileSync(input.transcript_path, 'utf8'));
+      if (usage.status !== 'measured') throw new Error(`transcript ${usage.status}`);
+      tokensUsed = usage.total;
+    } catch (error) {
       writeSessionState({ ...sessionState, wrapup: true });
-      console.error('토큰 사용량을 확인할 수 없습니다. 예산 보호를 보장할 수 없어 중단합니다. 사유를 보고하고 종료하세요.');
+      console.error(`토큰 사용량을 확인할 수 없습니다 (${error.message}). 예산 보호를 보장할 수 없어 중단합니다. 사유를 보고하고 종료하세요.`);
       process.exit(2);
     }
   }
   const iterations = sessionState.iterations ?? 0;
 
-  const failures = runChecks({ checks: config.checks ?? [], cwd: input.cwd });
+  const projectRoot = basename(hookDir) === 'hooks' && basename(dirname(hookDir)) === '.agents' ? resolve(hookDir, '../..') : input.cwd;
+  const results = runChecks({ checks: config.checks ?? [], cwd: projectRoot });
+  for (const warning of results.filter(result => result.required === false)) console.error(`선택 검사 실패: ${warning.name}\n${warning.output}`);
+  const failures = results.filter(result => result.required !== false);
   const signature = failureSignature(failures);
   const sameFailureStreak =
     failures.length > 0 && signature === sessionState.signature
