@@ -281,7 +281,7 @@ test('기록 요구 + 커밋 허용을 확정하면 훅 설정·규칙·양식�
   applyCompose(plan);
   assert.deepEqual(readJson(root, '.agents/hooks/blockGitMutation.config.json'), { allowCommitPush: true, requireHistoryDoc: true, historyBase: 'main' });
   assert.ok(existsSync(join(root, 'docs/templates/history.md')), '기록을 선택하면 양식(basic)을 설치한다');
-  assert.match(readAt(root, 'docs/harness-rules.md'), /작업 기록: PR마다 `docs\/history\/` 기록 한 건을 남긴다\(기록 없는 push는 훅이 차단\)/);
+  assert.match(readAt(root, 'docs/harness-rules.md'), /작업 기록: 버그·핫픽스·기능·호환성 변경·정책 변경 PR마다 `docs\/history\/` 기록 한 건과 색인 한 줄을 남긴다\(훅이 커밋 타입으로 판정해 기록 없는 push를 차단\)/);
   assert.ok(diagnose(root).notes.some(note => /지침의 금지 문구/.test(note)), '지침과 다른 팀 확정은 안내로 남긴다');
   write(root, '.agents/hooks/verifierGate.config.json', '{"checks":[{"name":"test","command":"npm test"}]}\n');
   const gateOff = createCompose(root, { set: { 'verification.gate': 'rules' } });

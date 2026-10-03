@@ -74,6 +74,7 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
   "allowCommitPush": true,
   "requireHistoryDoc": true,
   "historyBase": "origin/main",
+  "historyCommitTypes": ["fix", "hotfix", "feat", "policy"],
   "blockAttribution": false
 }
 ```
@@ -83,7 +84,10 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 | allowCommitPush | 기본 false. 영구 허용은 사용자가 요청한 경우에만 설정 |
 | requireHistoryDoc | commit·push 허용 시 기존 설정에서 생략 시 true, 새 minimal 설치는 false를 명시. push할 변경에 `docs/history/*.md`를 요구 |
 | historyBase | 생략 시 dev·main·master 계열을 탐색. 프로젝트 기준 브랜치를 지정하는 편이 명확함 |
+| historyCommitTypes | 기록을 요구할 커밋 타입. 생략 시 `fix`·`hotfix`·`feat`·`policy`. `["*"]`는 모든 push에 요구(5.1.0 이하 동작). 문자열 배열이 아니면 모든 push에 요구 |
 | blockAttribution | 기본 false. true이면 Claude 작성자 표기 패턴을 차단 |
+
+기록 게이트는 base 이후 커밋(병합 제외)의 제목을 Conventional Commits로 읽는다. 대상 타입, 호환성 변경(`타입!` 또는 `BREAKING CHANGE:` 꼬리말), 형식을 읽을 수 없는 커밋 중 하나라도 있으면 `docs/history/`의 기록 문서를 요구한다. 색인 `docs/history/README.md`만 바꾼 것은 기록으로 치지 않는다. 대상 커밋이 없으면 기록 없이도 push한다.
 
 설정 파일이 없거나 파싱에 실패하면 커밋·푸시 예외는 비활성이다. 기록 기준을 찾지 못하면 기록 게이트는 통과하므로 승인·보안 장치로 사용하지 않는다. 기록 게이트의 git 명령은 훅 입력의 `cwd`에서 실행한다. 기존 표기 제한을 유지하려면 업데이트 전에 `blockAttribution: true`를 설정한다.
 

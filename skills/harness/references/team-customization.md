@@ -38,7 +38,7 @@
 { "protectedBranches": ["main", "release"] }
 
 // .agents/hooks/blockGitMutation.config.json
-{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "origin/main" }
+{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "origin/main", "historyCommitTypes": ["fix", "hotfix", "feat", "policy"] }
 ```
 
 설정 파일에 토큰·비밀번호를 넣지 않는다. 팀 묶음(§7)으로 다른 저장소에 복사되는 파일이다.

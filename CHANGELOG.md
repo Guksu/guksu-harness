@@ -11,6 +11,22 @@
 - CLI의 YAML/glob 처리를 위해 `yaml`·`picomatch` 의존성을 추가했다. 소스에서 CLI·테스트를 실행할 때 `npm ci`가 필요하다. 배포되는 훅·설치 관리자·구조 검사기는 외부 의존성이 없다.
 - **업데이트:** `update --dry-run`에서 Codex 관리 등록 변경을 확인한다. 모노레포 검증 명세는 `diagnose` → `compose --dry-run` → `compose`로 생성한다. 기존 수동 등록·팀 명령·하위 지침은 유지한다. 버전 증가·npm 배포·실제 앱 통합 및 모델 평가는 이 작업에 포함하지 않는다.
 
+작업 기록 대상을 좁히고 색인을 추가했다. 모든 PR에 기록을 남기면 나중에 찾을 때 전체 기록을 읽어야 해서 토큰이 많이 든다. 작업 기록: `docs/history/2026-09-30-history-record-scope.md`.
+
+### Added
+
+- 작업 기록 색인 `docs/history/README.md`와 양식 `skills/history/assets/templates/history-index.md`. 기록 하나에 한 줄(날짜·유형·버전·제목·요약)을 적는다. history 스킬은 기록을 찾을 때 색인을 먼저 읽는다.
+- 기록 양식 머리 표에 "유형" 행(버그 / 핫픽스 / 기능 / 호환성 변경 / 정책).
+- `blockGitMutation.config.json`의 `historyCommitTypes`. 기록을 요구할 커밋 타입 목록이다. 생략하면 `fix`·`hotfix`·`feat`·`policy`.
+- 구조 검사: 색인이 있으면 색인에 없는 기록 문서를 경고한다.
+
+### Changed
+
+- history 스킬: 기록 대상을 버그·핫픽스·기능·호환성 변경·정책 변경으로 한정. 그 밖의 작업은 사용자가 요청할 때만 기록한다.
+- 기록 게이트(`requireHistoryDoc`): base 이후 커밋(병합 제외)에 대상 타입, 호환성 변경(`타입!`·`BREAKING CHANGE:`), 형식을 읽을 수 없는 커밋이 있을 때만 기록 문서를 요구한다. 색인만 바꾼 것은 기록으로 치지 않는다.
+- compose의 `records.history: required` 안내 문구를 새 기준에 맞췄다. retro는 색인으로 기록을 고르고, 기록 대상이 아닌 작업은 커밋·PR 본문을 보조 근거로 쓴다.
+- **업데이트 주의:** `requireHistoryDoc`이 켜진 프로젝트는 `update` 뒤 `docs`·`refactor`·`test`·`chore` 커밋만 있는 push에 기록을 요구하지 않는다. 이전처럼 모든 push에 요구하려면 `"historyCommitTypes": ["*"]`를 설정한다. 새로 막히는 경우는 하나다. 대상 커밋이 있는데 `docs/history/`에서 색인 `README.md`만 바꾼 push다.
+
 ## [5.1.0] - 2026-09-26
 
 팀 맞춤 구성의 첫 MVP: 저장소를 진단하고 팀만 아는 결정을 묻고, 한 명세에서 설정·규칙·포인터를 만들고, 어디까지 작동하는지 네 상태로 보여 준다. 설계와 인수 시나리오: `docs/design/2026-09-26-team-compose.md`. 작업 기록: `docs/history/2026-09-26-team-compose-mvp.md`, `docs/history/2026-09-26-release-5.1.0.md`. 기존 명령의 동작은 바뀌지 않아 부 버전을 올렸다.

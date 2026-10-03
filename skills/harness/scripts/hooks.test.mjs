@@ -6,7 +6,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isGitMutation, judgeGitCommand, hasHistoryChange } from '../assets/hooks/blockGitMutation.mjs';
+import {
+  isGitMutation,
+  judgeGitCommand,
+  hasHistoryChange,
+  findHistoryTrigger,
+  normalizeHistoryCommitTypes,
+  DEFAULT_HISTORY_COMMIT_TYPES,
+} from '../assets/hooks/blockGitMutation.mjs';
 import { referencesSecret } from '../assets/hooks/blockSecretAccess.mjs';
 import {
   decide,
@@ -190,6 +197,43 @@ test('기록 게이트 — 변경 경로에서 기록 문서를 식별한다', (
   // 디렉토리만 만들고 기록을 안 쓴 경우, 다른 확장자는 기록이 아니다
   assert.equal(hasHistoryChange(['docs/history/.gitkeep']), false);
   assert.equal(hasHistoryChange([]), false);
+  assert.equal(hasHistoryChange(['docs/history/README.md']), false, '색인만 고친 것은 기록이 아니다');
+  assert.equal(hasHistoryChange(['docs/history/README.md', 'docs/history/2026-08-29-login.md']), true);
+});
+
+test('기록 대상 판정 — 커밋 타입으로 기록이 필요한 push를 고른다', () => {
+  const t = (messages, types) => findHistoryTrigger(messages, types);
+  assert.deepEqual(DEFAULT_HISTORY_COMMIT_TYPES, ['fix', 'hotfix', 'feat', 'policy']);
+  assert.equal(t(['fix: 로그인 실패']).reason, 'type');
+  assert.equal(t(['fix(auth): 토큰 갱신']).reason, 'type', '범위 표기');
+  assert.equal(t(['hotfix: 결제 중단']).reason, 'type');
+  assert.equal(t(['feat: 검색 추가']).reason, 'type');
+  assert.equal(t(['policy: 커밋 허용 정책 변경']).reason, 'type');
+  assert.equal(t(['Fix: 대문자 타입']).reason, 'type', '타입 대소문자 무시');
+  assert.equal(t(['refactor!: 설정 파일 구조 변경']).reason, 'breaking');
+  assert.equal(t(['refactor: 설정 구조\n\nBREAKING CHANGE: 키 이름 변경']).reason, 'breaking');
+  assert.equal(t(['작업 중']).reason, 'unknown-format', '형식을 읽을 수 없으면 기록 대상');
+  assert.equal(t(['docs : README 수정']), null, '콜론 앞 공백 허용');
+  assert.equal(t(['docs: 오타', 'refactor: 함수 분리', 'test: 케이스 추가', 'chore: 의존성']), null);
+  assert.equal(t([]), null, '올릴 커밋이 없으면 요구하지 않는다');
+  const mixed = t(['docs: 오타', 'fix: 경계값']);
+  assert.deepEqual(mixed, { reason: 'type', subject: 'fix: 경계값' });
+  assert.equal(t(['docs: 오타'], ['*']).reason, 'all', '["*"]는 모든 push에 요구');
+  assert.equal(t(['fix: x'], ['feat']), null, '팀이 대상 타입을 줄일 수 있다');
+});
+
+test('기록 대상 설정값 — 생략은 기본값, 잘못된 값은 모든 push에 요구', () => {
+  assert.deepEqual(normalizeHistoryCommitTypes(undefined), { types: DEFAULT_HISTORY_COMMIT_TYPES });
+  assert.deepEqual(normalizeHistoryCommitTypes([' Feat ', 'fix']), { types: ['feat', 'fix'] });
+  assert.deepEqual(normalizeHistoryCommitTypes('fix'), { types: ['*'], invalid: true });
+  assert.deepEqual(normalizeHistoryCommitTypes([1]), { types: ['*'], invalid: true });
+  assert.deepEqual(normalizeHistoryCommitTypes(['']), { types: ['*'], invalid: true });
+});
+
+test('기록 게이트 — 기록 대상 커밋이 없으면 기록 없는 push도 허용한다', () => {
+  const opt = { allowCommitPush: true, requireHistoryDoc: true, historyChanged: false };
+  assert.equal(judgeGitCommand('git push -u origin docs/x', { ...opt, historyRequired: false }).blocked, false);
+  assert.equal(judgeGitCommand('git push -u origin fix/x', { ...opt, historyRequired: true }).rule, 'history-missing');
 });
 
 test('git 읽기 명령은 허용한다', () => {
@@ -361,6 +405,45 @@ test('git 훅 CLI — 기록 게이트는 stdin의 cwd에서 git을 실행한다
   git('add', '.'); git('commit', '-q', '-m', 'history');
   const present = await runGitMutationCli({ config, command: 'git push -u origin feat/x', cwd: repo });
   assert.equal(present.status, 0, present.stderr);
+  await rm(repo, { recursive: true, force: true });
+});
+
+test('git 훅 CLI — 기록 게이트는 base..HEAD 커밋 타입으로 기록 대상을 판정한다', async () => {
+  const repo = await mkdtemp(join(tmpdir(), 'guksu-history-type-'));
+  const git = (...args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+  const commit = async (file, message) => {
+    await writeFile(join(repo, file), file);
+    git('add', '.');
+    git('commit', '-q', '-m', message);
+  };
+  git('init', '-q', '-b', 'main');
+  await commit('a.txt', 'init');
+  git('switch', '-q', '-c', 'docs/x');
+  await commit('b.txt', 'docs: 안내 문구 수정');
+  const config = '{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "main" }';
+  const docsOnly = await runGitMutationCli({ config, command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(docsOnly.status, 0, `docs 커밋만 있으면 기록이 없어도 통과한다: ${docsOnly.stderr}`);
+
+  const all = await runGitMutationCli({ config: '{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "main", "historyCommitTypes": ["*"] }', command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(all.status, 2, '["*"]는 모든 push에 기록을 요구한다');
+
+  const invalid = await runGitMutationCli({ config: '{ "allowCommitPush": true, "requireHistoryDoc": true, "historyBase": "main", "historyCommitTypes": "fix" }', command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(invalid.status, 2, '잘못된 설정은 모든 push에 요구한다');
+  assert.ok(invalid.stderr.includes('historyCommitTypes'), invalid.stderr);
+
+  await commit('c.txt', 'fix(login): 빈 비밀번호 허용 결함');
+  const fix = await runGitMutationCli({ config, command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(fix.status, 2, 'fix 커밋이 있으면 기록을 요구한다');
+  assert.ok(fix.stderr.includes('fix(login): 빈 비밀번호 허용 결함'), fix.stderr);
+
+  await mkdir(join(repo, 'docs', 'history'), { recursive: true });
+  await commit('docs/history/README.md', 'docs: 기록 색인');
+  const indexOnly = await runGitMutationCli({ config, command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(indexOnly.status, 2, '색인만 추가하면 기록으로 인정하지 않는다');
+
+  await commit('docs/history/2026-01-01-login.md', 'docs: 작업 기록');
+  const recorded = await runGitMutationCli({ config, command: 'git push -u origin docs/x', cwd: repo });
+  assert.equal(recorded.status, 0, recorded.stderr);
   await rm(repo, { recursive: true, force: true });
 });
 

@@ -93,7 +93,7 @@ export const decisionCatalog = {
     options: [
       { value: 'none', label: '요구하지 않음 (기본)', impact: '사용자가 요청할 때만 기록한다. 양식을 설치하지 않는다.' },
       { value: 'optional', label: '양식만 준비', impact: 'history·handoff 양식을 설치한다(basic 프로필). 작성 의무는 없다.' },
-      { value: 'required', label: 'PR마다 필수', impact: '양식을 설치하고, 커밋·푸시가 허용되면 기록 없는 push를 훅이 차단한다(requireHistoryDoc).' },
+      { value: 'required', label: '대상 PR마다 필수', impact: '양식을 설치하고, 커밋·푸시가 허용되면 버그·핫픽스·기능·호환성 변경·정책 커밋이 있는데 기록이 없는 push를 훅이 차단한다(requireHistoryDoc).' },
     ] },
 };
 export const decisionKeys = Object.keys(decisionCatalog);
@@ -392,7 +392,7 @@ export function diagnose(project) {
   }
 
   const effectiveRequire = gitConfig.data?.allowCommitPush === true ? gitConfig.data.requireHistoryDoc !== false : gitConfig.data?.requireHistoryDoc === true;
-  const historyDocs = listDir(root, 'docs/history').filter(name => name.endsWith('.md'));
+  const historyDocs = listDir(root, 'docs/history').filter(name => name.endsWith('.md') && name !== 'README.md');
   if (historyLines.length) fact('records.guidance', `지침에 작업 기록 의무 문구가 있다: "${historyLines[0].sentence.slice(0, 60)}"`, historyLines.map(item => item.line));
   let records;
   if (gitConfig.data && gitConfig.data.requireHistoryDoc === false && historyLines.length && !gitSelf) {
@@ -517,7 +517,7 @@ export function renderPolicySection(decisions, { profile } = {}) {
   lines.push(`- 종료 검사 훅(verifierGate): ${d('verification.gate').value === 'stop-hook' ? '사용 — 위 필수 명령이 실패하면 턴 종료를 막는다' : '사용 안 함 — 규칙으로만 요구한다'}. ${tag(d('verification.gate'))}`);
   lines.push('', '### 기록·인계');
   const history = d('records.history').value;
-  const historyText = history === 'required' ? `PR마다 ${code('docs/history/')} 기록 한 건을 남긴다${allow ? '(기록 없는 push는 훅이 차단)' : '(커밋·푸시가 차단되어 훅 게이트는 동작하지 않음)'}` : history === 'optional' ? `양식은 준비하되 작성 의무는 없다. 사용자가 요청할 때 ${code('docs/history/')}에 남긴다` : '요구하지 않는다. 사용자가 요청할 때만 작성한다';
+  const historyText = history === 'required' ? `버그·핫픽스·기능·호환성 변경·정책 변경 PR마다 ${code('docs/history/')} 기록 한 건과 색인 한 줄을 남긴다${allow ? '(훅이 커밋 타입으로 판정해 기록 없는 push를 차단)' : '(커밋·푸시가 차단되어 훅 게이트는 동작하지 않음)'}` : history === 'optional' ? `양식은 준비하되 작성 의무는 없다. 사용자가 요청할 때 ${code('docs/history/')}에 남긴다` : '요구하지 않는다. 사용자가 요청할 때만 작성한다';
   lines.push(`- 작업 기록: ${historyText}. ${tag(d('records.history'))}`);
   if (history !== 'none' && profile === 'minimal') lines.push(`- 기록 양식(docs/templates/)은 설치되지 않았다. 필요하면 ${code('npx guksu-harness update --profile basic')}으로 추가한다.`);
   const pending = decisionKeys.filter(key => decisions[key].status === 'pending' && decisionCatalog[key].ask !== false);
