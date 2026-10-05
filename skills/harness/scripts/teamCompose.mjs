@@ -135,7 +135,7 @@ export function diagnose(project) {
     fact('workspaces.projects', `workspace ${workspaces.projects.length}개: ${workspaces.projects.map(item => item.name).join(', ')}`, ['package.json', ...(workspaces.patterns.length ? ['workspace 선언'] : [])]);
     notes.push('하위 지침은 해당 경로에서만 적용한다. workspaces.guidance의 scope와 앱별 지침 로딩 규칙을 따른다.');
     notes.push('앱은 하네스가 설치된 저장소 루트에서 시작하고 패키지 명령은 명세의 cwd로 실행한다. 하위 폴더에서 시작한 앱이 루트 훅 설정을 읽는지는 별도 확인한다.');
-    if (workspaces.runner) notes.push(`${workspaces.runner} 감지: 기존 태스크·캐시 설정을 유지한다. 암묵적 의존 관계를 확인하기 전에는 전체 검증한다.`);
+    if (workspaces.runner) notes.push(`${workspaces.runner} 감지: 기본은 전체 검증이다. --native-runner --affected로 설치된 runner의 그래프를 조회할 수 있다. 진단만으로 프로젝트 플러그인을 실행하지 않는다.`);
   }
 
   // 1. git — 기본 브랜치·브랜치 이름·원격. 원격 URL은 토큰이 들어갈 수 있어 이름만 본다.
@@ -731,7 +731,7 @@ export function planVerification(project, options = {}) {
 }
 
 // 정적 파일 검사, 훅 스크립트 시험(임시 저장소·가짜 명령), 검증 명령 실행(run), 앱 안 실행(항상 확인 필요)은 서로 다른 증거다.
-export async function verify(project, { run = false, affected = false, base = null, workspace = null } = {}) {
+export async function verify(project, { run = false, affected = false, base = null, workspace = null, nativeRunner = false } = {}) {
   const root = resolveProjectRoot(project);
   const items = [];
   const item = (state, area, subject, detail, extra = {}) => items.push({ state, label: STATES[state], area, subject, detail, ...extra });
@@ -812,7 +812,7 @@ export async function verify(project, { run = false, affected = false, base = nu
 
   // 3. 검증 명령 — run일 때만 실행한다. 아니면 확인 필요.
   const checks = decisions?.['verification.checks']?.value ?? [];
-  const plan = verificationPlan(root, normalizeChecks(checks), { affected, base, workspace });
+  const plan = verificationPlan(root, normalizeChecks(checks), { affected, base, workspace, nativeRunner });
   const runtime = runtimeEvidence(root, targetApps, plan.checks);
   const results = [];
   for (const issue of plan.issues) item('unverified', '검증', issue.path, issue.message);
@@ -836,7 +836,7 @@ export async function verify(project, { run = false, affected = false, base = nu
   const pending = decisions ? decisionKeys.filter(key => decisions[key]?.status === 'pending' && decisionCatalog[key].ask !== false) : [];
   const summary = Object.fromEntries(Object.keys(STATES).map(state => [state, items.filter(entry => entry.state === state).length]));
   const verification = { state: plan.issues.length || !run ? 'unverified' : results.some(result => result.state === 'fail' && result.required !== false) ? 'failed' : plan.selection.mode === 'none' && !plan.checks.length ? 'not-applicable' : results.length ? 'passed' : 'unverified',
-    scope: plan.selection, changes: plan.changes, checks: plan.checks, issues: plan.issues, results, runtime };
+    scope: plan.selection, changes: plan.changes, checks: plan.checks, issues: plan.issues, results, runtime, native: plan.native };
   return { schemaVersion: 1, root, bundleVersion: version(), run, items, summary, pending, verification, ok: summary.failed === 0 && (!run || verification.state !== 'unverified') };
 }
 

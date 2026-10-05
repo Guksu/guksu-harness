@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 - **CLI 훅 계측:** 독립된 시험 저장소의 prepare/run/report 도구를 추가했다. 실제 CLI 이벤트·차단 코드·도구 실행·파일/Git 상태를 구분하고, 이벤트 누락·설정 변경·중단은 통합 확인으로 처리하지 않는다. Codex 프로젝트 신뢰와 훅 정의 신뢰 절차도 갱신했다. 기본 테스트는 모델을 호출하지 않는다.
+- **선택적 Nx·Turbo 연동:** `verify --affected --native-runner`로 프로젝트에 설치된 runner의 실제 그래프를 조회한다. Nx의 암묵적 의존 관계, Turbo의 교차 패키지 태스크 의존 관계와 공통 입력을 반영한다. 조회 실패는 전체 검증, 프로젝트 목록 불일치는 미검증으로 처리한다. 기본 진단은 runner를 실행하지 않는다. Nx `project.json`의 명시적 target 후보도 지원한다.
 - **안정화:** 하위 디렉터리·worktree에서 브랜치를 찾고 Codex 훅을 Git 루트 기준으로 실행한다. 5.1의 관리 등록은 update에서 옮기며 사용자 등록은 보존한다. 잘못된 보호 브랜치 배열을 차단하고 빈 배열은 명시적 비활성으로 취급한다. 포인터 추가 후 짧은 기존 지침이 진단에서 사라지는 재적용 문제도 수정했다.
 - **검증:** 지원하지 않는 transcript·빈 파일·손상된 수치를 토큰 0으로 처리하지 않는다. maxTokens를 지정했다면 미측정 사유를 보고하고 종료한다. 실패 시그니처에 전체 출력 해시·cwd·종료 코드·시그널을 사용한다. 의존성 없는 Node 명령은 node_modules가 없어도 실행 후보로 표시한다.
 - **모노레포:** npm/pnpm/Yarn/Bun workspace 발견, 하위 지침 경로 보존, 패키지별 검증 cwd·timeout·필수 여부, `verify --plan`, `--affected --base`, `--workspace`. 역방향 의존 관계와 선행 패키지를 포함하고 공통 설정 변경·비교 실패·Nx/Turbo에서는 전체 검증한다. [지원 범위](skills/harness/references/monorepo.md).

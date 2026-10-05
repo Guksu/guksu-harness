@@ -83,9 +83,10 @@ npx guksu-harness compose
 npx guksu-harness verify --plan --affected --base origin/main
 npx guksu-harness verify --run --affected --base origin/main --json
 npx guksu-harness verify --run --workspace @acme/web
+npx guksu-harness verify --plan --affected --base origin/main --native-runner
 ```
 
-변경 패키지와 이를 사용하는 패키지를 검사하며, 필요한 선행 패키지의 명세에 있는 검사도 포함합니다. 공용 설정·의존 선언 변경, Git 비교 실패, Nx·Turbo 감지는 전체 검증으로 돌아갑니다. `--workspace`는 지정 패키지와 루트 공통 검사만 실행하며 전체 저장소의 통과를 뜻하지 않습니다. 루트 task runner 명령은 그대로 사용할 수 있습니다. [범위·설정·지원 한계](skills/harness/references/monorepo.md)를 참고하세요.
+변경 패키지와 이를 사용하는 패키지를 검사하며, 필요한 선행 패키지의 명세에 있는 검사도 포함합니다. 공용 설정·의존 선언 변경과 Git 비교 실패는 전체 검증으로 돌아갑니다. Nx·Turbo도 기본은 전체 검증이며, `--native-runner`를 명시하면 프로젝트에 설치된 도구의 그래프를 조회합니다. 이 조회는 프로젝트 플러그인을 로드할 수 있습니다. `--workspace`는 지정 패키지와 루트 공통 검사만 실행하며 전체 저장소의 통과를 뜻하지 않습니다. [범위·설정·지원 한계](skills/harness/references/monorepo.md)를 참고하세요.
 
 ## 업데이트와 팀 설정
 
