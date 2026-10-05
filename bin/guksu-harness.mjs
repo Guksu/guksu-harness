@@ -49,11 +49,12 @@ const USAGE = `guksu-harness ${version()} — AI 코딩 에이전트용 프로�
          훅·코어 규칙·등록은 init/update와 같은 방식으로 함께 설치한다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 표시한다.
          --set 예: --set protection.allowCommitPush=false --set records.history=none --set 'verification.checks=["npm test"]'
          --force는 compose 이후 직접 고친 생성 구간·설정 파일을 명세대로 다시 만든다(백업 남김).
-  verify   [프로젝트] [--run|--plan] [--affected --base <ref>] [--workspace <이름>] [--json]
+  verify   [프로젝트] [--run|--plan] [--affected --base <ref> [--native-runner]] [--workspace <이름>] [--json]
          설정 완료 / 실행 확인 / 확인 필요 / 실패로 나눠 보여 준다. 훅 스크립트는 임시 저장소와 가짜 명령으로 시험한다.
          --run이면 명세의 검증 명령을 프로젝트에서 실제 실행한다. 실제 앱 안의 훅 실행은 항상 "확인 필요"다.
          --plan은 명령을 실행하지 않고 대상·이유·cwd를 보여 준다. --affected는 로컬 변경과 사용 패키지를 포함한다.
          --workspace는 지정 패키지만 검사한다. 전체 저장소의 검증 결과로 해석하지 않는다.
+         --native-runner는 로컬 Nx/Turbo의 그래프를 조회한다. 검증 태스크는 실행하지 않지만 프로젝트 플러그인을 로드할 수 있다.
 
 프로젝트를 생략하면 현재 디렉터리다. 세밀한 미리보기·복원은 skills/harness/scripts/harnessManager.mjs의 plan·apply·rollback을 쓴다.`;
 
@@ -67,7 +68,7 @@ const FLAGS = {
   import: { '--from': 'value', '--force': 'flag' },
   diagnose: { '--json': 'flag' },
   compose: { '--app': 'value', '--set': 'list', '--decisions': 'value', '--ci': 'flag', '--force': 'flag', '--dry-run': 'flag', '--json': 'flag' },
-  verify: { '--run': 'flag', '--plan': 'flag', '--affected': 'flag', '--base': 'value', '--workspace': 'value', '--json': 'flag' },
+  verify: { '--run': 'flag', '--plan': 'flag', '--affected': 'flag', '--base': 'value', '--workspace': 'value', '--native-runner': 'flag', '--json': 'flag' },
 };
 
 export function parseArgs(argv) {
@@ -224,7 +225,8 @@ export async function run(argv) {
     if (options['--run'] && options['--plan']) throw new Error('--run과 --plan은 함께 사용할 수 없습니다');
     if (options['--affected'] && options['--workspace']) throw new Error('--affected와 --workspace는 함께 사용할 수 없습니다');
     if (options['--base'] && !options['--affected']) throw new Error('--base는 --affected와 함께 사용합니다');
-    const selection = { affected: options['--affected'] === true, base: options['--base'], workspace: options['--workspace'] };
+    if (options['--native-runner'] && !options['--affected']) throw new Error('--native-runner는 --affected와 함께 사용합니다');
+    const selection = { affected: options['--affected'] === true, base: options['--base'], workspace: options['--workspace'], nativeRunner: options['--native-runner'] === true };
     if (options['--plan']) {
       const plan = planVerification(project, selection);
       if (options['--json']) console.log(JSON.stringify(plan, null, 2));
@@ -233,6 +235,7 @@ export async function run(argv) {
         console.log(`대상: ${plan.selection.projects.join(', ') || '(루트 또는 변경 없음)'}`);
         if (plan.selection.prerequisites.length) console.log(`선행 패키지: ${plan.selection.prerequisites.join(', ')}`);
         console.log(`근거: ${JSON.stringify(plan.selection.reasons)}`);
+        if (plan.native) console.log(`runner: ${plan.native.runner} ${plan.native.version ?? ''} · ${plan.native.status}${plan.native.reason ? ` · ${plan.native.reason}` : ''}`);
         for (const check of plan.checks) console.log(`  ${check.name}: ${check.command} (cwd: ${check.cwd ?? '.'})`);
         for (const issue of plan.issues) console.log(`  확인 필요: ${issue.path} — ${issue.message}`);
       }

@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
 import picomatch from 'picomatch';
+import { nativeAffected } from './nativeRunners.mjs';
 
 const slash = value => value.split(sep).join('/');
 const ignored = new Set(['node_modules', '.git', '.agents', '.codex', '.claude', '.next', '.turbo', '.nx', 'coverage']);
@@ -46,7 +47,7 @@ export function discoverWorkspaces(project) {
     issues.push({ path: 'workspaces', message: 'workspace 경로는 저장소 안의 glob 배열이어야 합니다' });
     patterns = [];
   }
-  const runner = existsSync(join(root, 'nx.json')) ? 'nx' : existsSync(join(root, 'turbo.json')) ? 'turbo' : null;
+  const runner = existsSync(join(root, 'nx.json')) ? 'nx' : existsSync(join(root, 'turbo.json')) || existsSync(join(root, 'turbo.jsonc')) ? 'turbo' : null;
   const packageManager = /^(npm|pnpm|yarn|bun)@/.exec(pkg.packageManager ?? '')?.[1]
     ?? (pnpm || existsSync(join(root, 'pnpm-lock.yaml')) ? 'pnpm' : existsSync(join(root, 'yarn.lock')) ? 'yarn' : existsSync(join(root, 'bun.lock')) || existsSync(join(root, 'bun.lockb')) ? 'bun' : 'npm');
   const enabled = patterns.length > 0 || runner === 'nx';
@@ -62,13 +63,18 @@ export function discoverWorkspaces(project) {
     for (const app of ['AGENTS.md', 'CLAUDE.md']) {
       if (entries.some(entry => entry.name === app && entry.isFile())) guidance.push({ path: path ? `${path}/${app}` : app, scope: path || '.', app: app === 'AGENTS.md' ? 'codex' : 'claude' });
     }
-    if (path && matches(path) && entries.some(entry => entry.name === 'package.json' && entry.isFile())) {
-      const manifest = read(`${path}/package.json`);
+    const hasPackage = entries.some(entry => entry.name === 'package.json' && entry.isFile());
+    const hasNxProject = runner === 'nx' && entries.some(entry => entry.name === 'project.json' && entry.isFile());
+    if (path && ((matches(path) && hasPackage) || hasNxProject)) {
+      const manifest = hasPackage ? read(`${path}/package.json`) : {};
+      const nx = hasNxProject ? read(`${path}/project.json`) : manifest?.nx ?? {};
       if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)) {
-        projects.push({ name: typeof manifest.name === 'string' && manifest.name ? manifest.name : path, path,
+        const name = runner === 'nx' ? nx?.name ?? manifest.name : manifest.name;
+        projects.push({ name: typeof name === 'string' && name ? name : path, path,
           scripts: manifest.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {},
+          ...(runner === 'nx' ? { targets: nx?.targets && typeof nx.targets === 'object' ? nx.targets : {} } : {}),
           dependencyNames: [...new Set(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].flatMap(key => Object.keys(manifest[key] ?? {})))],
-          manifest: `${path}/package.json` });
+          manifest: `${path}/${hasNxProject ? 'project.json' : 'package.json'}` });
       }
     }
     for (const entry of entries) {
@@ -113,6 +119,16 @@ export function discoverWorkspaces(project) {
 
 export function workspaceCommands(workspace) {
   const candidates = ['build', 'typecheck', 'type-check', 'lint', 'test', 'check'];
+  if (workspace.runner === 'nx') {
+    const quote = value => `'${value.replace(/'/g, "'\\''")}'`;
+    return workspace.projects.flatMap(project => candidates.filter(name => project.targets?.[name] || (typeof project.scripts[name] === 'string' && project.scripts[name].trim())).map(name => ({
+      name: `${project.name}:${name}`,
+      command: `${quote(slash(relative(join(workspace.root, project.path), join(workspace.root, 'node_modules/.bin/nx'))))} run ${quote(`${project.name}:${name}`)} --outputStyle=static`,
+      cwd: project.path, workspace: project.name, source: project.targets?.[name] ? `${project.manifest}#${project.manifest.endsWith('/package.json') ? 'nx.targets' : 'targets'}.${name}` : `${project.path}/package.json#scripts.${name}`,
+      runnable: /no test specified|^\s*exit\s+1\s*$/.test(project.scripts[name] ?? '') ? 'placeholder' : 'unknown',
+      note: '프로젝트에 설치된 Nx로 target 실행 — 의존 태스크·캐시는 Nx가 처리',
+    })));
+  }
   return workspace.projects.flatMap(project => candidates.filter(name => typeof project.scripts[name] === 'string' && project.scripts[name].trim()).map(name => ({
     name: `${project.name}:${name}`, command: `${workspace.packageManager} run ${name}`, cwd: project.path, workspace: project.name,
     source: `${project.manifest}#scripts.${name}`, script: project.scripts[name],
@@ -142,7 +158,7 @@ export function selectAffected(workspace, files) {
   for (const file of files) {
     const owner = sorted.find(item => file === item.path || file.startsWith(`${item.path}/`));
     if (!owner) return all(`공통·삭제된 패키지·미분류 경로 변경: ${file}`);
-    if (file === owner.manifest || /(?:^|\/)(?:AGENTS|CLAUDE)\.md$/.test(file)) return all(`의존 관계 또는 규칙 변경: ${file}`);
+    if (file === owner.manifest || /(?:^|\/)(?:(?:AGENTS|CLAUDE)\.md|package\.json|project\.json|turbo\.jsonc?)$/.test(file)) return all(`의존 관계 또는 규칙 변경: ${file}`);
     reasons.set(owner.name, `직접 변경: ${file}`);
   }
   let expanded = true;
@@ -157,7 +173,9 @@ export function selectAffected(workspace, files) {
   return { mode: files.length ? 'affected' : 'none', projects: [...reasons.keys()].sort(), reasons: Object.fromEntries(reasons) };
 }
 
-export function verificationPlan(root, checks, { affected = false, base = null, workspace: selected = null } = {}) {
+export function verificationPlan(root, checks, { affected = false, base = null, workspace: selected = null, nativeRunner = false } = {}) {
+  if (nativeRunner && !affected) throw new Error('--native-runner는 --affected와 함께 사용합니다');
+  if (affected && selected) throw new Error('--affected와 --workspace는 함께 사용할 수 없습니다');
   const inventory = discoverWorkspaces(root);
   const issues = [...inventory.issues];
   let selection = { mode: 'all', projects: inventory.projects.map(item => item.name), reasons: ['전체 검증'] };
@@ -168,6 +186,36 @@ export function verificationPlan(root, checks, { affected = false, base = null, 
       changes = changedFiles(inventory.root, base);
       selection = selectAffected(inventory, changes.files);
     } catch { selection.reasons = ['Git 비교 기준을 확인하지 못해 전체 검증']; }
+  }
+  let native = null;
+  if (nativeRunner && changes && inventory.runner && !issues.length) {
+    const local = selectAffected({ ...inventory, runner: null }, changes.files);
+    const deleted = changes.files.some(file => !existsSync(join(inventory.root, file)));
+    if (local.mode === 'all' || local.mode === 'none' || deleted) {
+      if (deleted) selection.reasons = ['삭제·이동된 경로가 있어 전체 검증'];
+      else selection = local;
+      native = { status: 'skipped', runner: inventory.runner, reason: deleted ? selection.reasons[0] : local.mode === 'none' ? '변경 없음' : '공통 입력 또는 정책 변경' };
+    } else {
+      const result = nativeAffected(inventory, changes, checks);
+      const { projects, ...metadata } = result;
+      native = metadata;
+      if (result.incompleteInventory) issues.push({ path: inventory.runner, message: `${result.reason}. 검증 명세의 프로젝트 범위를 확인하세요` });
+      if (result.status === 'resolved') {
+        inventory.projects = inventory.projects.map(item => ({ ...item, dependencies: [...new Set([...item.dependencies, ...projects.find(project => project.name === item.name).dependencies])] }));
+        const reasons = new Map(result.affected.map(name => [name, `${inventory.runner} affected 판정`]));
+        for (const [name, reason] of Object.entries(local.reasons)) reasons.set(name, reason);
+        // Union local paths and the authoritative graph; never trust a smaller runner answer alone.
+        let expanded = true;
+        while (expanded) {
+          expanded = false;
+          for (const item of inventory.projects) if (!reasons.has(item.name)) {
+            const dependency = item.dependencies.find(name => reasons.has(name));
+            if (dependency) { reasons.set(item.name, `${inventory.runner} 그래프: ${dependency} 사용`); expanded = true; }
+          }
+        }
+        selection = { mode: 'affected', source: inventory.runner, projects: [...reasons.keys()].sort(), reasons: Object.fromEntries(reasons) };
+      } else selection.reasons = [`${inventory.runner} 조회를 확정하지 못해 전체 검증: ${result.reason}`];
+    }
   }
   if (selected) {
     if (!inventory.projects.some(item => item.name === selected)) throw new Error(`workspace를 찾을 수 없습니다: ${selected}`);
@@ -197,5 +245,5 @@ export function verificationPlan(root, checks, { affected = false, base = null, 
   if (!chosen.length && selection.mode !== 'none') issues.push({ path: '.', message: '실행할 검증 명령이 없습니다' });
   // Stable IDs let reports refer to the exact command and scope without conflating packages.
   const planned = chosen.map(check => ({ ...check, id: createHash('sha256').update(JSON.stringify(check)).digest('hex').slice(0, 16) }));
-  return { selection, changes, checks: planned, issues, inventory };
+  return { selection, changes, checks: planned, issues, inventory, native };
 }
