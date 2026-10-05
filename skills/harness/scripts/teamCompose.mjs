@@ -134,6 +134,7 @@ export function diagnose(project) {
   if (workspaces.enabled) {
     fact('workspaces.projects', `workspace ${workspaces.projects.length}개: ${workspaces.projects.map(item => item.name).join(', ')}`, ['package.json', ...(workspaces.patterns.length ? ['workspace 선언'] : [])]);
     notes.push('하위 지침은 해당 경로에서만 적용한다. workspaces.guidance의 scope와 앱별 지침 로딩 규칙을 따른다.');
+    notes.push('앱은 하네스가 설치된 저장소 루트에서 시작하고 패키지 명령은 명세의 cwd로 실행한다. 하위 폴더에서 시작한 앱이 루트 훅 설정을 읽는지는 별도 확인한다.');
     if (workspaces.runner) notes.push(`${workspaces.runner} 감지: 기존 태스크·캐시 설정을 유지한다. 암묵적 의존 관계를 확인하기 전에는 전체 검증한다.`);
   }
 

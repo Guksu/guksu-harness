@@ -169,6 +169,7 @@ codex plugin add guksu-harness@guksu-harness
 - 기록 게이트는 버그·핫픽스·기능·호환성 변경·정책 커밋이 있는 push에만 기록 파일을 요구합니다. 판정은 커밋 제목의 타입으로 하며, 파일 변경 여부만 확인하고 내용 품질은 평가하지 않습니다.
 - 배포 판정기는 전달받은 검사 결과를 판정합니다. 계획에서 빠진 검사를 스스로 발견하지 못합니다.
 - `status/check`는 실제 앱의 훅 실행을 검증하지 않습니다. 앱 버전별 실행 확인이 필요합니다.
+- 실제 CLI 훅은 [임시 저장소 계측 시험](skills/harness/references/hook-probe.md)으로 확인할 수 있습니다. 명시적 실행이 필요하며, 이벤트가 없으면 미확인으로 남깁니다.
 
 [설정과 앱별 확인 방법](skills/harness/references/hooks-and-permissions.md)
 

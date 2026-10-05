@@ -79,6 +79,8 @@ npm test   # = node --test --test-concurrency=1 skills/harness/scripts/*.test.mj
 # 순차 실행 이유: 병합 테스트가 번들 템플릿을 잠시 바꾸므로 파일을 병렬로 돌리면 다른 테스트가 바뀐 번들을 읽는다.
 ```
 
+실제 CLI 호출은 [hook-probe.md](hook-probe.md)의 명시적 `hookProbe.mjs prepare/run/report`로 별도 실행한다. `hookProbe.test.mjs`는 가짜 이벤트로 계측기 자체를 검사하며 모델을 호출하지 않는다. 미실행·손상 로그·설정 변경·도구 실행 증거를 성공으로 오인하지 않는지 확인한다.
+
 `bin/guksu-harness.test.mjs`는 `npx guksu-harness` 명령(init·update·check·eject·status·diagnose·compose·verify)의 실제 실행을 임시 프로젝트에서 검사한다. `teamCompose.test.mjs`는 팀 맞춤 구성의 인수 시나리오 3종(지침 없는 프로젝트, 규칙·CI·테스트가 있는 프로젝트, 지침·설정이 충돌하고 명령을 실행할 수 없는 프로젝트)과 재적용·정책 변경·드리프트 충돌·미리보기 이후 변경·복원을 파일 내용·해시·상태로 검사한다. 모델이 실제로 pending 항목만 묻는지는 `docs/analysis/team-compose-evaluation.md`의 별도 평가다.
 
 `hardening.test.mjs`·`workspaces.test.mjs`는 하위 cwd·worktree·5.1 등록 갱신, usage 미측정, 긴 실패 로그, YAML/glob workspace, 의존 관계 선택·공통 경로 확대·누락된 검증을 검사한다. GPT·Claude 모델 세션용 추가 시나리오는 `docs/analysis/monorepo-harness-evaluation.md`에 있다. `verify --json`에 CLI 버전이 있더라도 실제 앱 훅 통합·모델 성능을 확인한 것으로 해석하지 않는다.
