@@ -25,6 +25,36 @@ PR과 main 변경은 GitHub Actions의 `CI` 검사로 검증합니다. Linux·ma
 - 새 버전으로 업데이트해도 팀이 고친 설정과 규칙은 덮어쓰지 않습니다.
 - 저장소를 읽고 팀에 맞는 설정을 제안합니다. 아래 "팀 맞춤 구성"을 보세요.
 
+## 왜 필요한가: 벤치마크
+
+AI 에이전트는 팀 규칙이 저장소 문서에만 있으면 읽기 전에 행동합니다. 팀 규칙을 `CONTRIBUTING.md`에만 둔 실무형 저장소에서 같은 요청 6종(버그 수정·기능 추가·장애 조사·커밋 업로드·문서 한 줄·CI 수정)을 구성마다 30회씩 Claude Code에 맡겼습니다. 기능은 모든 구성이 해냈지만, 하네스가 없을 때는 규칙 위반이 반복됐습니다.
+
+| Claude Code 2.1.291 · auto 권한 · 각 30회 | 일반 Claude Code | guksu-harness | `CLAUDE.md` 규칙만 |
+|---|---|---|---|
+| 기능 성공 (Opus 5.5 · Sonnet 5.5) | 30/30 · 30/30 | 30/30 · 30/30 | 30/30 · 30/30 |
+| 규칙 준수, Opus 5.5 | 19/30 | 29/30 | 30/30 |
+| 규칙 준수, Sonnet 5.5 | 10/30 | 26/30 | 30/30 |
+| 시간·비용 (일반 대비, Opus · Sonnet) | 기준 | +24% · +20% | +3% · +6% |
+
+일반 Claude Code가 실제로 한 일(Opus 5.5 · Sonnet 5.5, 각 30회):
+
+- main 브랜치에서 바로 파일 수정: 7회 · 15회
+- `.env` 결제 키를 grep으로 출력해 모델 문맥에 노출: 2회 · 0회
+- 커밋에 `Co-Authored-By: Claude` 표기를 넣어 원격에 push: 2회 · 5회
+- 이미 push한 커밋을 합쳐 force push: 1회 · 3회
+
+하네스를 설치하면:
+
+- 규칙이 앱 시작 때 읽히는 위치(`CLAUDE.md` 포인터와 `docs/harness-rules.md`)에 놓입니다. 에이전트는 대부분 먼저 작업 브랜치를 만들고 AI 작성 표기 없이 커밋했습니다.
+- 에이전트가 규칙을 놓친 행동은 훅이 막습니다. Sonnet 5.5에서 main 위 파일 편집 6건, AI 작성 표기가 든 커밋 2건, `.env` 전체를 출력하는 명령 1건을 막았고, 에이전트는 작업 브랜치를 만들거나 표기를 빼고 다시 진행했습니다.
+
+함께 알아 둘 점:
+
+- 같은 규칙을 `CLAUDE.md`에 직접 적은 대조군도 두 모델 모두 30/30이었습니다. 하네스의 위반 5건은 모두 포인터만 보고 규칙 문서를 열지 않은 채 Bash `sed`로 main을 고친 경우입니다. 핵심 규칙을 `CLAUDE.md`에 직접 넣는 것과 Bash 편집 검사를 개선 과제로 두었습니다.
+- 훅 차단과 규칙 확인 때문에 시간·비용이 20~24% 늘었습니다. 그중 일부는 [알려진 결함](docs/analysis/harness-benchmark.md#하네스에서-발견한-문제) 때문입니다.
+
+[측정 방법·전체 결과](docs/analysis/harness-benchmark.md) · [직접 실행하기](benchmark/README.md)
+
 ## 하지 않는 일
 
 - 코드나 문서를 대신 써 주지 않습니다.
@@ -195,6 +225,6 @@ CLI는 workspace YAML과 glob 해석에 `yaml`·`picomatch`를 사용합니다. 
 
 코드·구조 테스트 통과는 모델 생산성 향상의 증거가 아닙니다. [검증 가이드](skills/harness/references/testing-guide.md)와 [축소 전후 평가 명세](docs/analysis/lean-harness-evaluation.md)를 구분해 사용합니다.
 
-하네스를 쓴 Claude Code와 일반 Claude Code를 실무형 프로젝트에서 비교하는 [벤치마크](benchmark/README.md)가 있습니다. 실제 모델을 호출하므로 비용이 들며, 결과는 [벤치마크 결과](docs/analysis/harness-benchmark.md)에 기록합니다.
+하네스를 쓴 Claude Code와 일반 Claude Code를 실무형 프로젝트에서 비교하는 [벤치마크](benchmark/README.md)가 있습니다. 실제 모델을 호출하므로 비용이 듭니다. 요약은 위의 "왜 필요한가: 벤치마크"에, 전체 결과는 [벤치마크 결과](docs/analysis/harness-benchmark.md)에 있습니다.
 
 [변경 이력](CHANGELOG.md) · [라이선스](LICENSE)
