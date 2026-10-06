@@ -1,0 +1,23 @@
+name: Deploy
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Render runtime environment
+        env:
+          PORT: '8080'
+          PAYMENT_BASE_URL: https://api.paygate.example
+          PAYMENT_SECRET_KEY: ${{ secrets.PAYMENT_SECRET_KEY }}
+          PAYMENT_TIMEOUT_MS: '3000'
+          ORDER_DB_URL: ${{ secrets.ORDER_DB_URL }}
+        run: node scripts/render-env.mjs > runtime.env

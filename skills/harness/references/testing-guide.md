@@ -75,9 +75,11 @@ node {이 스킬 경로}/scripts/validateHarness.mjs <프로젝트 경로>
 CLI 회귀 검사는 실제 임시 프로젝트에서 설치·업데이트·충돌·제거·복원, claude·codex·both 앱 선택, v2 설치본 이동을 검증하고, Stop 이벤트 연속 입력과 codex 형식 훅 입력(`CLAUDE_PROJECT_DIR` 없음·`apply_patch`)도 검사한다. 실제 앱 안에서의 훅 실행은 검사하지 않는다 — 앱별 확인 절차는 `hooks-and-permissions.md` §8을 따른다:
 
 ```bash
-npm test   # = node --test --test-concurrency=1 skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs
+npm test   # = node --test --test-concurrency=1 skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs benchmark/*.test.mjs
 # 순차 실행 이유: 병합 테스트가 번들 템플릿을 잠시 바꾸므로 파일을 병렬로 돌리면 다른 테스트가 바뀐 번들을 읽는다.
 ```
+
+하네스와 일반 Claude Code의 작업 결과 비교는 저장소의 `benchmark/`가 맡는다. `benchmark/benchmark.test.mjs`는 가짜 CLI로 준비·실행·채점·보고 흐름을 검사하며, 모범 대본은 두 구성 모두 위반 0건, 규칙을 어기는 대본은 일반 구성에서 위반으로 잡히고 하네스 구성에서는 훅이 막는지 확인한다. 실제 모델 실행은 `node benchmark/run.mjs run`으로 따로 한다.
 
 실제 CLI 호출은 [hook-probe.md](hook-probe.md)의 명시적 `hookProbe.mjs prepare/run/report`로 별도 실행한다. `hookProbe.test.mjs`는 가짜 이벤트로 계측기 자체를 검사하며 모델을 호출하지 않는다. 미실행·손상 로그·설정 변경·도구 실행 증거를 성공으로 오인하지 않는지 확인한다.
 
