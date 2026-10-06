@@ -195,4 +195,6 @@ CLI는 workspace YAML과 glob 해석에 `yaml`·`picomatch`를 사용합니다. 
 
 코드·구조 테스트 통과는 모델 생산성 향상의 증거가 아닙니다. [검증 가이드](skills/harness/references/testing-guide.md)와 [축소 전후 평가 명세](docs/analysis/lean-harness-evaluation.md)를 구분해 사용합니다.
 
+하네스를 쓴 Claude Code와 일반 Claude Code를 실무형 프로젝트에서 비교하는 [벤치마크](benchmark/README.md)가 있습니다. 실제 모델을 호출하므로 비용이 들며, 결과는 [벤치마크 결과](docs/analysis/harness-benchmark.md)에 기록합니다.
+
 [변경 이력](CHANGELOG.md) · [라이선스](LICENSE)

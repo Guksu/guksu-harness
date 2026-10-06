@@ -22,7 +22,7 @@ try {
     'skills/harness/assets/hooks/branchGuard.mjs', '.claude-plugin/plugin.json', '.codex-plugin/plugin.json']) {
     assert.ok(files.includes(required), `Missing package file: ${required}`);
   }
-  assert.ok(!files.some(path => path.endsWith('.test.mjs') || /^(?:node_modules|test|scripts|\.github)\//.test(path)), 'Development files leaked into package');
+  assert.ok(!files.some(path => path.endsWith('.test.mjs') || /^(?:node_modules|test|scripts|benchmark|\.github)\//.test(path)), 'Development files leaked into package');
   const consumer = join(temp, 'consumer');
   mkdirSync(consumer);
   run('npm', ['install', '--prefix', consumer, '--no-audit', '--no-fund', join(temp, packed.filename)], consumer);

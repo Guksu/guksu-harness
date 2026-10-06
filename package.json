@@ -19,7 +19,8 @@
   ],
   "scripts": {
     "check": "node skills/harness/scripts/validateHarness.mjs .",
-    "test": "node --test --test-concurrency=1 skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs",
+    "test": "node --test --test-concurrency=1 skills/harness/scripts/*.test.mjs skills/fe-predeploy/scripts/*.test.mjs bin/*.test.mjs benchmark/*.test.mjs",
+    "bench": "node benchmark/run.mjs",
     "test:package": "node scripts/package-smoke.mjs",
     "prepublishOnly": "npm run check && npm test"
   },
