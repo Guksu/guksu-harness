@@ -1,6 +1,20 @@
 // Runtime evidence is descriptive. A CLI version never proves desktop hook support.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { existsSync, realpathSync } from 'node:fs';
+import { join, relative } from 'node:path';
+
+// File layout only: no Claude process, settings values or user configuration are read.
+export function claudeLaunchContext(root, project) {
+  root = realpathSync(root);
+  const cwd = realpathSync(project);
+  const sameDirectory = cwd === root;
+  return { evidence: 'filesystem-layout', cwd: relative(root, cwd) || '.', recommendedCwd: '.',
+    rootSettingsPresent: existsSync(join(root, '.claude/settings.json')),
+    cwdSettingsPresent: existsSync(join(cwd, '.claude/settings.json')),
+    status: sameDirectory ? 'aligned' : 'attention',
+    reasons: sameDirectory ? [] : ['project-settings-not-inherited'], hookIntegration: 'unverified' };
+}
 
 export function runtimeEvidence(root, apps, checks) {
   const command = (binary, args) => {

@@ -12,6 +12,10 @@
 
 하위 경로에서 시작하면 가장 가까운 workspace 선언 또는 하네스 설치 루트까지 올라간다. 별도 Git 저장소 경계를 넘지 않으며 실제 Git worktree도 지원한다. 탐색은 node_modules·빌드 캐시·심볼릭 링크 디렉터리·중첩 Git 저장소를 제외한다. 디렉터리 탐색 한도는 20,000개다. 잘못된 설정, 중복 이름, 선언된 내부 의존 순환, 탐색 실패는 compose를 차단한다. 단일 프로젝트는 기존 흐름을 유지한다.
 
+이 탐색은 하네스 CLI의 동작이다. Claude는 상위 `CLAUDE.md`를 읽지만 공유 `.claude/settings.json`은 주 작업 디렉터리에서 읽는다. 루트 훅을 쓰려면 Claude를 하네스 설치 루트에서 시작하고 패키지 검사에만 cwd를 지정한다. 세션의 `/cd`로 주 작업 디렉터리를 옮기는 것은 패키지 명령의 cwd와 다르며 설정 소스도 바뀔 수 있다. 하위 설정을 자동 복제하거나 `--settings`로 강제하지 않는다. [Claude 설정 문서](https://code.claude.com/docs/en/settings).
+
+`verify apps/web --json`은 전달한 위치를 Claude의 시작 위치로 가정해 `verification.runtime.apps.claude.launchContext`에 상대 cwd·설정 파일 존재 여부·`project-settings-not-inherited` 경고를 남긴다. 별도 하위 설정이 있어도 루트의 등록이 상속됐다고 판정하지 않는다. 루트의 `aligned`는 경로 일치만 뜻하며 실제 훅 로딩·차단 성공이 아니다. 기본 verify의 종료 코드는 기존 파일·스크립트·검증 명령 기준을 유지한다. 앱을 실행하지 않는 파일 위치 진단과 [실제 시작 훅 시험](hook-probe.md)을 구분한다.
+
 ## 검증 명세
 
 `verification.checks`는 기존 문자열 배열도 받으며 다음 객체 형식을 지원한다:
