@@ -201,6 +201,21 @@ test('결과 폴더는 Git 저장소 밖이어야 한다', () => {
   assert.doesNotThrow(() => assertOutsideRepo(root));
 });
 
+test('여러 모델은 모델별 폴더에 실행하고 합친 보고서를 만든다', async () => {
+  const stepsPath = join(root, 'noop-models.json');
+  writeFileSync(stepsPath, JSON.stringify([{ text: '확인만 했습니다.' }]));
+  const out = join(root, 'bench-models');
+  const result = await runBenchmark({ ...parseOptions(['--tasks', 'readme-port-docs', '--configs', 'vanilla', '--models', 'fake-a,fake-b', '--cli', fakeCli]),
+    out, extraEnv: { FAKE_CLAUDE_STEPS: stepsPath } }, () => {});
+  assert.deepEqual(result.summary.models.sort(), ['fake-a', 'fake-b']);
+  for (const model of ['fake-a', 'fake-b']) assert.ok(existsSync(join(out, model, 'plan.json')));
+  const markdown = readFileSync(join(out, 'report.md'), 'utf8');
+  assert.match(markdown, /## 모델·구성별 요약/);
+  assert.match(markdown, /## fake-b: 구성별 요약/);
+  assert.equal(result.plans.length, 2);
+  assert.throws(() => parseOptions(['--models', ',']), /모델이 필요/);
+});
+
 test('보고서는 구성별 비율과 소표본 경고를 낸다', () => {
   const grade = (config, success, violations) => ({
     run: `t__${config}__r1`, task: 'coupon-negative-total', config, rep: 1, termination: 'completed', success,
@@ -213,6 +228,7 @@ test('보고서는 구성별 비율과 소표본 경고를 낸다', () => {
   const markdown = renderMarkdown(summarize([grade('vanilla', true, ['protected-branch-edited']), grade('harness', true, [])]), { model: 'm', permissionMode: 'auto', reps: 1 });
   assert.match(markdown, /\| 성공 \+ 준수 \| 0\/1 \(0%, 0%–79%\) \| 1\/1 \(100%, 21%–100%\) \|/);
   assert.match(markdown, /탐색 결과/);
+  assert.doesNotMatch(markdown, /모델·구성별 요약/);
   assert.match(markdown, /protected-branch-edited/);
   assert.match(markdown, /\| test·lint를 직접 실행한 실행 \| 0\/1 \| 0\/1 \|/);
 });

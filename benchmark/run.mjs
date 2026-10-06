@@ -18,7 +18,8 @@ export const USAGE = `사용법:
   node benchmark/run.mjs run [옵션]                                       실제 모델을 호출한다(비용 발생)
   node benchmark/run.mjs grade <채점 자료 디렉터리(meta/<ID>)>
   node benchmark/run.mjs regrade <결과 디렉터리>                          저장된 상태로 다시 채점한다(모델 호출 없음)
-  node benchmark/run.mjs report <결과 디렉터리> [--evidence <공유용 JSON>]
+  node benchmark/run.mjs report <결과 디렉터리>... [--out <합친 보고서 폴더>] [--evidence <공유용 JSON>]
+                                                                          여러 폴더(모델별)를 넘기면 합쳐서 보고한다
 
 run 옵션:
   --out <dir>             결과 폴더(Git 저장소 밖). 기본 <tmp>/projects-<시각>. 같은 폴더로 다시 실행하면 채점까지 끝난 칸은 건너뛴다
@@ -26,6 +27,7 @@ run 옵션:
   --configs a,b           ${Object.keys(CONFIGS).join('·')}. 기본 ${DEFAULT_CONFIGS.join(',')}
   --reps N                작업·구성별 반복. 기본 1
   --model <id>            기본 claude-opus-5-5. 실제 응답 모델도 기록한다
+  --models a,b            여러 모델을 차례로 실행한다. 결과는 <out>/<모델>/에, 합친 보고서는 <out>/에 쓴다
   --effort <level>        선택
   --permission-mode <m>   ${PERMISSION_MODES.join('·')}. 기본 auto
   --max-budget-usd <n>    실행당 상한. 기본 5
@@ -50,6 +52,7 @@ export function parseOptions(argv) {
       return argv[++index];
     };
     if (arg === '--isolate-config') options.isolateConfig = true;
+    else if (arg === '--models') options.models = value().split(',').map((model) => model.trim()).filter(Boolean);
     else if (arg === '--tasks') options.tasks = value().split(',').map((id) => findTask(id.trim()).id);
     else if (arg === '--configs') options.configs = value().split(',').map((id) => {
       if (!CONFIGS[id.trim()]) throw new Error(`알 수 없는 구성: ${id}`);
@@ -63,6 +66,8 @@ export function parseOptions(argv) {
     else if (arg.startsWith('--')) throw new Error(`알 수 없는 옵션: ${arg}`);
     else options.positional.push(arg);
   }
+  options.models ??= [options.model];
+  if (!options.models.length) throw new Error('--models에 모델이 필요합니다');
   if (!PERMISSION_MODES.includes(options.permissionMode)) throw new Error(`--permission-mode는 ${PERMISSION_MODES.join('·')} 중 하나입니다`);
   for (const key of ['reps', 'concurrency']) if (!Number.isInteger(options[key])) throw new Error(`--${key}는 정수여야 합니다`);
   return options;
@@ -104,22 +109,47 @@ const brief = (grade) => {
   return `${grade.success ? '성공' : '실패'} · ${violations} · ${Math.round((grade.metrics.wallMs ?? 0) / 1000)}s · ${cost} · ${grade.termination}`;
 };
 
-export function writeReport(outDir, { evidence } = {}) {
-  const plan = existsSync(join(outDir, 'plan.json')) ? readJson(join(outDir, 'plan.json')) : {};
-  const summary = summarize(loadGrades(outDir));
-  writeFileSync(join(outDir, 'report.json'), json({ plan, ...summary }));
-  writeFileSync(join(outDir, 'report.md'), renderMarkdown(summary, plan));
+// outDirs: 결과 폴더 하나 또는 여러 개(모델별). 보고서는 target(기본: 첫 폴더)에 쓴다.
+export function writeReport(outDirs, { evidence, target } = {}) {
+  const dirs = [outDirs].flat();
+  const into = target ?? dirs[0];
+  const plans = dirs.filter((dir) => existsSync(join(dir, 'plan.json'))).map((dir) => readJson(join(dir, 'plan.json')));
+  const summary = summarize(loadGrades(dirs));
+  mkdirSync(into, { recursive: true });
+  writeFileSync(join(into, 'report.json'), json({ plans, ...summary }));
+  writeFileSync(join(into, 'report.md'), renderMarkdown(summary, plans));
   // 공유용 근거: 집계와 실행별 판정만 담는다. stream·관찰 기록·경로·비밀값은 넣지 않는다.
   if (evidence) {
-    const { order, cli, ...shared } = plan;
-    writeFileSync(evidence, json({ schema: 1, evidence: 'harness-benchmark', plan: { ...shared, cli: cli ? basename(cli) : null, runs: order?.length ?? null }, ...summary }));
+    const shared = plans.map(({ order, cli, ...plan }) => ({ ...plan, cli: cli ? basename(cli) : null, runs: order?.length ?? null }));
+    writeFileSync(evidence, json({ schema: 1, evidence: 'harness-benchmark', plans: shared, ...summary }));
   }
-  return { plan, summary };
+  return { plans, summary };
 }
 
+const modelDir = (model) => model.replace(/[^\w.-]+/g, '_');
+const defaultOut = () => join(tmpdir(), `projects-${new Date().toISOString().replace(/[:.]/g, '-')}`);
+
+// 모델이 여럿이면 모델별 폴더에 차례로 실행하고 합친 보고서를 만든다.
 export async function runBenchmark(options, log = console.log) {
+  const models = options.models ?? [options.model];
+  if (models.length === 1) return runModel({ ...options, model: models[0] }, log);
+  const outDir = resolve(options.out ?? defaultOut());
+  mkdirSync(outDir, { recursive: true });
+  assertOutsideRepo(outDir);
+  const dirs = [];
+  for (const model of models) {
+    const dir = join(outDir, modelDir(model));
+    await runModel({ ...options, model, out: dir }, log);
+    dirs.push(dir);
+  }
+  const report = writeReport(dirs, { target: outDir });
+  log(`모델 ${models.length}개 합친 보고서: ${join(outDir, 'report.md')}`);
+  return { outDir, ...report };
+}
+
+async function runModel(options, log) {
   // 기본 폴더 이름도 중립적으로 둔다. 에이전트는 작업 경로를 시스템 프롬프트로 본다.
-  const outDir = resolve(options.out ?? join(tmpdir(), `projects-${new Date().toISOString().replace(/[:.]/g, '-')}`));
+  const outDir = resolve(options.out ?? defaultOut());
   mkdirSync(outDir, { recursive: true });
   assertOutsideRepo(outDir);
   const cells = buildMatrix(options);
@@ -201,19 +231,26 @@ async function main(argv) {
     if (!dir) throw new Error(USAGE);
     console.log(json(gradeRun(realpathSync(dir))));
   } else if (command === 'regrade') {
-    // 채점 기준을 고친 뒤 모델을 다시 부르지 않고 저장된 상태로 다시 채점한다.
+    // 채점 기준을 고친 뒤 모델을 다시 부르지 않고 저장된 상태로 다시 채점한다. 모델별 하위 폴더도 처리한다.
     const [dir] = options.positional;
     if (!dir) throw new Error(USAGE);
-    const metas = join(resolve(dir), 'meta');
-    for (const id of readdirSync(metas)) {
-      if (!id.includes('.aborted-') && existsSync(join(metas, id, 'execution.json'))) console.log(`${id} ${gradeRun(join(metas, id)).run}`);
+    const root = resolve(dir);
+    const dirs = existsSync(join(root, 'meta')) ? [root]
+      : readdirSync(root).map((name) => join(root, name)).filter((sub) => existsSync(join(sub, 'meta')));
+    for (const sub of dirs) {
+      for (const id of readdirSync(join(sub, 'meta'))) {
+        if (!id.includes('.aborted-') && existsSync(join(sub, 'meta', id, 'execution.json'))) console.log(`${id} ${gradeRun(join(sub, 'meta', id)).run}`);
+      }
+      writeReport(sub);
     }
-    writeReport(resolve(dir));
+    if (dirs.length > 1) writeReport(dirs, { target: root });
   } else if (command === 'report') {
-    const [dir] = options.positional;
-    if (!dir) throw new Error(USAGE);
-    writeReport(resolve(dir), { evidence: options.evidence ? resolve(options.evidence) : null });
-    console.log(readFileSync(join(resolve(dir), 'report.md'), 'utf8'));
+    const dirs = options.positional.map((dir) => resolve(dir));
+    if (!dirs.length) throw new Error(USAGE);
+    if (dirs.length > 1 && !options.out) throw new Error('여러 결과 폴더를 합칠 때는 --out <보고서 폴더>가 필요합니다');
+    const target = options.out ? resolve(options.out) : dirs[0];
+    writeReport(dirs, { target, evidence: options.evidence ? resolve(options.evidence) : null });
+    console.log(readFileSync(join(target, 'report.md'), 'utf8'));
   } else {
     console.log(USAGE);
     if (command && command !== 'help') process.exitCode = 1;

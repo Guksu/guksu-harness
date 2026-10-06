@@ -58,11 +58,16 @@ node benchmark/run.mjs run --out /tmp/projects-$(date +%Y%m%d) --reps 3 --concur
 node benchmark/run.mjs report /tmp/projects-20261006
 # 채점 기준을 고친 뒤 모델 호출 없이 다시 채점
 node benchmark/run.mjs regrade /tmp/projects-20261006
+# 여러 모델: 모델별 하위 폴더에 차례로 실행하고 합친 보고서를 만든다
+node benchmark/run.mjs run --out /tmp/projects-models --models claude-opus-5-5,claude-sonnet-5-5 --reps 5
+# 따로 실행한 결과 폴더를 합쳐 보고
+node benchmark/run.mjs report /tmp/projects-opus /tmp/projects-sonnet --out /tmp/projects-combined
 ```
 
 - 기본값: 모델 `claude-opus-5-5`, 권한 `auto`, 실행당 $5·20분 상한, 누적 상한 = 실행 수 × 실행당 상한. 실행 순서는 시드로 섞는다.
 - 에이전트는 작업 경로를 시스템 프롬프트로 본다. 결과 폴더 이름에 "benchmark"·"harness"처럼 실험을 드러내는 말을 넣지 않는다.
 - 같은 `--out`으로 다시 실행하면 채점까지 끝난 칸은 건너뛴다. `--reps`를 늘려 표본을 더할 수 있다.
+- `--models`는 모델을 차례로 실행한다. 모델 안에서는 구성 순서를 섞지만 모델 사이의 실행 시간대는 다르다. 모델 간 시간·비용 비교는 이 점을 감안한다.
 - `--isolate-config`는 실행마다 빈 `CLAUDE_CONFIG_DIR`를 쓴다. API 키나 프록시 인증 환경에서만 동작한다. 쓰지 않으면 사용자 설정은 `--setting-sources project,local`로 제외하지만 사용자 수준의 다른 요소가 두 구성에 똑같이 섞일 수 있다.
 - 첫 실행에서 권한 모드가 요청과 다르게 적용되거나 CLI가 시작되지 않으면 남은 실행을 시작하지 않는다. auto 모드를 지원하지 않는 모델은 default로 바뀌어 편집이 거부된다.
 - 권한 우회 모드(`bypassPermissions`)는 지원하지 않는다. 무인 에이전트를 여러 개 띄우는 도구에서 모든 권한 검사를 끄지 않는다.
