@@ -118,10 +118,13 @@ export function writeReport(outDirs, { evidence, target } = {}) {
   mkdirSync(into, { recursive: true });
   writeFileSync(join(into, 'report.json'), json({ plans, ...summary }));
   writeFileSync(join(into, 'report.md'), renderMarkdown(summary, plans));
-  // 공유용 근거: 집계와 실행별 판정만 담는다. stream·관찰 기록·경로·비밀값은 넣지 않는다.
+  // 공유용 근거: 모델·구성별 집계와 실행별 판정만 담는다. stream·관찰 기록·경로·비밀값은 넣지 않는다.
+  // 작업별 집계는 runs에서 다시 계산할 수 있으므로 빼고, 실행 한 건은 한 줄로 쓴다.
   if (evidence) {
     const shared = plans.map(({ order, cli, ...plan }) => ({ ...plan, cli: cli ? basename(cli) : null, runs: order?.length ?? null }));
-    writeFileSync(evidence, json({ schema: 1, evidence: 'harness-benchmark', plans: shared, ...summary }));
+    const head = json({ schema: 1, evidence: 'harness-benchmark', plans: shared, models: summary.models,
+      byModel: Object.fromEntries(Object.entries(summary.byModel).map(([model, part]) => [model, { configs: part.configs }])) });
+    writeFileSync(evidence, `${head.trimEnd().slice(0, -1).trimEnd()},\n  "runs": [\n${summary.runs.map((run) => `    ${JSON.stringify(run)}`).join(',\n')}\n  ]\n}\n`);
   }
   return { plans, summary };
 }
