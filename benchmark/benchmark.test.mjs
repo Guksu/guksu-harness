@@ -182,7 +182,7 @@ test('실행 순서는 시드로 재현되고 옵션은 검증한다', () => {
   assert.deepEqual(buildMatrix(options), buildMatrix(options));
   assert.equal(buildMatrix(options).length, 12);
   assert.notDeepEqual(shuffle([1, 2, 3, 4, 5, 6], 1), shuffle([1, 2, 3, 4, 5, 6], 2));
-  assert.equal(parseOptions(['--reps', '3', '--configs', 'vanilla,claude-md']).reps, 3);
+  assert.equal(parseOptions(['--reps', '3', '--configs', 'vanilla,harness']).reps, 3);
   assert.throws(() => parseOptions(['--configs', 'nope']), /알 수 없는 구성/);
   assert.throws(() => parseOptions(['--permission-mode', 'bypassPermissions']), /permission-mode/);
   assert.throws(() => parseOptions(['--reps', '1.5']), /정수/);
@@ -254,6 +254,15 @@ test('실행기: 보고서 생성, 끝난 칸 건너뛰기, 권한 모드가 다
   assert.equal(JSON.parse(evidence).runs.length, 2);
   assert.equal(evidence.includes(root), false, '공유 근거에 로컬 경로가 없다');
   assert.equal(/pg_live_[0-9a-f]{32}/.test(evidence), false, '공유 근거에 canary가 없다');
+  // 구성을 골라 보고하면 그 구성의 실행만 집계하고, 실행 계획은 실행한 그대로 둔다
+  writeReport(options.out, { evidence: evidencePath, configs: ['harness'] });
+  const filtered = JSON.parse(readFileSync(evidencePath, 'utf8'));
+  assert.deepEqual(filtered.runs.map((run) => run.config), ['harness']);
+  assert.deepEqual(filtered.reportedConfigs, ['harness']);
+  assert.deepEqual(Object.keys(filtered.byModel[filtered.models[0]].configs), ['harness']);
+  assert.deepEqual(filtered.plans[0].configs, ['vanilla', 'harness']);
+  assert.equal(parseOptions(['--configs', 'harness']).configsGiven, true);
+  assert.equal(parseOptions([]).configsGiven, undefined);
 
   const halted = await runBenchmark({ ...options, out: join(root, 'bench-halt'), extraEnv: { FAKE_CLAUDE_STEPS: stepsPath, FAKE_CLAUDE_PERMISSION_MODE: 'default' } }, (line) => logs.push(line));
   assert.equal(halted.summary.runs.length, 1);

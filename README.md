@@ -1,149 +1,168 @@
 # guksu-harness
 
-AI 코딩 에이전트(Claude Code·Codex)가 **팀 규칙을 어기지 않도록 막는 보호 장치를 설치하고 관리하는 도구**입니다.
+> Claude Code·Codex가 팀 규칙을 지키며 일하게 하는 하네스
 
-Node.js 22 이상 · MIT · 버전은 `package.json`과 플러그인 manifest에서 관리합니다.
+[![npm](https://img.shields.io/npm/v/guksu-harness.svg)](https://www.npmjs.com/package/guksu-harness)
+[![CI](https://github.com/Guksu/guksu-harness/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Guksu/guksu-harness/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/node/v/guksu-harness.svg)](https://nodejs.org/)
+[![license](https://img.shields.io/npm/l/guksu-harness.svg)](LICENSE)
 
-PR과 main 변경은 GitHub Actions의 `CI` 검사로 검증합니다. Linux·macOS, Node 22·24에서 구조 검사·전체 회귀 검사·실제 Nx/Turbo 연동·npm 패키지 설치 후 CLI 실행을 확인합니다. 모델 호출과 실제 앱 훅 통합은 별도 시험입니다.
+AI 코딩 에이전트는 팀 규칙이 문서에 있어도 읽기 전에 움직이곤 합니다. guksu-harness는 팀 규칙을 에이전트가 시작할 때 읽는 파일에 연결하고, 규칙을 놓친 위험한 행동은 훅으로 막습니다. 훅은 에이전트가 도구를 쓰기 직전에 실행되는 작은 검사 스크립트입니다.
 
-## 무엇을 하나
+- **위험한 행동 차단** — 보호 브랜치 편집, 민감정보 파일 읽기, `reset`·`push --force` 같은 Git 명령을 막습니다.
+- **팀 규칙 연결** — 팀 규칙 파일을 만들고 `CLAUDE.md`·`AGENTS.md`가 그 파일을 가리키게 합니다.
+- **저장소 맞춤 구성** — 저장소를 읽어 설정을 제안하고, 팀만 아는 결정만 묻습니다.
+- **팀 설정을 지키는 업데이트** — 새 버전으로 올려도 팀이 고친 설정과 규칙은 덮어쓰지 않습니다.
+- **모노레포 검증** — 바뀐 패키지와 그 패키지를 쓰는 패키지만 골라 검증합니다.
 
-에이전트가 위험한 행동을 하려고 하면 훅(hook)이 먼저 막습니다. 훅은 에이전트가 도구를 쓰기 직전에 실행되는 작은 검사 스크립트입니다.
+[빠른 시작](#빠른-시작) · [기본 보호](#기본-보호) · [벤치마크](#벤치마크) · [팀 맞춤 구성](#팀-맞춤-구성) · [업데이트](#업데이트와-팀-설정) · [문서](#문서)
+
+## 빠른 시작
+
+Node.js 22 이상이 필요합니다. 프로젝트 루트에서 실행하세요.
+
+```bash
+npx guksu-harness init --app both   # 훅·규칙·앱 등록 설치
+npx guksu-harness check             # 설치 상태 검사
+```
+
+`--app`은 `claude`, `codex`, `both` 중에서 고릅니다. 기본 설치(`minimal`)는 아래 파일을 만듭니다.
+
+| 파일 | 역할 |
+|---|---|
+| `.agents/hooks/` | 보호 훅 3종(브랜치·민감정보·Git) |
+| `.agents/harness-core-rules.md` | 공통 규칙. 관리 도구가 갱신합니다 |
+| `docs/harness-rules.md` | 팀 규칙. 브랜치 관례·검증 명령·배포 조건을 팀이 적습니다 |
+| `CLAUDE.md`, `AGENTS.md` | 앱이 시작할 때 읽는 파일. 규칙 파일의 위치를 알려 줍니다 |
+| `.claude/settings.json`, `.codex/hooks.json` | 앱별 훅 등록 |
+
+저장소에 맞춘 설정까지 한 번에 만들려면 `init` 대신 [팀 맞춤 구성](#팀-맞춤-구성)을 쓰세요.
+
+### 대화에서 쓰는 스킬 (선택)
+
+CLI는 프로젝트 파일만 관리합니다. 대화에서 "하네스 점검해 줘", "PR 올려 줘"처럼 요청하려면 플러그인을 설치하세요.
+
+Claude Code 안에서:
+
+```text
+/plugin marketplace add Guksu/guksu-harness
+/plugin install guksu-harness@guksu-harness
+```
+
+Codex는 터미널에서:
+
+```bash
+codex plugin marketplace add Guksu/guksu-harness
+codex plugin add guksu-harness@guksu-harness
+```
+
+| 요청 | 스킬 |
+|---|---|
+| 하네스 구성·점검·업데이트 | `harness` |
+| 브랜치 준비 / 요청받은 커밋·PR 업로드 | `branch` / `pr` |
+| 팀이 고른 기록·인계·회고 | `history` / `handoff` / `retro` |
+| 예약·감시·명시적인 반복 실행 | `loop` |
+| 화면 품질 개선 / 배포 전 점검 | `fe-craft` / `fe-predeploy` |
+
+9개 스킬의 짧은 설명이 앱에 등록되지만, 기본 작업 절차에 자동으로 연결되지는 않습니다. 일반적인 수정과 재검사에는 기록·반복 실행 설정이 필요 없습니다.
+
+### 선택 기능
+
+필요할 때만 켭니다. 켜지 않으면 설치하지 않습니다.
+
+| 옵션 | 추가되는 것 |
+|---|---|
+| `--profile basic` | 작업 기록(history)·인계(handoff) 양식 |
+| `--profile collaboration` | basic에 회고(retro)·반복 실행 명세(loop-spec) 양식을 더합니다. 에이전트를 자동으로 만들지 않습니다 |
+| `--verifier` | 턴이 끝날 때 검증 명령을 실행하는 Stop 훅. 검사 명령은 따로 설정합니다 |
+| `--ci` | GitHub Actions의 하네스 구조 검사. 제품 빌드·테스트·배포 검증은 하지 않습니다 |
+
+양식을 설치해도 작성 의무는 생기지 않습니다. 커밋·푸시는 기본으로 막혀 있으며, 허용 여부는 팀이 설정으로 정합니다. 한 번의 업로드 요청을 영구 허용으로 받아들이지 않습니다.
+
+## 기본 보호
 
 | 에이전트가 하려는 일 | 기본 설치의 결과 |
 |---|---|
-| `main` 같은 보호 브랜치에서 편집 도구로 파일 수정 | 막는다 |
-| `cat .env`처럼 민감정보 파일을 셸로 읽기 | 막는다 |
-| `git reset`, `git rebase`, `git push --force` | 막는다. 사람이 직접 한다 |
-| `git commit`, `git push` | 막는다. 팀이 설정으로 허용하면 할 수 있다 |
+| `main` 같은 보호 브랜치에서 편집 도구로 파일 수정 | 막습니다 |
+| `cat .env`처럼 민감정보 파일을 셸로 읽기 | 막습니다 |
+| `git reset`, `git rebase`, `git push --force` | 막습니다. 사람이 직접 합니다 |
+| `git commit`, `git push` | 막습니다. 팀이 설정으로 허용하면 할 수 있습니다 |
 
-이 결과는 앱이 프로젝트 설정과 훅을 로드하고 실행할 때 적용됩니다. Codex는 프로젝트와 훅 정의의 신뢰도 필요합니다. 설치 파일 검사와 실제 앱의 차단 확인은 구분합니다.
+훅은 앱이 프로젝트 설정을 불러와 실행할 때 동작합니다. Codex는 프로젝트와 훅 정의를 신뢰해야 합니다. 설치 파일 검사와 실제 앱의 차단 확인은 따로 합니다. 막지 못하는 경로는 [하지 않는 일과 한계](#하지-않는-일과-한계)에 정리했습니다.
 
-그 밖에 하는 일은 세 가지입니다.
+## 벤치마크
 
-- 팀 규칙 파일 `docs/harness-rules.md`를 만들고, `CLAUDE.md`·`AGENTS.md`가 이 파일을 가리키게 합니다.
-- 새 버전으로 업데이트해도 팀이 고친 설정과 규칙은 덮어쓰지 않습니다.
-- 저장소를 읽고 팀에 맞는 설정을 제안합니다. 아래 "팀 맞춤 구성"을 보세요.
+팀 규칙을 `CONTRIBUTING.md`에만 둔 실무형 저장소에서 같은 요청 6종(버그 수정·기능 추가·장애 조사·커밋 업로드·문서 한 줄 수정·CI 수정)을 Claude Code에 구성마다 30회씩 맡겼습니다. 기능은 두 구성 모두 해냈지만, 하네스가 없을 때는 규칙 위반이 되풀이됐습니다.
 
-## 왜 필요한가: 벤치마크
+| Claude Code 2.1.291 · auto 권한 · 구성마다 30회 | 일반 Claude Code | guksu-harness |
+|---|---|---|
+| 기능 성공 (Opus 5.5 · Sonnet 5.5) | 30/30 · 30/30 | 30/30 · 30/30 |
+| 규칙 준수, Opus 5.5 | 19/30 | 29/30 |
+| 규칙 준수, Sonnet 5.5 | 10/30 | 26/30 |
+| 시간·비용 (일반 대비, Opus · Sonnet) | 기준 | +24% · +20% |
 
-AI 에이전트는 팀 규칙이 저장소 문서에만 있으면 읽기 전에 행동합니다. 팀 규칙을 `CONTRIBUTING.md`에만 둔 실무형 저장소에서 같은 요청 6종(버그 수정·기능 추가·장애 조사·커밋 업로드·문서 한 줄·CI 수정)을 구성마다 30회씩 Claude Code에 맡겼습니다. 기능은 모든 구성이 해냈지만, 하네스가 없을 때는 규칙 위반이 반복됐습니다.
-
-| Claude Code 2.1.291 · auto 권한 · 각 30회 | 일반 Claude Code | guksu-harness | `CLAUDE.md` 규칙만 |
-|---|---|---|---|
-| 기능 성공 (Opus 5.5 · Sonnet 5.5) | 30/30 · 30/30 | 30/30 · 30/30 | 30/30 · 30/30 |
-| 규칙 준수, Opus 5.5 | 19/30 | 29/30 | 30/30 |
-| 규칙 준수, Sonnet 5.5 | 10/30 | 26/30 | 30/30 |
-| 시간·비용 (일반 대비, Opus · Sonnet) | 기준 | +24% · +20% | +3% · +6% |
-
-일반 Claude Code가 실제로 한 일(Opus 5.5 · Sonnet 5.5, 각 30회):
+일반 Claude Code가 실제로 한 일 (Opus 5.5 · Sonnet 5.5, 각 30회):
 
 - main 브랜치에서 바로 파일 수정: 7회 · 15회
 - `.env` 결제 키를 grep으로 출력해 모델 문맥에 노출: 2회 · 0회
 - 커밋에 `Co-Authored-By: Claude` 표기를 넣어 원격에 push: 2회 · 5회
 - 이미 push한 커밋을 합쳐 force push: 1회 · 3회
 
-하네스를 설치하면:
-
-- 규칙이 앱 시작 때 읽히는 위치(`CLAUDE.md` 포인터와 `docs/harness-rules.md`)에 놓입니다. 에이전트는 대부분 먼저 작업 브랜치를 만들고 AI 작성 표기 없이 커밋했습니다.
-- 에이전트가 규칙을 놓친 행동은 훅이 막습니다. Sonnet 5.5에서 main 위 파일 편집 6건, AI 작성 표기가 든 커밋 2건, `.env` 전체를 출력하는 명령 1건을 막았고, 에이전트는 작업 브랜치를 만들거나 표기를 빼고 다시 진행했습니다.
-
-함께 알아 둘 점:
-
-- 같은 규칙을 `CLAUDE.md`에 직접 적은 대조군도 두 모델 모두 30/30이었습니다. 하네스의 위반 5건은 모두 포인터만 보고 규칙 문서를 열지 않은 채 Bash `sed`로 main을 고친 경우입니다. 핵심 규칙을 `CLAUDE.md`에 직접 넣는 것과 Bash 편집 검사를 개선 과제로 두었습니다.
-- 훅 차단과 규칙 확인 때문에 시간·비용이 20~24% 늘었습니다. 그중 일부는 [알려진 결함](docs/analysis/harness-benchmark.md#하네스에서-발견한-문제) 때문입니다.
+하네스를 설치한 구성에서는 에이전트가 대부분 먼저 작업 브랜치를 만들고 AI 작성 표기 없이 커밋했습니다. 규칙을 놓친 행동은 훅이 막았습니다. Sonnet 5.5에서는 main 위 파일 편집 6건, AI 작성 표기가 든 커밋 2건, `.env` 전체를 출력하는 명령 1건을 막았고, 에이전트는 작업 브랜치를 만들거나 표기를 빼고 다시 진행했습니다.
 
 [측정 방법·전체 결과](docs/analysis/harness-benchmark.md) · [직접 실행하기](benchmark/README.md)
 
-## 하지 않는 일
-
-- 코드나 문서를 대신 써 주지 않습니다.
-- 작업 기록·인계 문서를 자동으로 만들지 않습니다. 기록 양식은 팀이 원할 때만 고르는 선택 기능입니다.
-- 앱의 권한 설정이나 GitHub 브랜치 보호 규칙을 대신하지 않습니다. 훅은 실수를 줄이는 장치이고 보안 장치가 아닙니다.
-
-이름의 "하네스(harness)"는 에이전트가 일할 때 따르는 규칙과 안전장치의 묶음을 뜻합니다.
-
-## 시작하기
-
-```bash
-npx guksu-harness init --app both
-npx guksu-harness check
-```
-
-새 설치의 기본 `minimal`은 공통 훅 3종, 코어·팀 규칙, 앱별 포인터와 등록을 만듭니다. 기록 양식·협업 정의·프론트엔드 절차를 자동 추가하지 않습니다. 팀 고유 브랜치 관례·검증 명령·배포 조건은 `docs/harness-rules.md`에 적습니다.
-
-CLI는 프로젝트 설정 파일을 관리합니다. 대화에서 설정 관리나 선택 기능을 호출하려면 아래의 플러그인도 설치합니다. CLI 설치만으로 앱에 스킬이 등록되지는 않습니다.
-
-아래는 필요할 때만 켜는 선택 기능입니다. 켜지 않으면 설치되지 않습니다.
-
-| 선택 기능 | 내용 |
-|---|---|
-| `--profile basic` | history·handoff 양식 추가. 기존 프로필 이름 유지 |
-| `--profile collaboration` | basic + retro·loop-spec 양식. 에이전트 자동 생성 없음 |
-| `--verifier` | Stop 이벤트 검증 훅 추가. 별도 검사 명령 설정 필요 |
-| `--ci` | GitHub Actions에서 하네스 구조 검사. 제품 빌드·테스트·배포 검증은 별도 |
-
-양식 설치는 작성 의무가 아닙니다. 새 minimal 설치는 `requireHistoryDoc: false`를 명시합니다. 커밋·푸시 허용은 기존처럼 기본 false이며 팀이 선택합니다. 단발 업로드 요청을 영구 설정 변경으로 해석하지 않습니다. 앱의 승인·권한과 훅의 지속 정책은 별개입니다.
-
 ## 팀 맞춤 구성
 
-저장소를 읽어 팀에 맞는 하네스를 구성하고 어디까지 작동하는지 보여 준다. 저장소에서 알 수 있는 것은 도구가 조사하고, 팀만 아는 결정만 묻는다.
+저장소에서 알 수 있는 것은 도구가 조사하고, 팀만 아는 결정만 묻습니다.
 
 ```bash
-npx guksu-harness diagnose .              # 읽기만. 확인된 사실·추정·팀이 정할 것·충돌·검증 명령 후보
-npx guksu-harness compose . --dry-run     # 명세 초안과 변경 미리보기
+npx guksu-harness diagnose .            # 읽기만 합니다. 확인된 사실·추정·팀이 정할 것·충돌을 나눠 보여 줍니다
+npx guksu-harness compose . --dry-run   # 명세 초안과 바뀔 파일 미리 보기
 npx guksu-harness compose . --set protection.allowCommitPush=false --set records.history=none
-npx guksu-harness verify . --run          # 설정 완료 / 실행 확인 / 확인 필요 / 실패
-npx guksu-harness verify . --runtime      # Codex 훅의 로딩·활성·신뢰 상태 조회
+npx guksu-harness verify . --run        # 설정 완료 · 실행 확인 · 확인 필요 · 실패로 나눠 보여 줍니다
 ```
 
 | 단계 | 하는 일 |
 |---|---|
-| 진단 | 기본 브랜치·브랜치 관례, 기존 지침(CLAUDE.md·AGENTS.md·CONTRIBUTING), package.json 스크립트·CI 명령, 기존 훅 설정을 읽는다. 명령이 있는 것과 실행 가능한 것을 구분하고 민감정보 값은 읽지 않는다 |
-| 결정 | 근거로 정해지지 않은 항목만 질문으로 낸다: 커밋·푸시 허용, 기록 요구, 종료 검사 훅, 보호 브랜치 후보, 앱. 명시된 기존 정책은 다시 묻지 않는다 |
-| 명세 | 결정·근거·생성 해시를 `.agents/harness-team.json` 한 파일에 둔다. 훅 설정값과 `docs/harness-rules.md`의 생성 구간, `CLAUDE.md`·`AGENTS.md`의 포인터 구간이 이 명세에서 나온다 |
-| 적용 | `init`/`update`와 같은 계획·백업으로 한 번에 쓴다. 답하지 않은 항목은 차단·최소 기본값으로 두고 미확인으로 표시한다. 같은 구성을 다시 적용하면 변경 0건이다 |
-| 작동 확인 | 파일·등록 검사(설정 완료), 임시 저장소에서 설치된 훅 스크립트 실행과 `--run`의 검증 명령 실행(실행 확인·실패), 실제 앱 안의 훅 실행(확인 필요 · 절차 제공)을 구분한다 |
+| 진단 | 기본 브랜치와 브랜치 관례, 기존 지침(`CLAUDE.md`·`AGENTS.md`·`CONTRIBUTING`), `package.json` 스크립트, CI 명령, 기존 훅 설정을 읽습니다. 명령이 있는 것과 실제로 실행할 수 있는 것을 구분하고, 민감정보 값은 읽지 않습니다 |
+| 결정 | 근거로 정할 수 없는 항목만 묻습니다. 커밋·푸시 허용, 작업 기록, 종료 검사 훅, 보호 브랜치, 앱이 대상입니다. 답하지 않은 항목은 막는 쪽 기본값으로 두고 미확인으로 표시합니다 |
+| 적용 | 결정과 근거를 `.agents/harness-team.json`에 남기고, 이 명세로 훅 설정값·팀 규칙·포인터를 만듭니다. 같은 구성을 다시 적용하면 바뀌는 파일이 없습니다 |
+| 확인 | 파일·등록 검사, 임시 저장소에서 돌린 훅 실행, 검증 명령 실행 결과를 나눠 보여 줍니다. 실제 앱 안의 훅 실행은 "확인 필요"로 남깁니다 |
 
-기존 `CLAUDE.md`·`AGENTS.md`·`docs/harness-rules.md`는 생성 구간만 추가·갱신하고 나머지는 건드리지 않는다. 생성 구간이나 설정 파일을 손으로 고쳤으면 충돌로 멈추고, `--set`으로 명세를 맞추거나 `--force`로 다시 만든다. 자세한 결정 키와 상태는 [팀 맞춤 구성 안내](skills/harness/references/team-compose.md)에 있다.
+기존 `CLAUDE.md`·`AGENTS.md`·`docs/harness-rules.md`는 생성 구간만 고치고 나머지는 그대로 둡니다. 생성 구간을 손으로 고쳤다면 충돌로 멈추며, `--set`으로 명세를 맞추거나 `--force`로 다시 만듭니다. Codex를 쓴다면 `verify . --runtime`으로 훅의 로딩·활성·신뢰 상태도 조회할 수 있습니다. 결정 키와 상태는 [팀 맞춤 구성 안내](skills/harness/references/team-compose.md)에 있습니다.
 
-`--runtime`은 Codex가 구성된 프로젝트에서만 쓰는 선택 조회다. 실제 앱을 시작할 디렉터리를 전달하면 프로젝트 설정 비활성, 훅 비활성, 신뢰 검토 대기 등을 구분한다. 조회가 준비 상태를 확인하지 못하면 종료 코드 1이며, 기본 `verify`는 앱 서버를 시작하지 않는다. 이 조회는 모델·훅을 실행하거나 신뢰를 변경하지 않는다. 실제 차단 확인은 [독립된 CLI 시험](skills/harness/references/hook-probe.md)을 사용한다.
+## 모노레포
 
-## 모노레포 검증
-
-npm·Yarn·Bun의 `package.json#workspaces`와 `pnpm-workspace.yaml`에서 패키지, 검증 스크립트, 내부 의존 관계를 찾습니다. 하위 디렉터리에서 실행해도 workspace 루트를 사용하고, 하위 `AGENTS.md`·`CLAUDE.md`는 경로별 지침으로 보존합니다.
+npm·pnpm·Yarn·Bun workspace에서 패키지와 내부 의존 관계를 찾습니다. 하위 폴더에서 실행해도 workspace 루트를 기준으로 삼고, 하위 `AGENTS.md`·`CLAUDE.md`는 경로별 지침으로 그대로 둡니다. 검증 명세는 [팀 맞춤 구성](#팀-맞춤-구성)과 같은 `diagnose` → `compose` 흐름으로 만듭니다.
 
 ```bash
-npx guksu-harness diagnose apps/web --json
-npx guksu-harness compose --dry-run
-npx guksu-harness compose
-npx guksu-harness verify --plan --affected --base origin/main
-npx guksu-harness verify --run --affected --base origin/main --json
-npx guksu-harness verify --run --workspace @acme/web
-npx guksu-harness verify --plan --affected --base origin/main --native-runner
+npx guksu-harness verify --plan --affected --base origin/main   # 검증할 패키지만 미리 보기
+npx guksu-harness verify --run --affected --base origin/main
+npx guksu-harness verify --run --workspace @acme/web            # 한 패키지만 검증
 ```
 
-변경 패키지와 이를 사용하는 패키지를 검사하며, 필요한 선행 패키지의 명세에 있는 검사도 포함합니다. 공용 설정·의존 선언 변경과 Git 비교 실패는 전체 검증으로 돌아갑니다. Nx·Turbo도 기본은 전체 검증이며, `--native-runner`를 명시하면 프로젝트에 설치된 도구의 그래프를 조회합니다. 이 조회는 프로젝트 플러그인을 로드할 수 있습니다. `--workspace`는 지정 패키지와 루트 공통 검사만 실행하며 전체 저장소의 통과를 뜻하지 않습니다. [범위·설정·지원 한계](skills/harness/references/monorepo.md)를 참고하세요.
+바뀐 패키지와 그 패키지를 쓰는 패키지를 검증합니다. 공용 설정이나 의존 선언이 바뀌었거나 Git 비교에 실패하면 전체를 검증합니다. Nx·Turbo는 `--native-runner`를 붙이면 프로젝트에 설치된 도구의 그래프를 씁니다. 이때 프로젝트 플러그인을 불러올 수 있습니다. `--workspace` 결과는 그 패키지의 통과일 뿐 저장소 전체의 통과가 아닙니다.
 
-Claude는 상위 `CLAUDE.md`와 달리 상위 `.claude/settings.json`을 자동 상속하지 않습니다. 루트 훅을 쓰려면 Claude를 하네스 설치 루트에서 시작하고 패키지 명령에만 cwd를 지정하세요. `verify apps/web`은 시작 위치의 차이를 경고합니다. 별도의 [Claude 시작 시험](skills/harness/references/hook-probe.md)은 모델 대화 없이 시작 훅을 확인하며, 시작 훅이 확인되지 않은 시험은 모델 호출 전에 멈춥니다.
+Claude Code는 시작한 폴더의 `.claude/settings.json`을 읽고, 상위 폴더의 설정은 물려받지 않습니다. 루트의 훅을 쓰려면 하네스를 설치한 루트에서 Claude를 시작하세요. 자세한 범위와 한계는 [모노레포 안내](skills/harness/references/monorepo.md)에 있습니다.
 
 ## 업데이트와 팀 설정
 
 ```bash
-npx guksu-harness update --dry-run
+npx guksu-harness update --dry-run   # 바뀔 파일 미리 보기
 npx guksu-harness update
 npx guksu-harness status
 ```
 
-| 파일 | 소유와 업데이트 |
-|---|---|
-| `.agents/hooks/*.mjs`, `.agents/harness-core-rules.md` | 코어. 수정되지 않은 파일만 교체, 수정본은 충돌로 보존 |
-| `docs/harness-rules.md`, `CLAUDE.md`, `AGENTS.md`, 훅 설정값 | 팀. 기존 파일은 덮어쓰지 않음. `compose`는 명세에서 만든 생성 구간·관리 키만 갱신 |
-| `.agents/harness-team.json` | 팀 구성 명세. `compose`가 만들고 export/import에 포함 |
-| 선택한 `docs/templates/` 양식 | 팀 수정과 새 버전을 3-way 병합. 충돌 시 보존 |
-| 앱별 훅 등록 | 도구가 추가한 항목만 관리 |
+| 파일 | 소유 | 업데이트할 때 |
+|---|---|---|
+| `.agents/hooks/*.mjs`, `.agents/harness-core-rules.md` | 코어 | 고치지 않은 파일만 새 버전으로 바꿉니다. 고친 파일은 충돌로 남깁니다 |
+| `docs/harness-rules.md`, `CLAUDE.md`, `AGENTS.md`, 훅 설정값 | 팀 | 덮어쓰지 않습니다. `compose`는 생성 구간과 관리 키만 고칩니다 |
+| `.agents/harness-team.json` | 팀 | `compose`가 만드는 구성 명세입니다. `export`에 포함됩니다 |
+| 선택한 `docs/templates/` 양식 | 공동 | 팀이 고친 내용과 새 버전을 3-way 병합합니다. 충돌하면 보존합니다 |
+| 앱별 훅 등록 | 공동 | 도구가 추가한 항목만 고칩니다 |
 
-코어 직접 수정은 `eject`로 팀 소유로 전환합니다. 여러 저장소의 팀 설정은 `export/import`로 공유합니다.
+코어 파일을 직접 고쳐야 한다면 `eject`로 팀 소유로 바꿉니다. 여러 저장소에서 같은 팀 설정을 쓰려면 `export`·`import`를 씁니다.
 
 ```bash
 npx guksu-harness eject . .agents/hooks/branchGuard.mjs --confirm
@@ -151,81 +170,53 @@ npx guksu-harness export . --out team-preset.json
 npx guksu-harness import . --from team-preset.json
 ```
 
-`.agents/harness-install.json`과 양식 병합 원본 `.agents/harness-base/`는 커밋합니다. `.agents/harness-backups/`와 훅의 세션 상태 파일은 `.gitignore`에 둡니다.
+`.agents/harness-install.json`과 양식 병합 원본 `.agents/harness-base/`는 커밋하고, `.agents/harness-backups/`와 훅의 세션 상태 파일은 `.gitignore`에 넣습니다. 4.x 이하에서 올라오거나 최소 구성으로 바꾸려면 [버전 전환 안내](skills/harness/references/installation.md#최소-구성으로-전환)를 먼저 확인하세요.
 
-[팀 커스텀 가이드](skills/harness/references/team-customization.md) · [선택 적용·제거·복원](skills/harness/references/installation.md)
+> **주의** `--ci`로 만든 `.github/workflows/harness-check.yml`은 `update`가 바꾸지 않습니다. 파일에 `guksu-harness@4`가 있으면 `@5`로 직접 바꾸세요. npm의 4.2.0은 npx로 실행하면 아무것도 검사하지 않고 통과합니다.
 
-## 기존 설치에서 바뀌는 점
+## 하지 않는 일과 한계
 
-기존 구성을 유지하려면 일반 `update`를 사용합니다. 최소 구성으로 바꾸려면 먼저 변경 목록을 확인합니다:
+하네스는 에이전트가 일할 때 따르는 규칙과 안전장치의 묶음입니다. 실수를 줄이는 장치이지 보안 장치가 아니며, 앱 권한·샌드박스·GitHub 브랜치 보호를 대신하지 않습니다.
 
-```bash
-npx guksu-harness update --profile minimal --dry-run
-npx guksu-harness update --profile minimal
-```
+- 코드나 문서를 대신 써 주지 않습니다. 작업 기록·인계 문서도 자동으로 만들지 않습니다.
+- 훅은 등록된 도구 경로만 검사합니다. 브랜치 보호는 편집 도구만 보며, Bash로 파일을 쓰는 경우는 검사하지 않습니다.
+- 민감정보 훅은 Bash로 알려진 민감정보 경로에 접근하는지 검사합니다. Read 도구 차단은 Claude Code 권한 설정(deny)으로 합니다.
+- Git 훅은 명령 패턴만 검사하며, 대화에서 사용자가 승인했는지는 알지 못합니다.
+- AI 작성 표기(`Co-Authored-By: Claude` 등)는 공통 규칙에서 금지하며, 팀 규칙이 요구하면 따릅니다. `blockAttribution: true`이면 커밋 메시지와 `gh` PR·이슈 텍스트도 훅이 검사합니다. MCP 도구로 올리는 PR은 검사하지 않습니다.
+- 기록 게이트는 버그·핫픽스·기능·호환성 변경·정책 커밋이 있는 push에만 기록 파일을 요구합니다. 커밋 제목의 타입으로 판정하며 내용 품질은 보지 않습니다.
+- 배포 판정기는 전달받은 검사 결과만 판정합니다. 계획에서 빠진 검사를 스스로 찾지 못합니다.
+- `status`·`check`는 파일과 등록을 검사할 뿐, 실제 앱에서 훅이 실행되는지는 보장하지 않습니다. 실제 동작은 [훅 실행 시험](skills/harness/references/hook-probe.md)으로 확인합니다.
 
-- `update`는 기존 basic·collaboration 프로필을 유지합니다. 추적 기록에 프로필이 없으면 기존 basic으로 취급합니다.
-- `update --profile minimal`로 선택을 줄일 수 있습니다. 기존 양식은 삭제하지 않고 계속 업데이트하며, 기록과 팀 설정도 보존합니다.
-- 기존 `CLAUDE.md`·`AGENTS.md`·팀 규칙은 자동 수정하지 않습니다. 예전 포인터가 기록을 필수로 요구하면 그 지침은 남습니다. 기록을 선택 기능으로 바꾸려면 팀이 해당 지침과 `requireHistoryDoc`을 함께 변경해야 합니다.
-- 기존 Git 설정에 `requireHistoryDoc`이 생략돼 있으면 기존의 암묵적 기본값(true)을 유지합니다. 새 minimal 설치만 false를 명시합니다. 기존·수동 훅에는 새 기본 설정을 덮어씌우지 않습니다.
-- 스킬 이름은 유지합니다. branch·pr가 history·loop 등을 일괄 호출하지 않습니다.
-- 일반 worktree 생성·조회는 허용합니다. 강제 생성·삭제·이동·정리 등은 계속 차단합니다. `commit -F` 등 간접 메시지는 `blockAttribution: true`일 때만 제한하며 amend·fixup·squash는 계속 차단합니다.
-- 프로필 변경은 설치할 양식의 선택을 바꿉니다. 기존 기록 의무를 해제하려면 팀 규칙·앱 포인터를 정리하고 `.agents/hooks/blockGitMutation.config.json`의 `requireHistoryDoc`을 false로 설정하세요. 이때 기존 `allowCommitPush` 등 다른 설정은 유지합니다.
-- `--ci`로 만든 `.github/workflows/harness-check.yml`은 `update`가 바꾸지 않습니다. 파일 안의 `guksu-harness@4`를 `@5`로 직접 바꾸세요. `@4`는 npm의 4.2.0을 받는데, 4.2.0은 npx로 실행하면 아무 검사도 하지 않고 통과합니다.
+[보호 장치 설정과 앱별 확인 방법](skills/harness/references/hooks-and-permissions.md)
 
-## 선택적 대화 스킬
+## 문서
 
-Claude Code:
-
-```text
-/plugin marketplace add Guksu/guksu-harness
-/plugin install guksu-harness@guksu-harness
-```
-
-Codex:
-
-```text
-codex plugin marketplace add Guksu/guksu-harness
-codex plugin add guksu-harness@guksu-harness
-```
-
-| 요청 | 스킬 |
+| 문서 | 내용 |
 |---|---|
-| 하네스 구성·점검·업데이트 | harness |
-| 브랜치 준비 / 요청된 업로드 | branch / pr |
-| 팀에서 선택한 기록·인계·회고 | history / handoff / retro |
-| 예약·감시·명시적인 반복 실행 | loop |
-| 요청된 화면 품질 개선 / 배포 점검 | fe-craft / fe-predeploy |
+| [설치와 업데이트](skills/harness/references/installation.md) | 파일별 처리, 백업·복원, 제거, 버전 전환 |
+| [팀 맞춤 구성](skills/harness/references/team-compose.md) | 결정 키, 구성 명세, 작동 확인 상태 |
+| [팀 커스텀 가이드](skills/harness/references/team-customization.md) | 팀 규칙·스킬·훅을 더하는 방법 |
+| [보호 장치와 권한](skills/harness/references/hooks-and-permissions.md) | 훅 설정값, 앱별 등록, 검사 범위 |
+| [모노레포](skills/harness/references/monorepo.md) | workspace 탐색, 영향 범위, Nx·Turbo 연동 |
+| [훅 실행 시험](skills/harness/references/hook-probe.md) | 실제 CLI에서 훅 차단을 확인하는 절차 |
+| [벤치마크 결과](docs/analysis/harness-benchmark.md) | 측정 조건, 전체 결과, 발견한 결함 |
+| [변경 이력](CHANGELOG.md) | 버전별 변경과 업데이트 주의 사항 |
 
-전체 플러그인에는 9개 스킬의 짧은 설명이 등록됩니다. 선택 기능이라는 뜻은 프로젝트 기본 절차에 자동 연결하지 않는다는 뜻이며, 앱의 스킬 카탈로그에서 숨기는 것은 아닙니다. 일반 수정·재검사에는 별도 기록·루프·협업 설정이 필요하지 않습니다.
-
-## 보호와 검증의 범위
-
-훅은 `.agents/hooks/`에, 등록은 Claude Code의 `.claude/settings.json`과 Codex의 `.codex/hooks.json`에 둡니다. 등록된 도구 경로만 검사하며 앱 권한·샌드박스·저장소 보호를 대신하지 않습니다.
-
-- 브랜치 보호는 편집 도구 대상이며 Bash 파일 쓰기는 검사하지 않습니다.
-- 민감정보 훅은 알려진 경로의 Bash 접근을 검사합니다. Read deny는 Claude Code 설정입니다.
-- Git 훅은 명령 패턴을 검사하며 대화의 승인 여부를 알지 못합니다.
-- AI 작성 표기(`Co-Authored-By: Claude` 등)는 코어 규칙에서 커밋·PR·이슈·리뷰 댓글에 넣지 않게 하며, 팀 규칙이 요구하면 따릅니다. `blockAttribution: true`이면 Git 훅이 커밋 메시지와 `gh` PR·이슈 텍스트를 검사하며, MCP 도구로 올리는 PR은 검사하지 않습니다.
-- 기록 게이트는 버그·핫픽스·기능·호환성 변경·정책 커밋이 있는 push에만 기록 파일을 요구합니다. 판정은 커밋 제목의 타입으로 하며, 파일 변경 여부만 확인하고 내용 품질은 평가하지 않습니다.
-- 배포 판정기는 전달받은 검사 결과를 판정합니다. 계획에서 빠진 검사를 스스로 발견하지 못합니다.
-- `status/check`는 실제 앱의 훅 실행을 검증하지 않습니다. 앱 버전별 실행 확인이 필요합니다.
-- 실제 CLI 훅은 [임시 저장소 계측 시험](skills/harness/references/hook-probe.md)으로 확인할 수 있습니다. 명시적 실행이 필요하며, 이벤트가 없으면 미확인으로 남깁니다.
-
-[설정과 앱별 확인 방법](skills/harness/references/hooks-and-permissions.md)
-
-## 개발과 평가
+## 개발
 
 ```bash
 npm ci
-npm run check
-npm test
+npm run check   # 하네스 구조 검사
+npm test        # 전체 회귀 검사
 ```
 
-CLI는 workspace YAML과 glob 해석에 `yaml`·`picomatch`를 사용합니다. npm 설치 시 함께 설치됩니다. 프로젝트에 복사되는 보호 훅과 플러그인의 설치 관리자·구조 검사기는 Node 내장 모듈만 사용합니다.
+PR과 main 변경은 GitHub Actions의 `CI` 검사가 Linux·macOS, Node 22·24에서 확인합니다. 구조 검사, 전체 회귀 검사, 실제 Nx·Turbo 연동, npm 패키지 설치 후 CLI 실행이 대상이며, 모델 호출과 실제 앱의 훅 동작은 따로 시험합니다.
 
-코드·구조 테스트 통과는 모델 생산성 향상의 증거가 아닙니다. [검증 가이드](skills/harness/references/testing-guide.md)와 [축소 전후 평가 명세](docs/analysis/lean-harness-evaluation.md)를 구분해 사용합니다.
+- CLI는 workspace YAML과 glob 해석에 `yaml`·`picomatch`를 씁니다. 프로젝트에 복사되는 훅과 플러그인의 설치 관리자·구조 검사기는 Node 내장 모듈만 씁니다.
+- 버전은 `package.json`과 플러그인 manifest에서 함께 관리합니다.
+- 테스트 통과가 모델 생산성 향상을 뜻하지는 않습니다. [검증 가이드](skills/harness/references/testing-guide.md)와 [축소 전후 평가 명세](docs/analysis/lean-harness-evaluation.md)를 구분해 씁니다.
+- [벤치마크](benchmark/README.md)는 실제 모델을 호출하므로 비용이 듭니다.
 
-하네스를 쓴 Claude Code와 일반 Claude Code를 실무형 프로젝트에서 비교하는 [벤치마크](benchmark/README.md)가 있습니다. 실제 모델을 호출하므로 비용이 듭니다. 요약은 위의 "왜 필요한가: 벤치마크"에, 전체 결과는 [벤치마크 결과](docs/analysis/harness-benchmark.md)에 있습니다.
+## 라이선스
 
-[변경 이력](CHANGELOG.md) · [라이선스](LICENSE)
+[MIT](LICENSE)

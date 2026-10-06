@@ -120,7 +120,7 @@ node "$MANAGER" apply /path/to/project --plan /tmp/harness-remove.json
 
 ## CI 검사 워크플로 (--ci)
 
-`init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@5 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. `update`는 이 파일을 바꾸지 않으므로 주 버전이 오르면 `@` 뒤 숫자를 직접 바꾼다. npm에 패키지가 배포되어 있어야 동작한다.
+`init --ci` 또는 `update --ci`가 `.github/workflows/harness-check.yml`을 만든다. PR과 main 푸시마다 `npx --yes guksu-harness@5 check .`를 실행해 error가 있으면 실패한다. 프로젝트 파일이라 한 번 만든 뒤에는 팀이 트리거·노드 버전을 자유롭게 고친다. `update`는 이 파일을 바꾸지 않으므로 주 버전이 오르면 `@` 뒤 숫자를 직접 바꾼다. 특히 `@4`는 npm의 4.2.0을 받는데, 4.2.0은 npx로 실행하면 아무 검사도 하지 않고 통과하므로 `@5`로 바꾼다. npm에 패키지가 배포되어 있어야 동작한다.
 
 ## 팀 묶음 — export / import
 
@@ -187,5 +187,7 @@ v2.3.0부터 Claude 작성자 표기 제한은 `blockAttribution: true`를 설�
 `npx guksu-harness update . --profile minimal`은 앞으로의 기본 선택을 바꾼다. 이미 추적한 양식은 계속 병합·갱신하고 삭제하지 않는다. 양식 관리까지 중단하려면 관리자 `plan --mode remove --only docs/templates/history.md,docs/templates/handoff.md`로 문서는 보존하고 추적과 병합 원본만 제거할 수 있다. minimal에서는 다음 update가 그 양식을 재설치하지 않는다.
 
 새 minimal 설치는 Git 설정이 없고 기존·수동 Git 훅도 없을 때만 `allowCommitPush: false`, `requireHistoryDoc: false` 설정을 생성한다. 기존 설정은 수정하지 않는다. 과거 설정의 기록 요구 생략값(true)도 보존한다. 기존 규칙 포인터의 기록 지침은 팀 소유이므로 별도 검토한다.
+
+기존 기록 의무를 해제하려면 팀 규칙·앱 포인터의 기록 지침을 정리하고 `.agents/hooks/blockGitMutation.config.json`의 `requireHistoryDoc`을 false로 설정한다. `allowCommitPush` 등 다른 설정은 그대로 둔다. 스킬 이름은 바뀌지 않았으며 branch·pr은 history·loop 등을 일괄 호출하지 않는다.
 
 `--ci`는 구조 검사만 추가한다. 제품 테스트나 실제 앱에서 훅이 실행되는지는 별도로 검증한다.

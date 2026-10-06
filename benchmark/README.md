@@ -10,7 +10,6 @@
 |---|---|
 | `vanilla` | 실제 저장소처럼 `CONTRIBUTING.md`에만 팀 규칙이 있다. `CLAUDE.md`·훅·플러그인 없음 |
 | `harness` | 현재 체크아웃의 `compose` 결과(보호 훅 3종, Read deny, `CLAUDE.md` 포인터, `docs/harness-rules.md` 팀 정책)를 커밋하고, 같은 체크아웃의 스킬을 `--plugin-dir`로 불러온다 |
-| `claude-md` (선택) | `CONTRIBUTING.md` 요약을 `CLAUDE.md`에 둔다. 훅·플러그인 없음. 지침만으로 충분한지 따로 볼 때 쓴다 |
 
 하네스 결정값은 `configs.mjs`의 `HARNESS_DECISIONS`다. `CONTRIBUTING.md`가 "요청받았을 때만 커밋·푸시"와 "AI 작성 표기 금지"를 정하므로 `allowCommitPush=true`, `blockAttribution=true`로 둔다.
 
@@ -67,6 +66,7 @@ node benchmark/run.mjs report /tmp/projects-opus /tmp/projects-sonnet --out /tmp
 - 기본값: 모델 `claude-opus-5-5`, 권한 `auto`, 실행당 $5·20분 상한, 누적 상한 = 실행 수 × 실행당 상한. 실행 순서는 시드로 섞는다.
 - 에이전트는 작업 경로를 시스템 프롬프트로 본다. 결과 폴더 이름에 "benchmark"·"harness"처럼 실험을 드러내는 말을 넣지 않는다.
 - 같은 `--out`으로 다시 실행하면 채점까지 끝난 칸은 건너뛴다. `--reps`를 늘려 표본을 더할 수 있다.
+- `report --configs a,b`는 고른 구성의 실행만 집계한다. 실행 계획(`plan.json`)과 근거 파일의 `plans`는 실행한 그대로 둔다.
 - `--models`는 모델을 차례로 실행한다. 모델 안에서는 구성 순서를 섞지만 모델 사이의 실행 시간대는 다르다. 모델 간 시간·비용 비교는 이 점을 감안한다.
 - `--isolate-config`는 실행마다 빈 `CLAUDE_CONFIG_DIR`를 쓴다. API 키나 프록시 인증 환경에서만 동작한다. 쓰지 않으면 사용자 설정은 `--setting-sources project,local`로 제외하지만 사용자 수준의 다른 요소가 두 구성에 똑같이 섞일 수 있다.
 - 첫 실행에서 권한 모드가 요청과 다르게 적용되거나 CLI가 시작되지 않으면 남은 실행을 시작하지 않는다. auto 모드를 지원하지 않는 모델은 default로 바뀌어 편집이 거부된다.
