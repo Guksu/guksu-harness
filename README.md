@@ -4,6 +4,8 @@ AI 코딩 에이전트(Claude Code·Codex)가 **팀 규칙을 어기지 않도�
 
 Node.js 22 이상 · MIT · 버전은 `package.json`과 플러그인 manifest에서 관리합니다.
 
+PR과 main 변경은 GitHub Actions의 `CI` 검사로 검증합니다. Linux·macOS, Node 22·24에서 구조 검사·전체 회귀 검사·실제 Nx/Turbo 연동·npm 패키지 설치 후 CLI 실행을 확인합니다. 모델 호출과 실제 앱 훅 통합은 별도 시험입니다.
+
 ## 무엇을 하나
 
 에이전트가 위험한 행동을 하려고 하면 훅(hook)이 먼저 막습니다. 훅은 에이전트가 도구를 쓰기 직전에 실행되는 작은 검사 스크립트입니다.

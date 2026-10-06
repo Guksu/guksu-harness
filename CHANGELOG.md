@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 
+- **저장소 CI:** PR·main push·merge queue에서 Linux/macOS와 Node 22/24의 구조 검사·전체 회귀 검사·실제 Nx/Turbo·npm 패키지 설치 시험을 자동 실행한다. runner 의존성은 별도 lockfile로 고정하며 모델은 호출하지 않는다. 전체 행렬의 성공을 집계하는 `CI` 검사를 제공한다.
 - **Codex 훅 사전 진단:** 선택 옵션 `verify --runtime`과 `hookProbe.mjs inspect`로 실제 실행 디렉터리의 프로젝트 설정·훅 로딩·활성·신뢰 상태를 조회한다. 준비되지 않은 Codex 시험은 모델 호출 전에 멈춘다. 조회 API 미지원·시간 초과·손상 응답은 미확인으로 처리하고 설정값·명령 원문은 출력하지 않는다. 발견 상태를 실제 훅 실행 성공으로 표시하지 않는다.
 - **CLI 훅 계측:** 독립된 시험 저장소의 prepare/run/report 도구를 추가했다. 실제 CLI 이벤트·차단 코드·도구 실행·파일/Git 상태를 구분하고, 이벤트 누락·설정 변경·중단은 통합 확인으로 처리하지 않는다. Codex 프로젝트 신뢰와 훅 정의 신뢰 절차도 갱신했다. 기본 테스트는 모델을 호출하지 않는다.
 - **선택적 Nx·Turbo 연동:** `verify --affected --native-runner`로 프로젝트에 설치된 runner의 실제 그래프를 조회한다. Nx의 암묵적 의존 관계, Turbo의 교차 패키지 태스크 의존 관계와 공통 입력을 반영한다. 조회 실패는 전체 검증, 프로젝트 목록 불일치는 미검증으로 처리한다. 기본 진단은 runner를 실행하지 않는다. Nx `project.json`의 명시적 target 후보도 지원한다.
