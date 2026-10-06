@@ -19,7 +19,7 @@ import {
 } from './harnessManager.mjs';
 import { validateHarness } from './validateHarness.mjs';
 import { discoverWorkspaces, resolveProjectRoot, workspaceCommands, verificationPlan } from './workspaces.mjs';
-import { runtimeEvidence } from './runtimeEvidence.mjs';
+import { runtimeEvidence, claudeLaunchContext } from './runtimeEvidence.mjs';
 import { inspectCodexHooks, describeCodexPreflight } from './codexHooks.mjs';
 import { normalizeChecks, executeCheck } from '../assets/hooks/verifierGate.mjs';
 
@@ -816,6 +816,14 @@ export async function verify(project, { run = false, affected = false, base = nu
   const checks = decisions?.['verification.checks']?.value ?? [];
   const plan = verificationPlan(root, normalizeChecks(checks), { affected, base, workspace, nativeRunner });
   const runtime = runtimeEvidence(root, targetApps, plan.checks);
+  if (targetApps.includes('claude')) {
+    const context = claudeLaunchContext(root, project);
+    runtime.apps.claude.launchContext = context;
+    item(context.status === 'aligned' ? 'configured' : 'unverified', '변경 보호', 'Claude 시작 위치',
+      context.status === 'aligned' ? '조회 위치와 하네스 루트가 같다. 실제 훅 로딩·차단은 별도 확인이 필요하다'
+        : `${context.cwd}에서 Claude를 시작하면 루트 .claude/settings.json은 자동 상속되지 않는다. CLAUDE.md 상속과 다르다. 하네스 루트에서 시작하고 패키지 명령에만 cwd를 지정한다. 별도 하위 설정은 /status·/hooks에서 확인한다`,
+      { evidence: '파일 위치 비교 · 앱 실행 아님' });
+  }
   if (inspectRuntime) {
     const preflight = await inspectCodexHooks(project);
     runtime.apps.codex.hookPreflight = preflight;

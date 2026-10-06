@@ -6,7 +6,8 @@
 
 ```bash
 # 저장소 밖의 새 경로를 쓴다. prepare는 모델을 호출하지 않는다.
-node skills/harness/scripts/hookProbe.mjs prepare /tmp/harness-claude-probe --app claude
+node skills/harness/scripts/hookProbe.mjs prepare /tmp/harness-claude-probe --app claude --cwd root
+node skills/harness/scripts/hookProbe.mjs startup /tmp/harness-claude-probe
 node skills/harness/scripts/hookProbe.mjs run /tmp/harness-claude-probe
 node skills/harness/scripts/hookProbe.mjs report /tmp/harness-claude-probe
 ```
@@ -15,7 +16,17 @@ Codex는 `--app codex`로 별도 시험 폴더를 만든다. `run`은 앱 서버
 
 `prepare`에 `--cwd root`를 추가하면 저장소 루트 대조군을 만든다. 기본은 `--cwd nested`이며 `apps/web`에서 시작한다. 두 결과를 비교해 하위 폴더 실행의 설정 탐색·경로 문제를 구분한다.
 
-`run`은 설치된 CLI와 기존 로그인·모델 설정을 사용해 모델을 호출한다. 실행별 최대 120초·출력 4MiB 제한이 있으며 Claude에는 `--max-budget-usd 0.5`를 전달한다. Codex의 토큰·비용 상한을 보장하는 옵션은 추가하지 않았다. 기본 `npm test`는 모델을 호출하지 않는다. 실제 모델 실행 후 재시험하려면 새 폴더를 준비한다. Codex 사전 진단에서 멈췄다면 `.probe/execution.json`을 만들지 않으므로 검토 후 같은 폴더에서 재시도할 수 있다. 모델·버전 비교 평가는 별도 프로토콜을 따른다.
+`run`은 사전 조건 확인 후 설치된 CLI와 기존 로그인·모델 설정을 사용해 모델을 호출한다. 모델 실행별 최대 120초·출력 4MiB 제한이 있으며 Claude에는 `--max-budget-usd 0.5`를 전달한다. Codex의 토큰·비용 상한을 보장하는 옵션은 추가하지 않았다. 기본 `npm test`는 모델을 호출하지 않는다. 실제 모델 실행 후 재시험하려면 새 폴더를 준비한다. 사전 진단에서 멈췄다면 `.probe/execution.json`을 만들지 않는다. Codex 신뢰 검토 후에는 같은 폴더에서 재시도할 수 있고, Claude 시작 위치를 비교하려면 `--cwd root`와 `--cwd nested`로 별도 폴더를 준비한다. 모델·버전 비교 평가는 별도 프로토콜을 따른다.
+
+## 모델 대화 없는 Claude 시작 시험
+
+`startup <Claude 시험 디렉터리>`는 공식 `--init-only`로 Setup·SessionStart 훅을 실행하고 모델 대화 없이 끝낸다. 일반 프로젝트가 아닌 `prepare`로 만든 임시 저장소에서만 사용한다. 기존 사용자·관리·플러그인의 시작 훅도 실행될 수 있으므로 **읽기 전용 조회가 아니다**. 신뢰·권한을 우회하거나 설정 소스를 강제로 지정하지 않는다. 30초·출력 4MiB 제한이며 CLI 미지원·실행 중단·이벤트 누락은 미확인이다.
+
+정상 종료·CLI 버전·같은 실행 시간 안의 SessionStart·예상 cwd·루트를 가리키는 `CLAUDE_PROJECT_DIR`를 함께 확인한다. 원문 환경 값 대신 상대 프로젝트 위치만 기록한다. 결과는 `.probe/startup.json`, 실행 정보는 `.probe/startup-execution.json`에 남는다. `state: observed`, `ok: true`여도 시작 훅만 관찰한 것이므로 `hookIntegration`은 `unverified`다. 가드의 차단 성공은 이후 모델 시험에서 별도로 판정한다.
+
+Claude `run`은 이전 시작 시험 결과를 재사용하지 않고 매번 다시 확인한다. 준비되지 않았다면 시작 진단 결과만 보고하고 모델을 호출하지 않는다. `startup`은 관찰 성공 시 종료 코드 0, 나머지는 1이다. 통합 결과를 내는 `run`·`report`는 시작 훅 관찰만으로 성공하지 않는다.
+
+Claude의 공유 `.claude/settings.json`은 세션의 주 작업 디렉터리 기준이며 상위 `CLAUDE.md`처럼 상속되지 않는다. 루트 설정을 사용하는 시험은 `--cwd root`로 준비한다. `--cwd nested`에서 이벤트가 없다면 루트 설정이 자동 적용됐다고 가정하지 않는다. 일반 프로젝트의 `verify <실행 위치>`는 파일 위치를 비교해 `runtime.apps.claude.launchContext`와 시작 위치 경고를 표시하며, Claude 시작 훅을 실행하지 않는다.
 
 ## 모델 호출 없는 Codex 사전 진단
 
@@ -43,7 +54,7 @@ npx guksu-harness verify /path/to/project/apps/web --runtime --json
 
 전체 `ok: true`는 모든 시나리오의 관찰과 CLI의 정상 종료·버전 기록이 모두 있어야 한다. 수동으로 훅에 JSON을 넣어 실행한 회귀 검사는 앱 통합 증거가 아니다. 실패·중단된 실행에서 일부 이벤트가 관찰됐더라도 전체 통합은 미확인으로 남긴다.
 
-`.probe/events.jsonl`에는 시나리오·도구·이벤트·상대 cwd·종료 코드·시각과 해시 처리한 세션/호출 ID만 남긴다. 앱이 이벤트에 모델 ID를 제공하면 함께 기록한다. 전체 명령, 도구 출력, transcript, 환경 변수는 저장하지 않는다. `.probe/execution.json`은 CLI 버전·실행 인자·종료 상태와 제한적인 진단 분류를 담는다. Claude의 초기화·결과 이벤트에서 모델 ID와 호출/권한 거부 도구 이름도 추출한다. 진단 분류는 출력 패턴에 따른 참고 정보이며 원인을 확정하지 않는다.
+`.probe/events.jsonl`에는 시나리오·도구·이벤트·상대 cwd·종료 코드·시각과 해시 처리한 세션/호출 ID를 남긴다. `projectCwd`는 `CLAUDE_PROJECT_DIR`의 저장소 내 상대 위치, 외부면 `<outside>`, 없으면 null이다. 앱이 이벤트에 모델 ID를 제공하면 함께 기록한다. 전체 명령, 도구 출력, transcript, 원문 환경 변수는 저장하지 않는다. `.probe/execution.json`은 CLI 버전·실행 인자·종료 상태와 제한적인 진단 분류를 담는다. Claude의 초기화·결과 이벤트에서 모델 ID와 호출/권한 거부 도구 이름도 추출한다. 진단 분류는 출력 패턴에 따른 참고 정보이며 원인을 확정하지 않는다.
 
 계측기는 절대 경로의 래퍼에서 설치 관리자가 만든 등록 명령을 그대로 실행하고 종료 코드·출력을 앱에 돌려준다. 따라서 원래 명령의 경로 오류도 기록할 수 있다. 원래 파일과 설정의 해시를 검사하지만 이 로그는 변조 방지 감사 로그가 아니다. 사용자의 기존 앱 설정·다른 훅·권한도 결과에 영향을 줄 수 있다. 이 임시 저장소의 계측된 CLI 경로만 평가하며, GUI 앱·일반 프로젝트·전체 보호 경계·모델 생산성을 검증했다고 주장하지 않는다.
 
@@ -52,4 +63,6 @@ npx guksu-harness verify /path/to/project/apps/web --runtime --json
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks): 세션 cwd, 프로젝트와 훅 신뢰, Bash/apply_patch 입력, PreToolUse·PostToolUse 이벤트.
 - [Codex app server](https://learn.chatgpt.com/docs/app-server): 초기화와 읽기 조회 프로토콜. 지원 여부는 설치된 CLI 버전에서 확인한다.
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks): 이벤트 입력과 종료 코드 2의 차단 동작.
+- [Claude CLI reference](https://code.claude.com/docs/en/cli-reference): `--init-only`의 Setup·SessionStart 실행과 대화 없는 종료.
+- [Claude settings](https://code.claude.com/docs/en/settings): 공유 프로젝트 설정의 시작 위치와 `/cd` 이후 변경. `CLAUDE.md` 상속과 구분한다.
 - [Claude Code programmatic execution](https://code.claude.com/docs/en/headless): 비대화형 모델 실행. 설치된 버전의 `--help`로 실행 옵션을 확인한다.

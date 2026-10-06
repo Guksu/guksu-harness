@@ -173,7 +173,7 @@ Codex는 먼저 `npx guksu-harness verify <실제 실행 디렉터리> --runtime
 
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude Code hooks](https://code.claude.com/docs/en/hooks). CLI 시험 결과를 GUI 앱의 검증으로 대신하지 않는다.
 
-2026-10-05 로컬 시험에서 Claude Code 2.1.283은 루트 실행 시 세 가드의 차단이 관찰됐지만 하위 폴더 실행에서는 이벤트가 없었다. 모노레포에서도 앱은 하네스를 설치한 루트에서 시작하고, 패키지 검사는 명세의 cwd로 실행한다. 이 결과만으로 모든 버전의 설정 탐색 원인을 확정하지 않는다. [실측 결과와 제한](../../../docs/analysis/hook-runtime-evaluation.md).
+2026-10-05 로컬 시험에서 Claude Code 2.1.283은 루트 실행 시 세 가드의 차단이 관찰됐지만 하위 폴더 실행에서는 이벤트가 없었다. 10월 6일 `--init-only` 대조 시험도 루트에서만 SessionStart를 기록했다. [공식 설정 문서](https://code.claude.com/docs/en/settings)는 공유 `.claude/settings.json`을 주 작업 디렉터리에서 읽으며 상위 `CLAUDE.md`와 다르게 취급한다. 모노레포에서도 앱은 하네스를 설치한 루트에서 시작하고, 패키지 검사는 명세의 cwd로 실행한다. `verify`는 전달한 시작 위치를 경고하고, Claude 계측 시험은 시작 훅 미확인 시 모델 호출 전에 멈춘다. 시작 훅 관찰을 가드 차단 검증으로 대신하지 않는다. [실측 결과와 제한](../../../docs/analysis/hook-runtime-evaluation.md).
 
 ## 승인과 지속 정책
 

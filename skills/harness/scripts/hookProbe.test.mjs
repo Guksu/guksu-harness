@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, appendFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync, spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { prepareProbe, reportProbe, runProbe } from './hookProbe.mjs';
+import { prepareProbe, reportProbe, runProbe, startupProbe } from './hookProbe.mjs';
+import { verify } from './teamCompose.mjs';
+import { claudeLaunchContext } from './runtimeEvidence.mjs';
+import { createPlan, applyPlan } from './harnessManager.mjs';
 
 const fixture = (t, app = 'codex') => {
   const parent = mkdtempSync(join(tmpdir(), 'harness-probe-test-'));
@@ -96,7 +99,7 @@ test('재실행·설정 변경은 모델을 호출하기 전에 차단한다', a
   await assert.rejects(runProbe(root), /변경된 시험/);
 });
 
-test('CLI가 정상 종료해도 훅 이벤트가 없으면 미확인이며 출력 원문을 보고서에 넣지 않는다', async t => {
+test('Claude 시작 CLI가 정상 종료해도 훅 이벤트가 없으면 모델을 실행하지 않고 원문을 숨긴다', async t => {
   const root = fixture(t, 'claude');
   const binaries = join(root, '.probe/bin');
   mkdirSync(binaries);
@@ -105,9 +108,11 @@ test('CLI가 정상 종료해도 훅 이벤트가 없으면 미확인이며 출�
   process.env.PATH = `${binaries}:${originalPath}`;
   try {
     const report = await runProbe(root);
-    assert.equal(report.execution.exitCode, 0);
-    assert.equal(report.execution.cliVersion, 'fake-cli-test');
-    assert.equal(report.execution.model, 'test-model');
+    assert.equal(report.startup.execution.exitCode, 0);
+    assert.equal(report.startup.execution.cliVersion, 'fake-cli-test');
+    assert.equal(report.startup.execution.model, 'test-model');
+    assert.equal(report.execution, null);
+    assert.equal(existsSync(join(root, '.probe/execution.json')), false);
     assert.equal(report.ok, false);
     assert.doesNotMatch(JSON.stringify(report), /PRIVATE_OUTPUT_SENTINEL/);
   } finally { process.env.PATH = originalPath; }
@@ -140,6 +145,111 @@ test('시험기 종료 요청은 실행 중인 CLI도 중단하고 미확인으�
   assert.equal(await finished, 1);
   assert.throws(() => process.kill(cliPid, 0), /ESRCH/);
   const report = reportProbe(root);
-  assert.equal(report.execution.error, 'interrupted');
+  assert.equal(report.startup.execution.error, 'interrupted');
+  assert.equal(report.execution, null);
   assert.equal(report.ok, false);
+});
+
+function startupFixture(t, mode = 'success') {
+  const parent = mkdtempSync(join(tmpdir(), 'harness-startup-test-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const { root } = prepareProbe(join(parent, 'root'), 'claude', { cwd: 'root' });
+  const binaries = join(parent, 'bin'); mkdirSync(binaries);
+  writeFileSync(join(binaries, 'claude'), `#!${process.execPath}
+const fs=require('fs'),cp=require('child_process');
+const root=${JSON.stringify(root)},mode=${JSON.stringify(mode)};
+if(process.argv.includes('--version')) { console.log('fake-startup-test'); process.exit(0); }
+const startup=process.argv.includes('--init-only');
+fs.appendFileSync(root+'/.probe/calls.jsonl',JSON.stringify({startup,args:process.argv.slice(2)})+'\\n');
+if(mode==='unsupported') process.exit(2);
+if(startup && mode==='unexpected-model') { console.log(JSON.stringify({type:'assistant',message:{content:[]}})); setTimeout(()=>{},10000); }
+else if(startup && mode!=='stale') {
+ cp.spawnSync(process.execPath,[root+'/.probe/observer.mjs','observe'],{cwd:root,env:{...process.env,CLAUDE_PROJECT_DIR:mode==='wrong-directory'?root+'/apps/web':root},input:JSON.stringify({hook_event_name:'SessionStart',session_id:'test-session',cwd:root}),stdio:['pipe','ignore','ignore']});
+ console.log('PRIVATE_STARTUP_SENTINEL');
+ if(mode==='failure') process.exit(1);
+}
+`, { mode: 0o700 });
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${binaries}:${originalPath}`;
+  t.after(() => { process.env.PATH = originalPath; });
+  return root;
+}
+
+test('시작 훅 관찰만으로 가드 통합을 확인하지 않고 run은 매번 새 시작 진단을 거친다', async t => {
+  const root = startupFixture(t);
+  const startup = await startupProbe(root);
+  assert.equal(startup.ok, true);
+  assert.equal(startup.sessionStartCount, 1);
+  assert.deepEqual(startup.projectCwds, ['.']);
+  assert.equal(startup.hookIntegration, 'unverified');
+  assert.equal(reportProbe(root).ok, false);
+  assert.equal(reportProbe(root).execution, null);
+  assert.doesNotMatch(JSON.stringify(startup), /PRIVATE_STARTUP_SENTINEL/);
+  const report = await runProbe(root);
+  const calls = readFileSync(join(root, '.probe/calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(calls.map(call => call.startup), [true, true, false]);
+  assert.equal(calls[0].args[calls[0].args.indexOf('--tools') + 1], '');
+  assert.equal(report.execution.mode, 'model');
+  assert.equal(report.ok, false); // Fake model emits no tool events.
+  await assert.rejects(startupProbe(root), /새 시험/);
+});
+
+test('미지원·실행 실패·다른 프로젝트 경로·오래된 이벤트·예상 밖 모델 응답은 시작 통과가 아니다', async t => {
+  for (const mode of ['unsupported', 'failure', 'wrong-directory', 'stale', 'unexpected-model']) {
+    await t.test(mode, async sub => {
+      const root = startupFixture(sub, mode);
+      if (mode === 'stale') {
+        spawnSync(process.execPath, [join(root, '.probe/observer.mjs'), 'observe'], { cwd: root,
+          env: { ...process.env, CLAUDE_PROJECT_DIR: root }, input: JSON.stringify({hook_event_name:'SessionStart', session_id:'old', cwd:root}) });
+        const old = events(root).map(event => ({ ...event, at: '2000-01-01T00:00:00.000Z' }));
+        writeFileSync(join(root, '.probe/events.jsonl'), old.map(JSON.stringify).join('\n') + '\n');
+      }
+      const report = await runProbe(root);
+      assert.equal(report.startup.ok, false);
+      assert.equal(report.execution, null);
+      assert.equal(existsSync(join(root, '.probe/execution.json')), false);
+      const calls = readFileSync(join(root, '.probe/calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+      assert.ok(calls.every(call => call.startup));
+    });
+  }
+});
+
+test('verify는 Claude 시작 위치와 루트 설정의 범위를 구분하되 실제 앱을 시작하지 않는다', async t => {
+  const probeRoot = startupFixture(t);
+  const root = join(probeRoot, '../installed');
+  mkdirSync(root);
+  applyPlan(createPlan(root, { app: 'claude', profile: 'minimal' }));
+  const nested = join(root, 'apps/web');
+  mkdirSync(join(nested, '.claude'), { recursive: true });
+  writeFileSync(join(nested, '.claude/settings.json'), '{"env":{"PRIVATE_SENTINEL":"never-read"}}');
+  const cli = fileURLToPath(new URL('../../../bin/guksu-harness.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, 'verify', nested, '--json'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const context = report.verification.runtime.apps.claude.launchContext;
+  assert.equal(context.cwd, 'apps/web');
+  assert.equal(context.status, 'attention');
+  assert.equal(context.cwdSettingsPresent, true);
+  assert.equal(context.hookIntegration, 'unverified');
+  assert.ok(report.items.some(item => item.subject === 'Claude 시작 위치' && item.state === 'unverified'));
+  assert.doesNotMatch(JSON.stringify(report), /PRIVATE_SENTINEL|never-read/);
+  assert.equal(existsSync(join(probeRoot, '.probe/calls.jsonl')), false);
+  const aligned = await verify(root);
+  assert.equal(aligned.verification.runtime.apps.claude.launchContext.status, 'aligned');
+});
+
+test('실제 worktree와 심볼릭 경로에서도 Claude 시작 위치는 해당 설치 루트 기준이다', t => {
+  const root = fixture(t, 'claude');
+  const linked = join(root, '../worktree');
+  execFileSync('git', ['worktree', 'add', '-b', 'test-worktree', linked], { cwd: root, stdio: 'ignore' });
+  mkdirSync(join(linked, 'apps/web'), { recursive: true });
+  const context = claudeLaunchContext(linked, join(linked, 'apps/web'));
+  assert.equal(context.cwd, 'apps/web');
+  assert.equal(context.status, 'attention');
+  assert.equal(context.rootSettingsPresent, false);
+  assert.equal(claudeLaunchContext(root, root).status, 'aligned');
+  const alias = join(root, '../alias');
+  symlinkSync(root, alias);
+  assert.equal(claudeLaunchContext(alias, root).cwd, '.');
+  assert.equal(claudeLaunchContext(alias, alias).status, 'aligned');
 });
