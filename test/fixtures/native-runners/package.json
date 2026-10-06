@@ -1,0 +1,9 @@
+{
+  "name": "guksu-harness-native-runner-tests",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "nx": "23.2.1",
+    "turbo": "2.11.7"
+  }
+}

@@ -98,3 +98,19 @@ GUKSU_RUNNER_MODULES=/tmp/guksu-runner-test/node_modules NX_DAEMON=false \
 ```
 
 2026-10-03에 Nx 23.2.1·Turbo 2.11.7, Node 22, macOS에서 실제 조회와 Nx target 실행을 확인했다. 다른 버전·운영체제는 이 결과만으로 통과했다고 보고하지 않는다. CLI 응답 형식 변경은 축소 검증을 강행하지 않고 전체 검증 또는 명세 확인 필요로 처리한다.
+
+## 저장소 CI
+
+`.github/workflows/ci.yml`은 모든 PR, main push, merge queue, 수동 실행을 지원한다. Linux·macOS × Node 22·24에서 `npm ci`, 구조 검사, 전체 회귀 검사, 패키지 설치 시험을 실행한다. 실제 Nx·Turbo 검사 2건도 별도 `test/fixtures/native-runners/package-lock.json`의 설치본을 연결해 실행한다. 모델이나 계측용 앱 세션은 시작하지 않는다.
+
+```bash
+npm ci
+npm ci --prefix test/fixtures/native-runners
+GUKSU_RUNNER_MODULES="$PWD/test/fixtures/native-runners/node_modules" NX_DAEMON=false npm test
+npm run check
+npm run test:package
+```
+
+`test:package`는 임시 tarball을 별도 소비자 디렉터리에 설치하고 포함·제외 파일과 CLI help/init/check/verify를 확인한다. npm 의존성 다운로드가 필요할 수 있다. 일반 `npm test`는 runner를 자동 설치하지 않는다. 이 저장소의 CI와 사용자 프로젝트에 `--ci`로 설치하는 구조 검사 워크플로는 별개다.
+
+집계 검사 이름은 `CI`이며 하위 행렬이 실패·취소·건너뛰기 상태이면 성공하지 않는다. 브랜치 보호의 필수 검사 지정은 저장소 관리 설정이며 워크플로 추가만으로 활성화되지는 않는다. 체크아웃 자격 증명을 유지하지 않고 contents 읽기 권한만 사용한다. 공식 액션은 릴리스 커밋 SHA로 고정한다.
