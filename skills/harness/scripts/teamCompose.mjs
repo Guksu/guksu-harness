@@ -20,6 +20,7 @@ import {
 import { validateHarness } from './validateHarness.mjs';
 import { discoverWorkspaces, resolveProjectRoot, workspaceCommands, verificationPlan } from './workspaces.mjs';
 import { runtimeEvidence } from './runtimeEvidence.mjs';
+import { inspectCodexHooks, describeCodexPreflight } from './codexHooks.mjs';
 import { normalizeChecks, executeCheck } from '../assets/hooks/verifierGate.mjs';
 
 const apps = appFiles();
@@ -731,7 +732,7 @@ export function planVerification(project, options = {}) {
 }
 
 // 정적 파일 검사, 훅 스크립트 시험(임시 저장소·가짜 명령), 검증 명령 실행(run), 앱 안 실행(항상 확인 필요)은 서로 다른 증거다.
-export async function verify(project, { run = false, affected = false, base = null, workspace = null, nativeRunner = false } = {}) {
+export async function verify(project, { run = false, affected = false, base = null, workspace = null, nativeRunner = false, inspectRuntime = false } = {}) {
   const root = resolveProjectRoot(project);
   const items = [];
   const item = (state, area, subject, detail, extra = {}) => items.push({ state, label: STATES[state], area, subject, detail, ...extra });
@@ -740,6 +741,7 @@ export async function verify(project, { run = false, affected = false, base = nu
   let manifest = null;
   try { manifest = readManifest(root); } catch { manifest = null; }
   const targetApps = decisions?.apps?.value ?? manifest?.apps ?? detectApps(root);
+  if (inspectRuntime && !targetApps.includes('codex')) throw new Error('--runtime은 Codex가 구성된 프로젝트에서 사용합니다');
 
   // 1. 정적: 훅 파일·등록·구조 검사·명세 일치.
   const bundleHook = name => readFileSync(join(bundleRoot, `skills/harness/assets/hooks/${name}.mjs`), 'utf8');
@@ -814,6 +816,12 @@ export async function verify(project, { run = false, affected = false, base = nu
   const checks = decisions?.['verification.checks']?.value ?? [];
   const plan = verificationPlan(root, normalizeChecks(checks), { affected, base, workspace, nativeRunner });
   const runtime = runtimeEvidence(root, targetApps, plan.checks);
+  if (inspectRuntime) {
+    const preflight = await inspectCodexHooks(project);
+    runtime.apps.codex.hookPreflight = preflight;
+    item(preflight.ready ? 'configured' : 'unverified', '변경 보호', 'Codex 훅 실행 조건',
+      describeCodexPreflight(preflight), { evidence: 'Codex 앱 서버 읽기 조회' });
+  }
   const results = [];
   for (const issue of plan.issues) item('unverified', '검증', issue.path, issue.message);
   if (!checks.length) item('unverified', '검증', '검증 명령', '명세에 검증 명령이 없다. 팀이 명령을 정하면 compose --set verification.checks=... 로 연결한다');
@@ -829,15 +837,15 @@ export async function verify(project, { run = false, affected = false, base = nu
   // 4. 앱 안 실행 — 이 도구는 확인할 수 없다. 절차만 준다.
   for (const app of targetApps) {
     const steps = app === 'claude'
-      ? 'Claude Code에서 프로젝트를 열고 ① 보호 브랜치에서 파일 편집 요청 → "보호 브랜치" 차단 메시지, ② `git commit -m test` 요청 → 설정에 맞는 차단·허용, ③ `cat .env` 요청 → "시크릿 파일" 차단 메시지를 확인한다'
-      : 'Codex에서 ~/.codex/config.toml의 hooks 기능이 켜져 있고 프로젝트를 신뢰했는지 확인한 뒤 ① 보호 브랜치에서 편집 요청, ② `git commit -m test` 요청, ③ `cat .env` 요청의 차단 메시지를 확인한다. 편집 차단이 적용되지 않는 버전 보고(openai/codex #27833)가 있어 실제 버전에서 확인이 필요하다';
+      ? 'Claude Code를 하네스 설치 루트에서 시작한다. hookProbe.mjs의 독립된 임시 저장소와 가짜 파일로 앱 이벤트를 시험한다'
+      : 'verify --runtime으로 프로젝트 설정·훅 발견·활성·신뢰 상태를 조회한다. Codex /hooks에서 필요한 신뢰 검토를 마친 뒤 hookProbe.mjs의 독립된 임시 저장소에서 실제 차단을 시험한다';
     item('unverified', '변경 보호', `${app} 앱 안에서 훅 실행`, `등록 파일만으로는 실행을 증명할 수 없다. ${steps}`);
   }
   const pending = decisions ? decisionKeys.filter(key => decisions[key]?.status === 'pending' && decisionCatalog[key].ask !== false) : [];
   const summary = Object.fromEntries(Object.keys(STATES).map(state => [state, items.filter(entry => entry.state === state).length]));
   const verification = { state: plan.issues.length || !run ? 'unverified' : results.some(result => result.state === 'fail' && result.required !== false) ? 'failed' : plan.selection.mode === 'none' && !plan.checks.length ? 'not-applicable' : results.length ? 'passed' : 'unverified',
     scope: plan.selection, changes: plan.changes, checks: plan.checks, issues: plan.issues, results, runtime, native: plan.native };
-  return { schemaVersion: 1, root, bundleVersion: version(), run, items, summary, pending, verification, ok: summary.failed === 0 && (!run || verification.state !== 'unverified') };
+  return { schemaVersion: 1, root, bundleVersion: version(), run, items, summary, pending, verification, ok: summary.failed === 0 && (!run || verification.state !== 'unverified') && (!inspectRuntime || runtime.apps.codex.hookPreflight.ready) };
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
