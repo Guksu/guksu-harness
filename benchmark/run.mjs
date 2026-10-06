@@ -18,8 +18,8 @@ export const USAGE = `사용법:
   node benchmark/run.mjs run [옵션]                                       실제 모델을 호출한다(비용 발생)
   node benchmark/run.mjs grade <채점 자료 디렉터리(meta/<ID>)>
   node benchmark/run.mjs regrade <결과 디렉터리>                          저장된 상태로 다시 채점한다(모델 호출 없음)
-  node benchmark/run.mjs report <결과 디렉터리>... [--out <합친 보고서 폴더>] [--evidence <공유용 JSON>]
-                                                                          여러 폴더(모델별)를 넘기면 합쳐서 보고한다
+  node benchmark/run.mjs report <결과 디렉터리>... [--out <합친 보고서 폴더>] [--evidence <공유용 JSON>] [--configs a,b]
+                                                                          여러 폴더(모델별)를 넘기면 합쳐서 보고한다. --configs를 주면 그 구성만 집계한다
 
 run 옵션:
   --out <dir>             결과 폴더(Git 저장소 밖). 기본 <tmp>/projects-<시각>. 같은 폴더로 다시 실행하면 채점까지 끝난 칸은 건너뛴다
@@ -54,10 +54,13 @@ export function parseOptions(argv) {
     if (arg === '--isolate-config') options.isolateConfig = true;
     else if (arg === '--models') options.models = value().split(',').map((model) => model.trim()).filter(Boolean);
     else if (arg === '--tasks') options.tasks = value().split(',').map((id) => findTask(id.trim()).id);
-    else if (arg === '--configs') options.configs = value().split(',').map((id) => {
-      if (!CONFIGS[id.trim()]) throw new Error(`알 수 없는 구성: ${id}`);
-      return id.trim();
-    });
+    else if (arg === '--configs') {
+      options.configs = value().split(',').map((id) => {
+        if (!CONFIGS[id.trim()]) throw new Error(`알 수 없는 구성: ${id}`);
+        return id.trim();
+      });
+      options.configsGiven = true;
+    }
     else if (numbers[arg]) {
       const parsed = Number(value());
       if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${arg}는 양수여야 합니다`);
@@ -110,11 +113,12 @@ const brief = (grade) => {
 };
 
 // outDirs: 결과 폴더 하나 또는 여러 개(모델별). 보고서는 target(기본: 첫 폴더)에 쓴다.
-export function writeReport(outDirs, { evidence, target } = {}) {
+// configs: 주면 그 구성의 실행만 집계한다. 실행 계획(plans)은 실행한 그대로 둔다.
+export function writeReport(outDirs, { evidence, target, configs } = {}) {
   const dirs = [outDirs].flat();
   const into = target ?? dirs[0];
   const plans = dirs.filter((dir) => existsSync(join(dir, 'plan.json'))).map((dir) => readJson(join(dir, 'plan.json')));
-  const summary = summarize(loadGrades(dirs));
+  const summary = summarize(loadGrades(dirs).filter((grade) => !configs || configs.includes(grade.config)));
   mkdirSync(into, { recursive: true });
   writeFileSync(join(into, 'report.json'), json({ plans, ...summary }));
   writeFileSync(join(into, 'report.md'), renderMarkdown(summary, plans));
@@ -122,7 +126,7 @@ export function writeReport(outDirs, { evidence, target } = {}) {
   // 작업별 집계는 runs에서 다시 계산할 수 있으므로 빼고, 실행 한 건은 한 줄로 쓴다.
   if (evidence) {
     const shared = plans.map(({ order, cli, ...plan }) => ({ ...plan, cli: cli ? basename(cli) : null, runs: order?.length ?? null }));
-    const head = json({ schema: 1, evidence: 'harness-benchmark', plans: shared, models: summary.models,
+    const head = json({ schema: 1, evidence: 'harness-benchmark', plans: shared, ...(configs ? { reportedConfigs: configs } : {}), models: summary.models,
       byModel: Object.fromEntries(Object.entries(summary.byModel).map(([model, part]) => [model, { configs: part.configs }])) });
     writeFileSync(evidence, `${head.trimEnd().slice(0, -1).trimEnd()},\n  "runs": [\n${summary.runs.map((run) => `    ${JSON.stringify(run)}`).join(',\n')}\n  ]\n}\n`);
   }
@@ -252,7 +256,7 @@ async function main(argv) {
     if (!dirs.length) throw new Error(USAGE);
     if (dirs.length > 1 && !options.out) throw new Error('여러 결과 폴더를 합칠 때는 --out <보고서 폴더>가 필요합니다');
     const target = options.out ? resolve(options.out) : dirs[0];
-    writeReport(dirs, { target, evidence: options.evidence ? resolve(options.evidence) : null });
+    writeReport(dirs, { target, evidence: options.evidence ? resolve(options.evidence) : null, configs: options.configsGiven ? options.configs : null });
     console.log(readFileSync(join(target, 'report.md'), 'utf8'));
   } else {
     console.log(USAGE);

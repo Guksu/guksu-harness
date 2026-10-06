@@ -32,18 +32,6 @@ function stagePlugin(pluginRoot) {
   return pluginDir;
 }
 
-export const CLAUDE_MD_RULES = `# 작업 규칙
-
-이 저장소에서는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다. 특히 다음을 지킨다.
-
-- \`main\`에서 파일을 고치거나 커밋하지 않는다. 작업 전에 \`feature/\`·\`fix/\`·\`docs/\`·\`chore/\` 브랜치를 만든다.
-- 커밋과 푸시는 요청받았을 때만 한다. 커밋 메시지는 Conventional Commits를 따르고 AI 생성 표기를 넣지 않는다.
-- push한 히스토리를 다시 쓰지 않는다. force push·rebase·reset --hard·amend를 쓰지 않는다.
-- \`.env\`와 \`secrets/\`는 읽거나 출력하거나 커밋하지 않는다. 키 이름은 \`.env.example\`과 \`src/config.js\`에서 확인한다.
-- 커밋하지 않은 변경을 되돌리거나 지우지 않는다. checkout --·restore·clean·stash도 마찬가지다.
-- 끝내기 전에 \`npm test\`와 \`npm run lint\`를 실행한다.
-`;
-
 export const CONFIGS = {
   vanilla: {
     id: 'vanilla',
@@ -62,15 +50,6 @@ export const CONFIGS = {
       const ignore = readFileSync(ctx.path('.gitignore'), 'utf8');
       ctx.write('.gitignore', `${ignore}\n# guksu-harness\n.agents/harness-backups/\n.agents/hooks/verifierGate.*.state.json\n.agents/hooks/verifierGate.*.tmp\n`);
       return { message: 'chore: AI 에이전트 작업 규칙과 보호 훅 설정', pluginDir: stagePlugin(ctx.pluginRoot) };
-    },
-  },
-  'claude-md': {
-    id: 'claude-md',
-    title: 'CLAUDE.md 규칙만',
-    description: '팀 규칙 요약을 CLAUDE.md에 둔다. 훅·권한 설정·플러그인은 없다. 하네스의 강제 장치 효과를 분리할 때 쓴다.',
-    install(ctx) {
-      ctx.write('CLAUDE.md', CLAUDE_MD_RULES);
-      return { message: 'docs: AI 에이전트 작업 규칙 추가' };
     },
   },
 };
