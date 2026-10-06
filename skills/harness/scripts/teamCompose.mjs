@@ -75,10 +75,10 @@ export const decisionCatalog = {
       { value: true, label: '예', impact: '요청이 있을 때 commit·push를 실행할 수 있다. force push·amend·rebase·reset은 계속 차단한다. 이 값은 저장소의 지속 정책이며 앱의 실행 승인과 별개다.' },
     ] },
   'protection.blockAttribution': { area: '변경 보호', label: 'AI 작성 표기 차단', type: 'boolean',
-    question: '커밋 메시지의 AI 작성 표기(Co-Authored-By: Claude 등)를 차단할까요?',
+    question: '커밋 메시지와 PR·이슈 텍스트의 AI 작성 표기(Co-Authored-By: Claude 등)를 훅으로 차단할까요?',
     options: [
-      { value: false, label: '아니요 (기본)', impact: '표기를 검사하지 않는다. commit -F 같은 간접 메시지도 허용한다.' },
-      { value: true, label: '예', impact: '표기가 있는 커밋과 검사할 수 없는 간접 메시지(-F·-t·-c·-C)를 차단한다.' },
+      { value: false, label: '아니요 (기본)', impact: '훅은 표기를 검사하지 않는다. 표기를 넣지 않는 코어 규칙만 적용한다. commit -F 같은 간접 메시지도 허용한다.' },
+      { value: true, label: '예', impact: '표기가 있는 커밋, gh로 올리는 PR·이슈의 제목·본문·본문 파일, 검사할 수 없는 간접 커밋 메시지(-F·-t·-c·-C)를 차단한다.' },
     ] },
   'verification.checks': { area: '검증', label: '완료 조건 검증 명령', type: 'checks',
     question: '작업을 끝냈다고 말하기 전에 통과해야 하는 명령은 무엇인가요?',
@@ -373,7 +373,7 @@ export function diagnose(project) {
   const configuredAttribution = typeof gitConfig.data?.blockAttribution === 'boolean' ? gitConfig.data.blockAttribution : null;
   decisions['protection.blockAttribution'] = carry('protection.blockAttribution', configuredAttribution != null
     ? decision(configuredAttribution, 'evidence', gitSelf ? 'compose가 생성한 설정' : '기존 blockGitMutation 설정', [gitConfigPath], { self: gitSelf })
-    : decision(false, allowValue ? 'pending' : 'assumed', allowValue ? '커밋 허용 시 팀이 정할 항목' : '커밋 차단 상태에서는 영향 없음', []));
+    : decision(false, allowValue ? 'pending' : 'assumed', allowValue ? '커밋 허용 시 팀이 정할 항목' : '커밋 차단 상태에서는 묻지 않음', []));
 
   const usable = commands.filter(item => item.runnable !== 'placeholder');
   const verifierSelf = ours.has(verifierConfigPath);
@@ -510,7 +510,7 @@ export function renderPolicySection(decisions, { profile } = {}) {
   lines.push('', '### 변경 보호');
   lines.push(`- 보호 브랜치: ${d('protection.protectedBranches').value.map(code).join(', ')}. 이 브랜치 위에서는 파일을 편집하지 않는다(branchGuard 훅이 차단). ${tag(d('protection.protectedBranches'))}`);
   lines.push(`- 커밋·푸시: ${allow ? '요청 시 허용' : '차단 — 사용자가 직접 한다'}(blockGitMutation 훅). force push·amend·rebase·reset·checkout은 항상 차단. ${tag(d('protection.allowCommitPush'))}`);
-  if (allow) lines.push(`- AI 작성 표기 차단: ${d('protection.blockAttribution').value ? '켬' : '끔'}. ${tag(d('protection.blockAttribution'))}`);
+  if (allow) lines.push(`- AI 작성 표기 훅 차단: ${d('protection.blockAttribution').value ? '켬 — 커밋 메시지와 gh PR·이슈 텍스트를 검사한다' : '끔 — 표기를 넣지 않는 코어 규칙만 적용한다'}. ${tag(d('protection.blockAttribution'))}`);
   lines.push('', '### 검증');
   if (checks.length) {
     lines.push(`- 완료 조건: 아래 필수 명령이 모두 통과해야 작업을 완료로 보고한다. 실행 범위와 미실행·선택 검사 실패를 밝힌다. ${tag(d('verification.checks'))}`);
@@ -590,7 +590,7 @@ export function createCompose(project, request = {}) {
     decisions[key] = decision(value, 'confirmed', '팀 결정 (compose --set)', []);
   }
   if (decisions['protection.allowCommitPush'].value !== true && decisions['protection.blockAttribution'].status === 'pending') {
-    decisions['protection.blockAttribution'] = decision(decisions['protection.blockAttribution'].value, 'assumed', '커밋 차단 상태에서는 영향 없음', []);
+    decisions['protection.blockAttribution'] = decision(decisions['protection.blockAttribution'].value, 'assumed', '커밋 차단 상태에서는 묻지 않음', []);
   }
   // 드리프트는 아래 teamOp에서 다시 판정한다 — 확정한 결정이 손으로 고친 파일과 같은 내용을 만들면 충돌이 아니다.
   const conflicts = report.conflicts.filter(item => !item.id.startsWith('spec.drift.'));
