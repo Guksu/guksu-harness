@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "node": "v22.23.2",
+  "platform": "darwin",
+  "arch": "arm64",
+  "usage": {
+    "status": "unmeasured",
+    "tokens": null
+  },
+  "cases": [
+    {
+      "name": "claude-root",
+      "report": {
+        "schema": 1,
+        "capturedAt": "2026-10-05T06:14:43.201Z",
+        "app": "claude",
+        "cwd": ".",
+        "bundleVersion": "5.1.0",
+        "evidence": "instrumented-hook-events",
+        "execution": {
+          "surface": "cli",
+          "cliVersion": "2.1.283 (Claude Code)",
+          "args": [
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-hook-events",
+            "--no-session-persistence",
+            "--permission-prompts",
+            "none",
+            "--max-budget-usd",
+            "0.5",
+            "--tools",
+            "Bash,Read,Edit",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{\"mcpServers\":{}}"
+          ],
+          "startedAt": "2026-10-05T06:14:28.123Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "model": "claude-opus-5-5",
+          "tools": [
+            "Bash",
+            "Read",
+            "Edit"
+          ],
+          "permissionDenials": [
+            "Edit",
+            "Bash"
+          ],
+          "finishedAt": "2026-10-05T06:14:43.173Z"
+        },
+        "models": [],
+        "issues": [],
+        "results": [
+          {
+            "scenario": "control",
+            "state": "observed",
+            "attempts": 0
+          },
+          {
+            "scenario": "branch",
+            "state": "observed",
+            "attempts": 1
+          },
+          {
+            "scenario": "git",
+            "state": "observed",
+            "attempts": 1
+          },
+          {
+            "scenario": "secret",
+            "state": "observed",
+            "attempts": 1
+          }
+        ],
+        "integration": "observed",
+        "ok": true,
+        "scope": "이 임시 저장소의 계측된 훅만 관찰합니다. 수동 입력 이벤트는 앱 통합 증거가 아니며 GUI·다른 프로젝트·모델 성능으로 일반화하지 않습니다."
+      }
+    },
+    {
+      "name": "claude-nested",
+      "report": {
+        "schema": 1,
+        "capturedAt": "2026-10-05T06:13:13.516Z",
+        "app": "claude",
+        "bundleVersion": "5.1.0",
+        "evidence": "instrumented-hook-events",
+        "execution": {
+          "surface": "cli",
+          "cliVersion": "2.1.283 (Claude Code)",
+          "args": [
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-hook-events",
+            "--no-session-persistence",
+            "--permission-prompts",
+            "none",
+            "--max-budget-usd",
+            "0.5",
+            "--tools",
+            "Bash,Read,Edit",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{\"mcpServers\":{}}"
+          ],
+          "startedAt": "2026-10-05T06:12:56.083Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "model": "claude-opus-5-5",
+          "tools": [
+            "Bash",
+            "Read",
+            "Edit"
+          ],
+          "permissionDenials": [
+            "Edit",
+            "Bash"
+          ],
+          "finishedAt": "2026-10-05T06:13:13.481Z"
+        },
+        "models": [],
+        "issues": [],
+        "results": [
+          {
+            "scenario": "control",
+            "state": "unverified",
+            "attempts": 0
+          },
+          {
+            "scenario": "branch",
+            "state": "unverified",
+            "attempts": 0
+          },
+          {
+            "scenario": "git",
+            "state": "unverified",
+            "attempts": 0
+          },
+          {
+            "scenario": "secret",
+            "state": "unverified",
+            "attempts": 0
+          }
+        ],
+        "integration": "unverified",
+        "ok": false,
+        "scope": "이 임시 저장소의 계측된 훅만 관찰합니다. 수동 입력 이벤트는 앱 통합 증거가 아니며 GUI·다른 프로젝트·모델 성능으로 일반화하지 않습니다."
+      }
+    },
+    {
+      "name": "codex-nested",
+      "report": {
+        "schema": 1,
+        "capturedAt": "2026-10-05T06:09:39.219Z",
+        "app": "codex",
+        "bundleVersion": "5.1.0",
+        "evidence": "instrumented-hook-events",
+        "execution": {
+          "surface": "cli",
+          "cliVersion": "codex-cli 0.155.0-alpha.16.3",
+          "args": [
+            "--no-daemon",
+            "exec",
+            "--ephemeral",
+            "--sandbox",
+            "workspace-write",
+            "--json",
+            "-"
+          ],
+          "startedAt": "2026-10-05T06:09:13.080Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "finishedAt": "2026-10-05T06:09:39.202Z"
+        },
+        "models": [],
+        "issues": [],
+        "results": [
+          {
+            "scenario": "control",
+            "state": "unverified",
+            "attempts": 0
+          },
+          {
+            "scenario": "branch",
+            "state": "failed",
+            "attempts": 0
+          },
+          {
+            "scenario": "git",
+            "state": "failed",
+            "attempts": 0
+          },
+          {
+            "scenario": "secret",
+            "state": "unverified",
+            "attempts": 0
+          }
+        ],
+        "integration": "unverified",
+        "ok": false,
+        "scope": "이 임시 저장소의 계측된 훅만 관찰합니다. 수동 입력 이벤트는 앱 통합 증거가 아니며 GUI·다른 프로젝트·모델 성능으로 일반화하지 않습니다."
+      }
+    }
+  ]
+}
