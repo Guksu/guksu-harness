@@ -15,6 +15,8 @@ Node.js 22 이상 · MIT · 버전은 `package.json`과 플러그인 manifest에
 | `git reset`, `git rebase`, `git push --force` | 막는다. 사람이 직접 한다 |
 | `git commit`, `git push` | 막는다. 팀이 설정으로 허용하면 할 수 있다 |
 
+이 결과는 앱이 프로젝트 설정과 훅을 로드하고 실행할 때 적용됩니다. Codex는 프로젝트와 훅 정의의 신뢰도 필요합니다. 설치 파일 검사와 실제 앱의 차단 확인은 구분합니다.
+
 그 밖에 하는 일은 세 가지입니다.
 
 - 팀 규칙 파일 `docs/harness-rules.md`를 만들고, `CLAUDE.md`·`AGENTS.md`가 이 파일을 가리키게 합니다.
@@ -60,6 +62,7 @@ npx guksu-harness diagnose .              # 읽기만. 확인된 사실·추정�
 npx guksu-harness compose . --dry-run     # 명세 초안과 변경 미리보기
 npx guksu-harness compose . --set protection.allowCommitPush=false --set records.history=none
 npx guksu-harness verify . --run          # 설정 완료 / 실행 확인 / 확인 필요 / 실패
+npx guksu-harness verify . --runtime      # Codex 훅의 로딩·활성·신뢰 상태 조회
 ```
 
 | 단계 | 하는 일 |
@@ -71,6 +74,8 @@ npx guksu-harness verify . --run          # 설정 완료 / 실행 확인 / 확�
 | 작동 확인 | 파일·등록 검사(설정 완료), 임시 저장소에서 설치된 훅 스크립트 실행과 `--run`의 검증 명령 실행(실행 확인·실패), 실제 앱 안의 훅 실행(확인 필요 · 절차 제공)을 구분한다 |
 
 기존 `CLAUDE.md`·`AGENTS.md`·`docs/harness-rules.md`는 생성 구간만 추가·갱신하고 나머지는 건드리지 않는다. 생성 구간이나 설정 파일을 손으로 고쳤으면 충돌로 멈추고, `--set`으로 명세를 맞추거나 `--force`로 다시 만든다. 자세한 결정 키와 상태는 [팀 맞춤 구성 안내](skills/harness/references/team-compose.md)에 있다.
+
+`--runtime`은 Codex가 구성된 프로젝트에서만 쓰는 선택 조회다. 실제 앱을 시작할 디렉터리를 전달하면 프로젝트 설정 비활성, 훅 비활성, 신뢰 검토 대기 등을 구분한다. 조회가 준비 상태를 확인하지 못하면 종료 코드 1이며, 기본 `verify`는 앱 서버를 시작하지 않는다. 이 조회는 모델·훅을 실행하거나 신뢰를 변경하지 않는다. 실제 차단 확인은 [독립된 CLI 시험](skills/harness/references/hook-probe.md)을 사용한다.
 
 ## 모노레포 검증
 

@@ -11,11 +11,27 @@ node skills/harness/scripts/hookProbe.mjs run /tmp/harness-claude-probe
 node skills/harness/scripts/hookProbe.mjs report /tmp/harness-claude-probe
 ```
 
-Codex는 `--app codex`로 별도 시험 폴더를 만든다. 필요하면 해당 폴더를 Codex CLI에서 열어 프로젝트와 `/hooks`의 훅 정의를 검토·신뢰한 후 `run`을 실행한다. 도구가 신뢰를 자동 승인하거나 기존 설정을 변경하지 않는다. 신뢰 없이 실행하면 이벤트가 없어 미확인으로 남을 수 있다. `run` 이전의 검토 세션 이벤트는 결과에서 제외한다.
+Codex는 `--app codex`로 별도 시험 폴더를 만든다. `run`은 앱 서버에서 사전 진단을 하고, 준비 조건이 충족되지 않으면 모델 호출 전에 멈춘다. 필요하면 해당 폴더를 Codex CLI에서 열어 프로젝트와 `/hooks`의 훅 정의를 검토·신뢰한 후 `run`을 실행한다. 도구가 신뢰를 자동 승인하거나 기존 설정을 변경하지 않는다. `run` 이전의 검토 세션 이벤트는 결과에서 제외한다.
 
 `prepare`에 `--cwd root`를 추가하면 저장소 루트 대조군을 만든다. 기본은 `--cwd nested`이며 `apps/web`에서 시작한다. 두 결과를 비교해 하위 폴더 실행의 설정 탐색·경로 문제를 구분한다.
 
-`run`은 설치된 CLI와 기존 로그인·모델 설정을 사용해 모델을 호출한다. 실행별 최대 120초·출력 4MiB 제한이 있으며 Claude에는 `--max-budget-usd 0.5`를 전달한다. Codex의 토큰·비용 상한을 보장하는 옵션은 추가하지 않았다. 기본 `npm test`는 모델을 호출하지 않는다. 재실행하려면 새 폴더를 준비한다. 모델·버전 비교 평가는 별도 프로토콜을 따른다.
+`run`은 설치된 CLI와 기존 로그인·모델 설정을 사용해 모델을 호출한다. 실행별 최대 120초·출력 4MiB 제한이 있으며 Claude에는 `--max-budget-usd 0.5`를 전달한다. Codex의 토큰·비용 상한을 보장하는 옵션은 추가하지 않았다. 기본 `npm test`는 모델을 호출하지 않는다. 실제 모델 실행 후 재시험하려면 새 폴더를 준비한다. Codex 사전 진단에서 멈췄다면 `.probe/execution.json`을 만들지 않으므로 검토 후 같은 폴더에서 재시도할 수 있다. 모델·버전 비교 평가는 별도 프로토콜을 따른다.
+
+## 모델 호출 없는 Codex 사전 진단
+
+```bash
+# 실제 앱을 시작할 디렉터리. 일반 설치 프로젝트도 조회할 수 있다.
+node skills/harness/scripts/hookProbe.mjs inspect /tmp/harness-codex-probe/apps/web
+npx guksu-harness verify /path/to/project/apps/web --runtime --json
+```
+
+`inspect`는 JSON만 반환하며 `ready: false`면 종료 코드 1이다. `verify --runtime`은 기존 파일·스크립트 검사에 같은 조회를 추가하고 결과를 `verification.runtime.apps.codex.hookPreflight`에 담는다. `--plan`과 함께 사용할 수 없다. 기본 `verify`에는 이 조회가 없다.
+
+설치된 `codex app-server --listen stdio://`에 초기화 후 `config/read`, `hooks/list`, `experimentalFeature/list`만 요청한다. 요청한 하위 cwd를 유지하며, 루트 `.codex/hooks.json`의 명령 훅과 앱이 발견한 정의를 출처·이벤트·matcher·명령·async로 비교한다. 프로젝트 계층 비활성/누락, 훅 비활성, 신뢰 검토 대기, 탐색 경고·오류를 구분한다. 필요한 API 미지원·손상 응답·시간 초과는 `unavailable`이며 준비 완료로 처리하지 않는다.
+
+기본 조회 한도는 15초·응답 4MiB이고 종료 시 조회용 서버를 정리한다. 모델 턴이나 훅 실행을 요청하지 않고 설정·신뢰를 쓰지 않는다. CLI 자체의 일반 런타임 캐시 기록까지 막는 것은 아니다. 원문 설정, 명령, matcher, 다른 출처의 훅, 오류·경고 본문은 저장하거나 출력하지 않는다. 결과에는 CLI 버전·상대 cwd·상태·정의 해시·개수·사유 코드만 남긴다.
+
+`ready: true`는 조회 시점의 로딩·활성·신뢰 조건 확인이다. 실제 훅 차단을 증명하지 않으므로 `hookIntegration`은 `unverified`로 유지한다. Codex `run`은 이 결과를 `.probe/preflight.json`에 보존하고 준비 상태일 때만 실제 모델 시험으로 진행한다.
 
 ## 관찰과 판정
 
@@ -34,5 +50,6 @@ Codex는 `--app codex`로 별도 시험 폴더를 만든다. 필요하면 해당
 ## 공식 근거
 
 - [Codex hooks](https://learn.chatgpt.com/docs/hooks): 세션 cwd, 프로젝트와 훅 신뢰, Bash/apply_patch 입력, PreToolUse·PostToolUse 이벤트.
+- [Codex app server](https://learn.chatgpt.com/docs/app-server): 초기화와 읽기 조회 프로토콜. 지원 여부는 설치된 CLI 버전에서 확인한다.
 - [Claude Code hooks](https://code.claude.com/docs/en/hooks): 이벤트 입력과 종료 코드 2의 차단 동작.
 - [Claude Code programmatic execution](https://code.claude.com/docs/en/headless): 비대화형 모델 실행. 설치된 버전의 `--help`로 실행 옵션을 확인한다.

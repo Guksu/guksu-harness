@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawnSync, spawn } from 'node:child_process';
 import { createPlan, applyPlan, version } from './harnessManager.mjs';
+import { inspectCodexHooks } from './codexHooks.mjs';
 
 const json = data => `${JSON.stringify(data, null, 2)}\n`;
 const hash = data => createHash('sha256').update(data).digest('hex');
@@ -95,6 +96,7 @@ export function reportProbe(directory) {
   }
   let execution = null;
   if (existsSync(join(root, '.probe/execution.json'))) execution = JSON.parse(read(root, '.probe/execution.json'));
+  const preflight = existsSync(join(root, '.probe/preflight.json')) ? JSON.parse(read(root, '.probe/preflight.json')) : null;
   if (execution) events = events.filter(event => event.at >= execution.startedAt && (!execution.finishedAt || event.at <= execution.finishedAt));
   const sessions = new Set(events.filter(event => event.event === 'SessionStart' && event.session).map(event => event.session));
   const sameFile = existsSync(join(root, manifest.target)) && read(root, manifest.target) === 'unchanged\n';
@@ -111,7 +113,7 @@ export function reportProbe(directory) {
   const observed = !issues.length && results.every(result => result.state === 'observed');
   const complete = execution?.surface === 'cli' && execution.cliVersion && execution.finishedAt && execution.exitCode === 0 && !execution.error && !execution.signal;
   return { schema: 1, capturedAt: new Date().toISOString(), app: manifest.app, cwd: manifest.cwd, bundleVersion: manifest.bundleVersion,
-    evidence: 'instrumented-hook-events', execution, models: [...new Set(events.map(event => event.model).filter(Boolean))],
+    evidence: 'instrumented-hook-events', execution, preflight, models: [...new Set(events.map(event => event.model).filter(Boolean))],
     issues, results, integration: observed && complete ? 'observed' : 'unverified', ok: Boolean(observed && complete),
     scope: '이 임시 저장소의 계측된 훅만 관찰합니다. 수동 입력 이벤트는 앱 통합 증거가 아니며 GUI·다른 프로젝트·모델 성능으로 일반화하지 않습니다.' };
 }
@@ -123,6 +125,11 @@ export async function runProbe(directory) {
   if (before.issues.length) throw new Error('변경된 시험 설정으로 실행하지 않습니다');
   if (existsSync(join(root, '.probe/execution.json'))) throw new Error('실행마다 새 시험 디렉터리를 사용하세요');
   const app = manifest.app;
+  if (app === 'codex') {
+    const preflight = await inspectCodexHooks(join(root, manifest.cwd));
+    writeFileSync(join(root, '.probe/preflight.json'), json(preflight));
+    if (!preflight.ready) return reportProbe(root);
+  }
   const versionResult = spawnSync(app, ['--version'], { encoding: 'utf8', timeout: 5000 });
   const cliVersion = versionResult.status === 0 ? versionResult.stdout.trim().slice(0, 256) : null;
   const args = app === 'codex' ? ['--no-daemon', 'exec', '--ephemeral', '--sandbox', 'workspace-write', '--json', '-']
@@ -186,9 +193,9 @@ export async function runProbe(directory) {
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const [action, directory, ...options] = process.argv.slice(2);
-    if (!['prepare', 'run', 'report'].includes(action) || !directory || (action === 'prepare' ? ![2, 4].includes(options.length) || options[0] !== '--app' || (options.length === 4 && options[2] !== '--cwd') : options.length !== 0)) throw new Error('사용법: hookProbe.mjs prepare <새 디렉터리> --app claude|codex [--cwd root|nested] | run <시험 디렉터리> | report <시험 디렉터리>');
-    const result = action === 'prepare' ? prepareProbe(directory, options[1], { cwd: options[3] }) : action === 'run' ? await runProbe(directory) : reportProbe(directory);
+    if (!['prepare', 'run', 'report', 'inspect'].includes(action) || !directory || (action === 'prepare' ? ![2, 4].includes(options.length) || options[0] !== '--app' || (options.length === 4 && options[2] !== '--cwd') : options.length !== 0)) throw new Error('사용법: hookProbe.mjs prepare <새 디렉터리> --app claude|codex [--cwd root|nested] | run <시험 디렉터리> | report <시험 디렉터리> | inspect <Codex 실행 디렉터리>');
+    const result = action === 'inspect' ? await inspectCodexHooks(directory) : action === 'prepare' ? prepareProbe(directory, options[1], { cwd: options[3] }) : action === 'run' ? await runProbe(directory) : reportProbe(directory);
     console.log(json(result));
-    if (result.ok === false) process.exitCode = 1;
+    if (result.ok === false || result.ready === false) process.exitCode = 1;
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

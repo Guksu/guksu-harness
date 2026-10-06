@@ -20,4 +20,18 @@ Codex 시험 저장소의 프로젝트·훅 신뢰를 새로 승인하지 않았
 
 남은 평가: Codex의 정상 신뢰 설정에서 재시험, Claude 하위 시작 위치의 설정 로드 조건 확인, GUI 앱 경로, Stop 훅, 기존/변경 하네스의 반복 모델 비교. 이번 가드 시험은 각 조건 1회 중심의 기능 확인이며 생산성·비용·모델 간 우열의 근거가 아니다.
 
+## 후속 사전 진단 — 2026-10-05~06
+
+Codex 0.155.0-alpha.16.3의 앱 서버에서 `config/read`, `hooks/list`, `experimentalFeature/list`를 조회했다. 실제 모델이나 훅 실행을 요청하지 않고 프로젝트·훅 신뢰 설정을 유지했다. 설치된 CLI가 생성한 JSON 스키마로 응답 형식을 확인했다.
+
+| 조회 대상·시각 | 프로젝트 계층 | 훅 기능 | 해당 등록의 발견 상태 | 결과 |
+|---|---|---|---|---|
+| 기존 Codex 시험 저장소, 10월 6일 | loaded | 활성 | 5개 모두 활성·untrusted | 신뢰 검토 필요 |
+| 새 Codex 계측 시험, 10월 5일 | disabled | 활성 | 5개 누락 | 모델 실행 전에 중단 |
+| 일반 설치 프로젝트, 10월 5일 | disabled | 활성 | 3개 누락 | `verify --runtime` 종료 코드 1 |
+
+세 조회 모두 `apps/web`에서 실행했다. [사전 진단 근거](evidence/codex-hook-preflight-2026-10-06.json)는 원문 설정·명령·절대 경로 없이 상태와 시각을 보존한다. 기존 시험 저장소의 현재 상태는 훅 신뢰 검토가 남아 있음을 보여 준다. 과거 모델 실행 순간의 설정 상태나 전체 실패 원인을 확정하지는 않는다.
+
+새 시험은 `execution: null`로 끝났으며 모델 실행 기록을 생성하지 않았다. 이 구분을 `verify --runtime`, `hookProbe.mjs inspect`, Codex 시험의 사전 진단에 반영했다. `ready`는 발견·활성·신뢰 조건만 뜻하고 실제 차단은 계속 별도 검증이 필요하다. 정상 신뢰 설정에서의 재시험과 Claude 하위 디렉터리 로드 조건 조사는 남아 있다.
+
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude hooks](https://code.claude.com/docs/en/hooks), [재현 절차](../../skills/harness/references/hook-probe.md).

@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "scope": "Read-only Codex app-server discovery. No model turns, hook executions or trust changes requested in these observations. Discovery is not evidence of enforcement.",
+  "observations": [
+    {
+      "scenario": "existing-probe-inspect",
+      "preflight": {
+        "schema": 1,
+        "app": "codex",
+        "evidence": "app-server-discovery",
+        "cwd": "apps/web",
+        "capturedAt": "2026-10-06T00:33:04.061Z",
+        "cliVersion": "codex-cli 0.155.0-alpha.16.3",
+        "hookIntegration": "unverified",
+        "ready": false,
+        "projectLayer": "loaded",
+        "featureEnabled": true,
+        "hooks": [
+          {
+            "id": "24eda66229fefea0",
+            "event": "PreToolUse",
+            "state": "review-required",
+            "enabled": true,
+            "trust": "untrusted"
+          },
+          {
+            "id": "7f6adb3cbd158471",
+            "event": "PreToolUse",
+            "state": "review-required",
+            "enabled": true,
+            "trust": "untrusted"
+          },
+          {
+            "id": "6d29202a2b970641",
+            "event": "PreToolUse",
+            "state": "review-required",
+            "enabled": true,
+            "trust": "untrusted"
+          },
+          {
+            "id": "a06e17ab66f1445e",
+            "event": "PostToolUse",
+            "state": "review-required",
+            "enabled": true,
+            "trust": "untrusted"
+          },
+          {
+            "id": "eee6516c19fb75bc",
+            "event": "SessionStart",
+            "state": "review-required",
+            "enabled": true,
+            "trust": "untrusted"
+          }
+        ],
+        "errorCount": 0,
+        "warningCount": 0,
+        "reasons": [
+          "hook-review-required"
+        ],
+        "status": "attention"
+      }
+    },
+    {
+      "scenario": "fresh-probe-run-stopped",
+      "preflight": {
+        "schema": 1,
+        "app": "codex",
+        "evidence": "app-server-discovery",
+        "cwd": "apps/web",
+        "capturedAt": "2026-10-05T06:41:36.079Z",
+        "cliVersion": "codex-cli 0.155.0-alpha.16.3",
+        "hookIntegration": "unverified",
+        "ready": false,
+        "projectLayer": "disabled",
+        "featureEnabled": true,
+        "hooks": [
+          {
+            "id": "86856c932dff56cc",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "0f2d8e23662f0fd5",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "747b23e8c673244a",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "438e0dde2a5da52e",
+            "event": "PostToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "6fa1a098f8c84b74",
+            "event": "SessionStart",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          }
+        ],
+        "errorCount": 0,
+        "warningCount": 0,
+        "reasons": [
+          "project-layer-disabled",
+          "hook-missing"
+        ],
+        "status": "attention"
+      },
+      "execution": null,
+      "integration": "unverified",
+      "ok": false
+    },
+    {
+      "scenario": "installed-project-verify-runtime",
+      "preflight": {
+        "schema": 1,
+        "app": "codex",
+        "evidence": "app-server-discovery",
+        "cwd": "apps/web",
+        "capturedAt": "2026-10-05T06:42:38.646Z",
+        "cliVersion": "codex-cli 0.155.0-alpha.16.3",
+        "hookIntegration": "unverified",
+        "ready": false,
+        "projectLayer": "disabled",
+        "featureEnabled": true,
+        "hooks": [
+          {
+            "id": "51ae14897b8f24e4",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "a8236cdf0a8b058e",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          },
+          {
+            "id": "d576e88a38e36763",
+            "event": "PreToolUse",
+            "state": "missing",
+            "enabled": null,
+            "trust": "unknown"
+          }
+        ],
+        "errorCount": 0,
+        "warningCount": 0,
+        "reasons": [
+          "project-layer-disabled",
+          "hook-missing"
+        ],
+        "status": "attention"
+      },
+      "hookIntegration": "unverified",
+      "ok": false
+    }
+  ]
+}
