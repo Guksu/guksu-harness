@@ -2,6 +2,8 @@
 
 실무 상황을 재현한 고정 프로젝트에서 같은 요청을 구성만 바꿔 실제 Claude Code로 실행하고, 에이전트의 완료 선언이 아니라 최종 저장소 상태로 채점한다. `run`만 실제 모델을 호출하며 비용이 든다. 이 폴더는 npm 패키지에 포함되지 않는다.
 
+실측 결과와 해석: [docs/analysis/harness-benchmark.md](../docs/analysis/harness-benchmark.md)
+
 ## 비교 구성
 
 | 구성 | 프로젝트에 있는 것 |

@@ -3,7 +3,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { devNull } from 'node:os';
 
@@ -193,4 +193,3 @@ export function prepareRun({ workDir, metaDir, task, config, rep = 1, canary = m
   return { ctx, prepared };
 }
 
-export const relativeTo = (root, path) => relative(root, path) || '.';
