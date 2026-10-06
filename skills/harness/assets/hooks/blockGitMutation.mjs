@@ -2,12 +2,14 @@
 // PreToolUse(Bash)의 Git 명령 패턴 검사. 등록된 도구 경로만 검사하며 승인 판독기는 아니다.
 // switch와 일반 worktree 생성·조회는 허용한다. commit·push는 allowCommitPush가 true일 때 허용한다.
 // 이력 재작성·강제·삭제 옵션은 차단한다. 간접 메시지는 blockAttribution을 선택한 경우만 제한한다.
+// blockAttribution은 gh로 올리는 PR·이슈의 제목·본문·댓글(본문 파일 포함)에도 적용한다.
 // requireHistoryDoc은 기록 대상 커밋(historyCommitTypes)이 있는 push에 기록 파일이 있는지 확인하며
 // 내용 품질을 판정하지 않는다.
 // 설정 생략 시 기존 정책을 유지한다. 새 minimal 설치는 requireHistoryDoc: false를 명시한다.
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // 서브커맨드 앞의 전역 플래그를 건너뛴 뒤 판정한다. -C <path>·-c <k=v>·--git-dir <path>처럼
@@ -73,10 +75,21 @@ const INDIRECT_COMMIT_SHORT = /[FCct]/;
 const UNSAFE_PUSH_LONG = /^--(?:force(?:-with-lease|-if-includes)?|delete|mirror|prune)(?:=|$)/;
 const UNSAFE_PUSH_SHORT = /[fd]/;
 
-// 선택 정책(blockAttribution): 커밋 메시지의 Claude 작성 표기를 제한한다. 표준 footer 형태만 잡는다 —
-// 단순 "claude" 단어는 정상 메시지에 나올 수 있으므로 표기 패턴만 차단한다(오탐 방지).
+// 선택 정책(blockAttribution): 커밋 메시지와 PR·이슈 텍스트의 Claude 작성 표기를 제한한다. 표준 trailer·footer·
+// 세션 링크 형태만 잡는다 — 단순 "claude" 단어는 정상 메시지에 나올 수 있으므로 표기 패턴만 차단한다(오탐 방지).
 export const CLAUDE_ATTRIBUTION =
-  /co-authored-by:[^\n]*\bclaude\b|generated with[^\n]*\bclaude\b|\bclaude-session:|noreply@anthropic\.com/i;
+  /co-authored-by:[^\n]*\bclaude\b|generated (?:with|by)[^\n]*\bclaude\b|\bclaude-session:|claude\.ai\/code\/session_|noreply@anthropic\.com/i;
+
+// gh로 PR·이슈 텍스트를 올리는 명령. 제목·본문은 명령 전체(heredoc 포함)에서, 본문 파일(--body-file·-F)은 파일 내용에서 검사한다.
+// 명령 치환(--body "$(cat 파일)")으로 넘긴 파일 내용은 보지 못한다. MCP 도구로 올리는 PR은 이 훅의 대상이 아니다.
+const GH_TEXT = /\bgh\s+(?:pr\s+(?:create|edit|comment|review|merge)|issue\s+(?:create|edit|comment))\b([^&|;\n]*)/g;
+export const ghBodyFiles = (tail) => {
+  const tokens = tail.trim().split(/\s+/).filter(Boolean).map((token) => token.replace(/^["']+|["']+$/g, ''));
+  return tokens.flatMap((token, index) => {
+    if (token === '--body-file' || token === '-F') return [tokens[index + 1] ?? ''];
+    return token.startsWith('--body-file=') ? [token.slice('--body-file='.length)] : [];
+  });
+};
 
 export const isGitMutation = (command) => {
   if (GIT_MUTATION.test(command) || isUnsafeWorktree(command)) return true;
@@ -125,14 +138,26 @@ export const findHistoryTrigger = (messages, types = DEFAULT_HISTORY_COMMIT_TYPE
 };
 
 // 판정 결과를 사유와 함께 돌려준다 — CLI가 사유별 안내 메시지를 낸다.
-// rule: 'mutation' | 'attribution' | 'commit-flags' | 'push-flags' | 'history-missing'
+// rule: 'mutation' | 'attribution' | 'pr-attribution' | 'pr-body-file' | 'commit-flags' | 'push-flags' | 'history-missing'
+// readText: PR 본문 파일을 읽는 함수. 읽을 수 없으면 null — 검사하지 못한 본문은 표기 정책에서 차단한다.
 // historyChanged: true(기록 있음) | false(없음) | null(판정 불가 — 게이트를 통과시킨다.
 // base 브랜치를 못 찾는 환경에서 push를 막으면 가드가 아니라 고장이다)
 // historyRequired: 이 push에 기록 대상 커밋이 있는가. 생략하면 true(모든 push에 요구하던 이전 동작).
 export const judgeGitCommand = (
   command,
-  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null, historyRequired = true, blockAttribution = false } = {},
+  { allowCommitPush = false, requireHistoryDoc = false, historyChanged = null, historyRequired = true, blockAttribution = false, readText = () => null } = {},
 ) => {
+  // PR·이슈 텍스트는 git 변경이 아니므로 커밋·푸시 허용 여부와 상관없이 표기 정책만 본다.
+  // 줄 끝 \로 이어 쓴 인자도 같은 명령이다 — 이어 붙이지 않으면 다음 줄의 --body-file을 놓친다.
+  const ghTexts = blockAttribution ? [...command.replace(/\\\r?\n/g, ' ').matchAll(GH_TEXT)] : [];
+  if (ghTexts.length > 0) {
+    if (CLAUDE_ATTRIBUTION.test(command)) return { blocked: true, rule: 'pr-attribution' };
+    for (const path of ghTexts.flatMap((match) => ghBodyFiles(match[1]))) {
+      const text = path && path !== '-' ? readText(path) : null;
+      if (text == null) return { blocked: true, rule: 'pr-body-file' };
+      if (CLAUDE_ATTRIBUTION.test(text)) return { blocked: true, rule: 'pr-attribution' };
+    }
+  }
   if (!allowCommitPush) {
     return isGitMutation(command) ? { blocked: true, rule: 'mutation' } : { blocked: false };
   }
@@ -221,9 +246,20 @@ if (isDirectRun) {
   if (historyTypes.invalid) configNote += ' (historyCommitTypes는 문자열 배열이어야 합니다 — 모든 push에 기록을 요구합니다)';
   const trigger = changes === null ? null : findHistoryTrigger(changes.messages, historyTypes.types);
 
+  // PR 본문 파일은 훅 입력의 cwd 기준으로 1MiB까지 읽는다. 셸이 펼치는 ~/만 직접 펼친다.
+  const readText = (path) => {
+    try {
+      const full = path.startsWith('~/') ? join(homedir(), path.slice(2)) : resolve(projectDir, path);
+      const stat = statSync(full);
+      return stat.isFile() && stat.size <= 1024 * 1024 ? readFileSync(full, 'utf8') : null;
+    } catch {
+      return null;
+    }
+  };
   const verdict = judgeGitCommand(command, {
     allowCommitPush,
     blockAttribution: config.blockAttribution === true,
+    readText,
     requireHistoryDoc,
     historyRequired: trigger !== null,
     historyChanged: changes === null ? null : hasHistoryChange(changes.paths),
@@ -244,6 +280,11 @@ if (isDirectRun) {
       attribution:
         '커밋 메시지에 Claude 작성 표기(Co-Authored-By: Claude·Generated with Claude Code·Claude-Session 등)가 있습니다. ' +
         '프로젝트의 blockAttribution 정책에 맞게 메시지를 수정하세요 (pr 스킬).',
+      'pr-attribution':
+        'PR·이슈의 제목·본문에 Claude 작성 표기(Co-Authored-By: Claude·Generated with/by Claude Code·Claude-Session·claude.ai 세션 링크 등)가 있습니다. ' +
+        '프로젝트의 blockAttribution 정책에 맞게 표기를 지우고 다시 실행하세요 (pr 스킬).',
+      'pr-body-file':
+        'PR·이슈 본문 파일을 읽을 수 없어 작성 표기를 검사하지 못했습니다(표준 입력·없는 파일·1MiB 초과). 읽을 수 있는 파일을 --body-file로 넘기거나 --body로 본문을 전달하세요.',
       'commit-flags':
         '이력 재작성(--amend/--fixup/--squash) 또는 작성자 검사 정책에서 확인할 수 없는 간접 메시지입니다. blockAttribution이 켜져 있으면 -m으로 메시지를 전달하세요.',
       'push-flags':

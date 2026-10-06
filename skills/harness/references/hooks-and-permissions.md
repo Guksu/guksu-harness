@@ -85,13 +85,27 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 | requireHistoryDoc | commit·push 허용 시 기존 설정에서 생략 시 true, 새 minimal 설치는 false를 명시. push할 변경에 `docs/history/*.md`를 요구 |
 | historyBase | 생략 시 dev·main·master 계열을 탐색. 프로젝트 기준 브랜치를 지정하는 편이 명확함 |
 | historyCommitTypes | 기록을 요구할 커밋 타입. 생략 시 `fix`·`hotfix`·`feat`·`policy`. `["*"]`는 모든 push에 요구(5.1.0 이하 동작). 문자열 배열이 아니면 모든 push에 요구 |
-| blockAttribution | 기본 false. true이면 Claude 작성자 표기 패턴을 차단 |
+| blockAttribution | 기본 false. true이면 커밋 메시지와 `gh pr`·`gh issue`의 제목·본문·본문 파일에서 Claude 작성 표기 패턴을 차단 |
 
 기록 게이트는 base 이후 커밋(병합 제외)의 제목을 Conventional Commits로 읽는다. 대상 타입, 호환성 변경(`타입!` 또는 `BREAKING CHANGE:` 꼬리말), 형식을 읽을 수 없는 커밋 중 하나라도 있으면 `docs/history/`의 기록 문서를 요구한다. 색인 `docs/history/README.md`만 바꾼 것은 기록으로 치지 않는다. 대상 커밋이 없으면 기록 없이도 push한다.
 
 설정 파일이 없거나 파싱에 실패하면 커밋·푸시 예외는 비활성이다. 기록 기준을 찾지 못하면 기록 게이트는 통과하므로 승인·보안 장치로 사용하지 않는다. 기록 게이트의 git 명령은 훅 입력의 `cwd`에서 실행한다. 기존 표기 제한을 유지하려면 업데이트 전에 `blockAttribution: true`를 설정한다.
 
 허용 상태에서도 force/delete push와 amend/fixup/squash는 차단한다. 간접 커밋 메시지 옵션(`-F`, `-t`, `-c`, `-C`)은 `blockAttribution: true`일 때만 차단한다. worktree 조회와 일반 생성은 허용하고 강제 생성·삭제·이동·정리는 차단한다. 이 검사는 셸 파서 전체를 대체하지 않는다.
+
+코어 규칙은 커밋·PR·이슈·리뷰 댓글에 AI 에이전트 작성 표기(`Co-Authored-By: Claude` 트레일러, `Generated with Claude Code` 문구, 세션 링크)를 넣지 않게 한다. 팀 규칙이 표기를 요구하면 팀 규칙이 우선한다. 훅 검사는 `blockAttribution: true`를 고른 프로젝트에만 적용한다.
+
+- 커밋: 명령 전체(heredoc 메시지 포함)에서 표기를 찾는다. 메시지가 명령 밖에 있는 `-F`·`-t`·`-c`·`-C`는 차단한다.
+- PR·이슈: `allowCommitPush`와 상관없이 `gh pr create·edit·comment·review·merge`, `gh issue create·edit·comment`의 제목·본문을 명령 전체에서 검사한다. `--body-file`·`-F` 파일은 훅 입력의 `cwd` 기준으로 1MiB까지 읽어 검사하고, 읽지 못한 본문(표준 입력·없는 파일)은 차단한다.
+- 검사하지 않는 경로: 명령 치환(`--body "$(cat 파일)"`), `gh api`, MCP 도구로 올리는 PR·댓글. 이 경로는 코어 규칙의 지침으로 지킨다.
+
+Claude Code는 앱 설정으로 기본 표기 자체를 끌 수 있다. 팀이 표기를 쓰지 않기로 했다면 `.claude/settings.json`에 아래를 추가한다. `"attribution": false`도 같은 뜻이지만 구버전은 불리언을 거부하므로 객체 형식을 쓴다. 관리 도구는 이 설정을 자동으로 추가하지 않는다. Codex에는 같은 설정을 확인하지 못했다.
+
+```json
+{
+  "attribution": { "commit": "", "pr": "", "sessionUrl": false }
+}
+```
 
 ## 3. 보호 브랜치
 
