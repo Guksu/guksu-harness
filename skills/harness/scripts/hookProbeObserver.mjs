@@ -1,6 +1,6 @@
 // Installed only in disposable hook-probe fixtures. Never stores tool inputs or outputs.
 import { appendFileSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -27,11 +27,15 @@ const result = hook === 'observe' ? null : spawnSync(manifest.commands[hook], {
   shell: true, cwd: process.cwd(), env: process.env, input: raw, encoding: 'utf8', timeout: 10000, maxBuffer: 128 * 1024,
 });
 const hash = value => typeof value === 'string' ? createHash('sha256').update(value).digest('hex') : null;
+const projectRelative = process.env.CLAUDE_PROJECT_DIR ? relative(root, resolve(process.env.CLAUDE_PROJECT_DIR)) : null;
+const projectCwd = projectRelative == null ? null
+  : isAbsolute(projectRelative) || projectRelative === '..' || projectRelative.startsWith(`..${sep}`) ? '<outside>' : projectRelative || '.';
 const record = {
   schema: 1, probeId: manifest.id, at: new Date().toISOString(), hook, scenario,
   event: input.hook_event_name ?? null, tool: input.tool_name ?? null,
   session: hash(input.session_id), call: hash(input.tool_use_id),
   cwd: relative(root, input.cwd ?? process.cwd()) || '.',
+  projectCwd,
   model: typeof input.model === 'string' ? input.model.slice(0, 200) : null,
   exitCode: result?.status ?? null, signal: result?.signal ?? null, error: result?.error?.code ?? null,
 };

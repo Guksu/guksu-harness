@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "scope": "Disposable Claude CLI fixtures. --init-only runs startup hooks without a model conversation. Startup observation does not prove PreToolUse enforcement. No settings or trust overrides.",
+  "observations": [
+    {
+      "scenario": "root-startup",
+      "startup": {
+        "schema": 1,
+        "app": "claude",
+        "evidence": "cli-startup-events",
+        "cwd": ".",
+        "hookIntegration": "unverified",
+        "state": "observed",
+        "ok": true,
+        "execution": {
+          "surface": "cli",
+          "mode": "startup",
+          "cliVersion": "2.1.283 (Claude Code)",
+          "args": [
+            "--print",
+            "--init-only",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-hook-events",
+            "--no-session-persistence",
+            "--permission-prompts",
+            "none",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{\"mcpServers\":{}}"
+          ],
+          "startedAt": "2026-10-06T00:46:51.787Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "model": null,
+          "tools": [],
+          "permissionDenials": [],
+          "finishedAt": "2026-10-06T00:46:52.964Z"
+        },
+        "sessionStartCount": 1,
+        "projectCwds": [
+          "."
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "scenario": "nested-startup",
+      "startup": {
+        "schema": 1,
+        "app": "claude",
+        "evidence": "cli-startup-events",
+        "cwd": "apps/web",
+        "hookIntegration": "unverified",
+        "state": "unverified",
+        "ok": false,
+        "execution": {
+          "surface": "cli",
+          "mode": "startup",
+          "cliVersion": "2.1.283 (Claude Code)",
+          "args": [
+            "--print",
+            "--init-only",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-hook-events",
+            "--no-session-persistence",
+            "--permission-prompts",
+            "none",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{\"mcpServers\":{}}"
+          ],
+          "startedAt": "2026-10-06T00:46:53.074Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "model": null,
+          "tools": [],
+          "permissionDenials": [],
+          "finishedAt": "2026-10-06T00:46:53.918Z"
+        },
+        "sessionStartCount": 0,
+        "projectCwds": [],
+        "reasons": [
+          "session-start-missing"
+        ]
+      }
+    },
+    {
+      "scenario": "nested-run-stopped",
+      "startup": {
+        "schema": 1,
+        "app": "claude",
+        "evidence": "cli-startup-events",
+        "cwd": "apps/web",
+        "hookIntegration": "unverified",
+        "state": "unverified",
+        "ok": false,
+        "execution": {
+          "surface": "cli",
+          "mode": "startup",
+          "cliVersion": "2.1.283 (Claude Code)",
+          "args": [
+            "--print",
+            "--init-only",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-hook-events",
+            "--no-session-persistence",
+            "--permission-prompts",
+            "none",
+            "--tools",
+            "",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{\"mcpServers\":{}}"
+          ],
+          "startedAt": "2026-10-06T00:46:53.984Z",
+          "exitCode": 0,
+          "signal": null,
+          "error": null,
+          "diagnostics": [],
+          "model": null,
+          "tools": [],
+          "permissionDenials": [],
+          "finishedAt": "2026-10-06T00:46:54.827Z"
+        },
+        "sessionStartCount": 0,
+        "projectCwds": [],
+        "reasons": [
+          "session-start-missing"
+        ]
+      },
+      "execution": null,
+      "integration": "unverified",
+      "ok": false
+    }
+  ]
+}

@@ -34,4 +34,22 @@ Codex 0.155.0-alpha.16.3의 앱 서버에서 `config/read`, `hooks/list`, `exper
 
 새 시험은 `execution: null`로 끝났으며 모델 실행 기록을 생성하지 않았다. 이 구분을 `verify --runtime`, `hookProbe.mjs inspect`, Codex 시험의 사전 진단에 반영했다. `ready`는 발견·활성·신뢰 조건만 뜻하고 실제 차단은 계속 별도 검증이 필요하다. 정상 신뢰 설정에서의 재시험과 Claude 하위 디렉터리 로드 조건 조사는 남아 있다.
 
+## Claude 시작 위치 대조 — 2026-10-06
+
+공식 문서는 상위 `CLAUDE.md`를 시작 시 읽는 동작과 공유 `.claude/settings.json`의 적용 범위를 구분한다. 공유 설정은 세션의 주 작업 디렉터리에서 읽는다. 루트 설정을 쓰려면 루트에서 시작해야 하며 세션의 `/cd`는 설정 소스도 바꿀 수 있다. [모노레포 안내](https://code.claude.com/docs/en/large-codebases), [설정 파일 위치](https://code.claude.com/docs/en/settings).
+
+Claude Code 2.1.283, Node 22, macOS에서 각각 새 임시 저장소를 만들고 공식 `--init-only`로 시작 훅만 실행했다. 루트의 SessionStart 1건과 하위 폴더의 이벤트 누락을 대조했다. 별도 설정 강제 로드·신뢰 우회·전역 설정 변경은 하지 않았다. [시작 시험 근거](evidence/claude-startup-2026-10-06.json).
+
+| 시험 | CLI 종료 | SessionStart | 훅의 프로젝트 위치 | 판정 |
+|---|---|---|---|---|
+| 루트 `startup` | 0 | 1건 | 하네스 루트 | 시작 훅만 관찰 |
+| apps/web `startup` | 0 | 0건 | 미측정 | 미확인 |
+| apps/web `run`의 시작 진단 | 0 | 0건 | 미측정 | 모델 호출 전에 중단, execution null |
+
+이는 앞선 하위 폴더 미관찰 결과와 공식 설정 범위가 일치함을 보여 준다. `--init-only`의 정상 종료만으로 설정 로딩을 인정하지 않는다. 이 시험은 Setup·SessionStart 훅을 실행하므로 읽기 전용 조회가 아니며 PreToolUse의 차단 여부도 검사하지 않는다. [CLI 문서](https://code.claude.com/docs/en/cli-reference).
+
+개선은 두 경로에 반영했다. 일반 `verify`는 전달받은 위치를 기준으로 설정 파일 위치만 비교하고 Claude를 실행하지 않는다. 임시 저장소의 Claude `run`은 매번 별도 시작 진단을 거쳐 같은 실행의 SessionStart와 프로젝트 위치를 확인한 뒤 모델 시험으로 진행한다. 하위 설정을 복제하거나 설정 우선순위를 바꾸는 방식은 사용하지 않는다.
+
+남은 평가는 정상 신뢰 설정의 Codex 가드 재시험, GUI 앱 경로, Stop 훅, 반복 모델 비교다. Claude의 실제 가드 차단 근거는 여전히 10월 5일 루트 실행이며 이번 시작 시험으로 대체하지 않는다.
+
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude hooks](https://code.claude.com/docs/en/hooks), [재현 절차](../../skills/harness/references/hook-probe.md).

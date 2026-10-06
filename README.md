@@ -93,6 +93,8 @@ npx guksu-harness verify --plan --affected --base origin/main --native-runner
 
 변경 패키지와 이를 사용하는 패키지를 검사하며, 필요한 선행 패키지의 명세에 있는 검사도 포함합니다. 공용 설정·의존 선언 변경과 Git 비교 실패는 전체 검증으로 돌아갑니다. Nx·Turbo도 기본은 전체 검증이며, `--native-runner`를 명시하면 프로젝트에 설치된 도구의 그래프를 조회합니다. 이 조회는 프로젝트 플러그인을 로드할 수 있습니다. `--workspace`는 지정 패키지와 루트 공통 검사만 실행하며 전체 저장소의 통과를 뜻하지 않습니다. [범위·설정·지원 한계](skills/harness/references/monorepo.md)를 참고하세요.
 
+Claude는 상위 `CLAUDE.md`와 달리 상위 `.claude/settings.json`을 자동 상속하지 않습니다. 루트 훅을 쓰려면 Claude를 하네스 설치 루트에서 시작하고 패키지 명령에만 cwd를 지정하세요. `verify apps/web`은 시작 위치의 차이를 경고합니다. 별도의 [Claude 시작 시험](skills/harness/references/hook-probe.md)은 모델 대화 없이 시작 훅을 확인하며, 시작 훅이 확인되지 않은 시험은 모델 호출 전에 멈춥니다.
+
 ## 업데이트와 팀 설정
 
 ```bash
