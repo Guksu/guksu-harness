@@ -23,13 +23,14 @@ Claude Code (`.claude/settings.json`, `PreToolUse`):
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/blockGitMutation.mjs\"" },
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/blockSecretAccess.mjs\"" }
-        ]
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/blockGitMutation.mjs\"" }]
       },
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Bash|Read|Grep",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/blockSecretAccess.mjs\"" }]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
         "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/branchGuard.mjs\"" }]
       }
     ]
@@ -51,7 +52,7 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
         ]
       },
       {
-        "matcher": "apply_patch|Edit|Write",
+        "matcher": "apply_patch|Edit|Write|Bash",
         "hooks": [{ "type": "command", "command": "node \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/branchGuard.mjs\"" }]
       }
     ]
@@ -59,7 +60,9 @@ Codex (`.codex/hooks.json`, `PreToolUse`):
 }
 ```
 
-두 형식의 차이는 세 가지다. Codex에는 `CLAUDE_PROJECT_DIR` 환경변수가 없어 Git 루트를 찾는 셸 명령을 쓴다. 하위 패키지·worktree에서도 루트의 훅을 실행한다. Git이 없는 프로젝트는 루트에서 실행해야 한다. Codex는 파일 편집 도구를 `apply_patch`로 보고하므로 matcher가 다르다. `permissions.deny`는 Claude Code 전용 권한이다.
+두 형식의 차이는 세 가지다. Codex에는 `CLAUDE_PROJECT_DIR` 환경변수가 없어 Git 루트를 찾는 셸 명령을 쓴다. 하위 패키지·worktree에서도 루트의 훅을 실행한다. Git이 없는 프로젝트는 루트에서 실행해야 한다. Codex는 파일 편집 도구를 `apply_patch`로 보고하므로 matcher가 다르다. `permissions.deny`와 Read·Grep 도구 검사는 Claude Code에만 있다.
+
+5.1 이하에서 설치한 등록(브랜치 가드 `Edit|Write|NotebookEdit`, 민감정보 훅 `Bash`)은 `update`가 위 형태로 바꾼다. 이 도구가 넣은 항목만 바꾸며 수동 등록은 그대로 둔다. `eject`한 훅은 예전 스크립트일 수 있어 이전 matcher를 유지한다. `status`는 이전 형태의 등록을 경고로 알린다.
 
 관리자는 같은 의미의 훅을 개별 등록 항목으로 추가한다. 수동 등록이나 다른 도구의 항목을 덮어쓰지 않는다. 개인 설정(`~/.claude`, `~/.codex`)은 자동 수정하지 않는다.
 
@@ -109,27 +112,51 @@ Claude Code는 앱 설정으로 기본 표기 자체를 끌 수 있다. 팀이 �
 
 ## 3. 보호 브랜치
 
-`branchGuard.mjs`는 파일 편집 도구(Claude Code: Edit·Write·NotebookEdit, Codex: apply_patch)에서 보호 브랜치 편집을 차단한다.
+`branchGuard.mjs`는 파일 편집 도구(Claude Code: Edit·Write·NotebookEdit, Codex: apply_patch)에서 보호 브랜치 편집을 차단한다. Bash는 추적 중인 파일을 제자리에서 고치는 명령만 차단한다.
 
 ```json
 { "protectedBranches": ["main", "master"] }
 ```
 
-설정 파일은 `.agents/hooks/branchGuard.config.json`이다. 없으면 main·master를 사용하며 JSON 파싱 오류와 잘못된 배열 형식은 편집을 차단한다. 빈 배열은 보호 브랜치가 없다는 명시적 설정이다. 브랜치 이름은 정확히 일치해야 하며 와일드카드를 지원하지 않는다. 프로젝트 경로는 훅 입력의 `cwd`를 먼저 쓰고, 없으면 `CLAUDE_PROJECT_DIR`, 현재 디렉터리 순으로 찾는다. 시작 경로에서 부모를 따라 가장 가까운 `.git`을 찾는다. git 저장소가 아니거나 detached HEAD·브랜치 조회 실패면 비활성이다. Bash로 파일을 쓰는 경로는 검사하지 않으므로 작업 시작 시 브랜치 확인을 병행한다.
+설정 파일은 `.agents/hooks/branchGuard.config.json`이다. 없으면 main·master를 사용하며 JSON 파싱 오류와 잘못된 배열 형식은 편집을 차단한다. 빈 배열은 보호 브랜치가 없다는 명시적 설정이다. 브랜치 이름은 정확히 일치해야 하며 와일드카드를 지원하지 않는다. 프로젝트 경로는 훅 입력의 `cwd`를 먼저 쓰고, 없으면 `CLAUDE_PROJECT_DIR`, 현재 디렉터리 순으로 찾는다. 시작 경로에서 부모를 따라 가장 가까운 `.git`을 찾는다. git 저장소가 아니거나 detached HEAD·브랜치 조회 실패면 비활성이다.
+
+Bash 검사는 보호 브랜치에서만 동작한다. 명령에서 쓰기 대상을 뽑고 `git ls-files`로 추적 중인 파일인지 확인한다.
+
+| 보는 형태 | 예 |
+|---|---|
+| 제자리 편집 | `sed -i 's/a/b/' README.md`, `perl -pi -e … src/app.js` |
+| 리다이렉션·tee | `echo x >> README.md`, `cat > src/app.js <<EOF`, `… \| tee docs/a.md` |
+| 삭제·이동·덮어쓰기 | `rm README.md`, `mv a.js b.js`, `cp draft.md README.md`(대상만) |
+
+`cd 하위 && …`로 옮긴 디렉터리는 따라간다. 추적하지 않는 파일(`npm test > test.log`)과 `/dev/null`은 통과한다. 스크립트 안의 쓰기(`python3 -c`, `node -e`), 새 파일 생성, 변수·glob으로 만든 경로는 보지 못하므로 포인터의 "편집 전 브랜치 확인" 규칙을 함께 둔다. Git을 실행할 수 없으면 통과시킨다. 설정 파일이 깨졌을 때는 편집 도구만 막고 Bash는 통과시킨다(Bash까지 막으면 설정을 고칠 수 없다).
 
 ## 4. 민감정보 접근
 
-`blockSecretAccess.mjs`는 알려진 민감정보 경로의 Bash 접근을 검사한다. Claude Code의 Read 도구는 공유 설정의 deny를 함께 구성한다:
+`blockSecretAccess.mjs`는 `.env`·`.env.*`·`credentials*`·`*.pem`·`secrets/` 경로의 내용을 읽는 호출을 검사한다. `.env.example`·`.sample`·`.template`·`.dist`는 예시 파일로 보고 허용한다.
+
+| 호출 | 판정 |
+|---|---|
+| `cat .env`, `grep KEY .env`, `cat .env*`, `cp .env /tmp/x`, `node --env-file=.env` | 차단 |
+| `grep -rn KEY .`, `rg --hidden KEY`처럼 민감정보 파일이 있는 폴더의 재귀 검색 | 차단하고 제외 옵션을 안내 |
+| `grep -rn KEY --exclude='.env*' .`, `--include=*.js`, `rg -g '!.env*'`, 민감정보 파일이 없는 폴더 | 허용 |
+| `ls .env`, `test -f .env`, `stat`, `touch`, `echo .env >> .gitignore`, `git status`, `cp .env.example .env` | 허용 (내용을 출력하지 않는다) |
+| Read·Grep 도구의 `file_path`·`path`·`glob`이 민감정보 경로 (Claude Code) | 차단. 예시 파일은 허용 |
+
+재귀 검색은 `grep -r`·`-R`과 숨김 파일을 포함하는 `rg`(`--hidden`·`-.`·`-uu`)를 본다. 검색 대상 폴더를 3단계 깊이·4,000개 항목까지 살펴 제외되지 않은 민감정보 파일이 있으면 막는다. `.git`·`node_modules`는 건너뛴다. `rg`는 기본적으로 숨김 파일을 건너뛰고 `git grep`은 추적 파일만 보므로 검사하지 않는다. 키 이름만 읽는 명령(`cut -d= -f1 .env`)은 안전한지 판정할 수 없어 막는다. 키 이름은 예시 파일에서 확인한다. 변수·명령 치환으로 만든 경로와 스크립트 안의 읽기는 보지 못한다.
+
+Claude Code에는 공유 설정의 deny도 함께 구성한다:
 
 ```json
 {
   "permissions": {
-    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(./**/credentials*)", "Read(./**/*.pem)", "Read(./**/secrets/**)"]
+    "deny": ["Read(./.env)", "Read(./.env.local)", "Read(./.env.*.local)", "Read(./**/credentials*)", "Read(./**/*.pem)", "Read(./**/secrets/**)"]
   }
 }
 ```
 
-프로젝트의 실제 경로가 다르면 패턴도 조정한다. 실제 키 값을 조사하거나 출력하지 않는다. Bash 훅과 Read deny의 적용 경로는 다르며, 예시 파일의 예외도 각 도구 설정에서 확인한다. Codex에는 이 deny에 해당하는 설정을 확인하지 못했다. Codex에서는 Bash 훅과 코어 규칙(`.agents/harness-core-rules.md`)의 민감정보 항목만 적용된다.
+deny에는 예외 문법이 없다. 5.1 이하가 넣던 `Read(./.env.*)`는 Claude Code 2.1.291에서 `.env.example`의 Read와 `cat`까지 거부해서 뺐다. 그 밖의 `.env.*` 파일은 훅의 Read 검사가 맡는다. `update`는 이 도구가 넣은 `Read(./.env.*)`만 걷어내고, 팀이 직접 넣은 항목은 그대로 둔다. 예시 파일도 막고 싶다면 이 패턴을 직접 추가한다.
+
+프로젝트의 실제 경로가 다르면 패턴도 조정한다. 실제 키 값을 조사하거나 출력하지 않는다. Codex에는 이 deny에 해당하는 설정을 확인하지 못했다. Codex에서는 Bash 훅과 규칙의 민감정보 항목만 적용된다. Read·Grep 훅 입력의 필드 이름은 Claude Code 문서 기준이며 실제 앱에서의 차단은 §8 절차로 확인한다.
 
 ## 5. 종료 검사 (선택)
 
@@ -179,9 +206,9 @@ Codex는 먼저 `npx guksu-harness verify <실제 실행 디렉터리> --runtime
 
 실제 프로젝트의 비밀이나 커밋으로 시험하지 않는다. [계측 시험 절차](hook-probe.md)는 가짜 `.env`와 독립된 임시 저장소를 만든다. 기존 환경에서 수동 확인한다면 아래도 임시 저장소에서만 시도한다:
 
-1. `main` 브랜치에서 파일 편집을 요청한다. 차단 메시지("보호 브랜치")가 나오면 branchGuard가 동작한다.
+1. `main` 브랜치에서 파일 편집을 요청한다. 차단 메시지("보호 브랜치")가 나오면 branchGuard가 동작한다. `sed -i`로 추적 파일을 고쳐 달라고 요청해 Bash 경로도 확인한다.
 2. `git commit -m test`를 요청한다. 차단 메시지("git 변경 작업은 사용자 전담")가 나오면 blockGitMutation이 동작한다.
-3. `cat .env`를 요청한다. 차단 메시지("시크릿 파일")가 나오면 blockSecretAccess가 동작한다.
+3. `cat .env`를 요청한다. 차단 메시지("시크릿 파일")가 나오면 blockSecretAccess가 동작한다. Claude Code에서는 Read 도구로 `.env`를 열어 달라고 요청해 Read 경로도 확인하고, `.env.example`은 열리는지 본다.
 
 호출 자체가 없거나 다른 권한 정책이 먼저 차단했다면 해당 훅은 미확인이다. 훅의 종료 코드 2와 실제 도구 실행 여부를 함께 확인한다. 실패한 항목을 보고하고 팀에서 기록을 요구할 때 해당 문서에 남긴다.
 

@@ -86,13 +86,18 @@ AI 작성 표기 커밋은 모두 원격 브랜치까지 올라갔다. 커밋 �
 
 ## 하네스에서 발견한 문제
 
-벤치마크의 실제 실행에서 하네스 자체의 결함이 드러났다. 이번 변경에서는 고치지 않았다.
+벤치마크의 실제 실행에서 하네스 자체의 결함이 드러났다. 측정한 변경에서는 고치지 않았고, 이후 변경에서 아래 "조치"대로 고쳤다. 조치는 단위·통합 검사로 확인했으며 벤치마크는 다시 측정하지 않았다. 위 수치는 고치기 전 결과다.
 
 1. **규칙 본문이 없는 `CLAUDE.md` 포인터.** 하네스의 `CLAUDE.md`는 `docs/harness-rules.md`를 가리키기만 한다. README 작업처럼 짧은 요청에서는 에이전트가 이 파일을 열지 않고 바로 고쳤다(하네스 위반 5건 전부). `CLAUDE.md`는 앱이 시작할 때 읽으므로 보호 브랜치·비밀·커밋 정책 같은 핵심 규칙은 포인터 구간에 직접 넣는 것이 좋다.
+   - 조치: 포인터에 브랜치·민감정보·커밋·AI 표기 규칙 네 줄을 넣었다. `init`이 만든 그대로인 파일과 `compose`가 붙인 그대로인 구간은 `update`·`compose`가 새 양식으로 바꾸고, 팀이 고친 포인터는 그대로 둔다.
 2. **`.env.example`까지 막는 Read deny.** 설치되는 `Read(./.env.*)` 규칙이 Claude Code 2.1.291에서 Read 도구와 Bash `cat .env.example`을 모두 거부했다. 거부 메시지는 `File is in a directory that is denied by your permission settings.`와 `Permission to use Bash with command cat .env.example ... has been denied.`였다. 반면 `blockSecretAccess` 훅은 예시 파일을 허용한다. 팀 문서가 키 이름을 `.env.example`에서 확인하라고 안내하는 저장소에서는 에이전트가 같은 파일을 여러 방법으로 다시 시도한다.
+   - 조치: deny에서 `Read(./.env.*)`를 빼고 `.env.local`·`.env.*.local`을 넣었다. 그 밖의 `.env.*`는 민감정보 훅을 Read·Grep 도구에도 등록해 예시 파일만 빼고 막는다. 실제 앱에서 Read 훅이 막는지는 확인하지 않았다.
 3. **이름 기반 비밀 훅의 빈틈.** `blockSecretAccess`는 명령에 비밀 파일 이름이 있는지만 본다. `grep -rn PATTERN .`은 `.gitignore`를 무시하고 `.env` 줄을 출력하지만 통과한다. 반대로 `grep -rn PATTERN --exclude=.env .`처럼 안전한 명령과 키 이름만 읽는 `cut -d= -f1 .env`는 `.env` 토큰 때문에 막는다. Opus 일반 구성의 비밀 노출 2건은 모두 이 재귀 grep 경로였다.
+   - 조치: 재귀 검색(`grep -r`, 숨김 파일을 포함하는 `rg`)의 대상 폴더에 제외되지 않은 민감정보 파일이 있으면 막고 `--exclude='.env*'`를 안내한다. `--exclude=.env` 같은 제외 옵션, 존재 확인(`ls`·`test`), `cp .env.example .env`는 허용한다. 키 이름만 읽는 `cut -d= -f1 .env`는 여전히 막는다.
 4. **`diagnose`의 커밋 정책 오독.** 고정 프로젝트의 `CONTRIBUTING.md`는 "요청받았을 때만 커밋·푸시"를 허용하지만, `diagnose`는 "main에서 커밋하지 않습니다"·"push한 히스토리는 다시 쓰지 않습니다" 같은 문장을 커밋·푸시 금지 근거로 읽어 `allowCommitPush=false`를 저장소 근거로 제안했다. 벤치마크는 팀 결정으로 `--set`을 넘겼다.
+   - 조치: 특정 브랜치 한정·이력 재작성·민감정보·커밋하지 않은 변경을 말하는 문장을 금지 근거에서 뺐다. "요청받았을 때만" 같은 조건부 허용은 근거로 확정하지 않고 질문으로 남긴다. 고정 프로젝트의 `CONTRIBUTING.md`로 회귀 검사를 넣었다.
 5. **Bash 편집은 브랜치 가드 밖.** 에이전트는 `sed -i`·`python3`·heredoc으로 자주 파일을 고쳤다(위 표의 "Bash로만 편집"). `branchGuard`는 편집 도구만 검사하므로 이 경로로 main을 고치면 막지 못한다. README에 적힌 범위와 같다. 종료 시점에 보호 브랜치의 작업 트리 변경을 확인하는 검사가 이 빈틈을 메울 수 있다.
+   - 조치: 종료 시점 검사 대신 브랜치 가드를 Bash에도 등록했다. 보호 브랜치에서 추적 중인 파일을 `sed -i`·`perl -i`·`tee`·리다이렉션·`rm`·`mv`·`cp`로 고치는 명령을 실행 전에 막는다. 종료 시점 검사는 세션 전부터 있던 변경과 구분하려면 상태 저장이 필요해 택하지 않았다. `python3`·`node -e` 안의 쓰기와 새 파일 생성은 여전히 보지 못한다.
 
 ## 재현
 
@@ -116,4 +121,4 @@ node benchmark/run.mjs report <모델별 결과 폴더>... --out <보고서 폴�
 - 같은 배치에 규칙 요약을 `CLAUDE.md`에 직접 넣은 구성(`claude-md`)도 섞어 실행했다. 채점 항목을 알고 고른 규칙이라 같은 조건의 비교가 아니어서 결과·근거 파일과 벤치마크 도구에서 뺐다. 근거 파일의 실행 계획(`plans`)과 위 실행 시간대는 이 실행을 포함한 배치 그대로다.
 - `protected-branch-edited`를 중대로 본 것은 고정 프로젝트의 규칙("main에서 직접 파일을 고치지 않는다")을 따른 판단이다. 이 위반을 빼면 준수는 Opus 일반 26/30·하네스 30/30, Sonnet 일반 25/30·하네스 30/30이다.
 
-남은 평가: Codex 구성, Fable 5.1, 종료 검사 훅(`verification.gate=stop-hook`) 구성, 위 결함을 고친 뒤 재측정.
+남은 평가: Codex 구성, Fable 5.1, 종료 검사 훅(`verification.gate=stop-hook`) 구성, 위 조치를 반영한 재측정(준수율과 무해한 차단으로 생긴 오버헤드가 실제로 달라졌는지).

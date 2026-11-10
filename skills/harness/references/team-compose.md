@@ -25,7 +25,7 @@ npx guksu-harness verify   <프로젝트> [--run]          # 설정 완료 / 실
 | `apps` | `claude`, `codex`, `both` | `.claude/`·`CLAUDE.md`, `.codex/`·`AGENTS.md`·`.agents/skills/`, 설치 기록 | 단서 없음 (claude) |
 | `rules.baseBranch` | 브랜치 이름 | `origin/HEAD`, 로컬 `main`·`master` | `develop`·`dev`도 있을 때 (origin/HEAD 또는 main) |
 | `protection.protectedBranches` | 브랜치 목록 | 기존 `branchGuard.config.json`; 기준 브랜치 | 기존 설정에 기준 브랜치가 없거나 장수 브랜치(develop·release·staging·production)가 더 있을 때 (기준 브랜치 포함) |
-| `protection.allowCommitPush` | true / false | 기존 `blockGitMutation.config.json`; 지침의 커밋·푸시 금지 문장 | 근거 없음 또는 지침과 설정 충돌 (false. 충돌이면 기존 파일 값 유지) |
+| `protection.allowCommitPush` | true / false | 기존 `blockGitMutation.config.json`; 지침의 커밋·푸시 금지 문장 | 근거 없음, 지침이 조건부로 허용("요청받았을 때만"), 또는 지침과 설정 충돌 (false. 충돌이면 기존 파일 값 유지) |
 | `protection.blockAttribution` | true / false | 기존 설정 | 커밋 허용일 때 (false) |
 | `verification.checks` | 명령 목록 | `package.json` scripts(test·lint·typecheck·check·build), CI `run:` 단계, Makefile. 자리표시자와 CI가 부르는데 없는 스크립트는 제외 | 후보 없음 (빈 목록) |
 | `verification.gate` | rules / stop-hook | 기존 `verifierGate.config.json`(stop-hook); 명령 없음(rules) | 검증 명령이 있을 때 (rules) |
@@ -68,7 +68,7 @@ compose가 만든 파일은 다음 진단의 근거가 되지 않는다. 기록�
 | `.agents/hooks/blockGitMutation.config.json` | `allowCommitPush`, `requireHistoryDoc`, `blockAttribution`(허용일 때), `historyBase`(기준 브랜치를 팀이 확정했을 때만) | 같음 |
 | `.agents/hooks/verifierGate.config.json` | `checks`(cwd·workspace·timeoutMs·required 포함), `maxIterations 10`, `stuckAfter 3` | gate=stop-hook일 때만. 기존 다른 키 보존 |
 | `docs/harness-rules.md` | `<!-- guksu-harness:team-policy start/end -->` 구간에 네 영역의 정책·근거·미확인 표시 | 구간 밖은 팀 자리. 파일이 없으면 팀 규칙 양식 뒤에 붙인다 |
-| `CLAUDE.md`·`AGENTS.md` | `## 하네스` 절이 없으면 `<!-- guksu-harness:pointer start/end -->` 구간 추가 | 기존 내용 보존. 절이 있으면 그대로 |
+| `CLAUDE.md`·`AGENTS.md` | `## 하네스` 절이 없으면 `<!-- guksu-harness:pointer start/end -->` 구간 추가. 구간에는 브랜치·민감정보·커밋·AI 표기 규칙 네 줄과 규칙 문서 위치가 들어간다 | 기존 내용 보존. 절이 있으면 그대로. 5.1 이하가 붙인 구간이 손대지 않은 그대로면 새 구간으로 바꾼다 |
 | 훅·코어 규칙·등록·양식 | `init`/`update`와 같은 계획 | 프로필은 기존 설치를 유지하고, 팀이 기록을 선택(confirmed)했을 때만 basic으로 올린다 |
 
 적용은 번들 파일과 팀 파일을 한 계획으로 묶어 백업 한 건으로 쓴다. 되돌리기는 `harnessManager.mjs rollback --backup <경로>`다.
@@ -97,7 +97,8 @@ compose가 만든 파일은 다음 진단의 근거가 되지 않는다. 기록�
 
 ## 7. 한계
 
-- 지침 문장의 정책 판독은 문구 패턴이다. 커밋·푸시 금지와 기록 의무만 읽고, 근거 줄을 함께 보여 준다. 잘못 읽었으면 `--set`으로 바로잡는다.
+- 지침 문장의 정책 판독은 문구 패턴이다. 커밋·푸시 금지와 기록 의무만 읽고, 근거 줄을 함께 보여 준다. 특정 브랜치에 한정한 문장("main에 직접 push하지 않는다"), 이력 재작성 금지, 민감정보·커밋하지 않은 변경을 말하는 문장은 커밋·푸시 금지로 읽지 않는다. "요청받았을 때만" 같은 조건부 허용은 근거로 확정하지 않고 질문으로 남긴다. 잘못 읽었으면 `--set`으로 바로잡는다.
+- 포인터 구간의 규칙 문장은 하네스가 넣은 것이므로 다음 진단에서 팀 지침으로 읽지 않는다.
 - 검증 명령 추출은 `package.json`·CI 워크플로·Makefile 중심이다. 다른 생태계는 표지 파일(pyproject·Cargo.toml·go.mod)로 후보만 제안한다.
 - 워크플로 읽기는 흔한 형태(`run:` 한 줄·블록, `branches:` 인라인·목록)만 다룬다.
 - 여러 저장소를 함께 구성하거나 감시하지 않는다. 명세를 다른 저장소에 가져오면 그 저장소에서 다시 진단해 충돌을 본다.

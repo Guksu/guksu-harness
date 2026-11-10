@@ -6,8 +6,10 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 import { diagnose, createCompose, applyCompose, verify, parseDecisionValue, workflowCommands, workflowBranches, renderPolicySection, decisionKeys } from './teamCompose.mjs';
-import { rollback, createPlan, applyPlan, exportPreset, importPreset, teamSpecPath } from './harnessManager.mjs';
+import { rollback, createPlan, applyPlan, exportPreset, importPreset, teamSpecPath, bundleRoot, legacyPointerAssets } from './harnessManager.mjs';
 
 const fixture = t => { const root = mkdtempSync(join(tmpdir(), 'team-compose-')); t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
 const write = (root, path, content) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), content); };
@@ -103,6 +105,10 @@ test('시나리오 1 — compose는 미리보기에서 파일을 만들지 않�
   assert.equal(byState['branchGuard 스크립트 — 보호 브랜치 편집'], 'verified');
   assert.equal(byState['blockGitMutation 스크립트 — 커밋 (차단 설정)'], 'verified');
   assert.equal(byState['blockSecretAccess 스크립트 — .env 읽기'], 'verified');
+  assert.equal(byState['blockSecretAccess 스크립트 — 재귀 검색'], 'verified');
+  assert.equal(byState['blockSecretAccess 스크립트 — 제외한 재귀 검색'], 'verified');
+  assert.equal(byState['blockSecretAccess 스크립트 — Read 도구'], 'verified');
+  assert.equal(byState['blockSecretAccess 스크립트 — Read 예시 파일'], 'verified');
   assert.equal(byState['claude 앱 안에서 훅 실행'], 'unverified');
   assert.equal(byState['codex 앱 안에서 훅 실행'], 'unverified');
   assert.equal(byState['검증 명령'], 'unverified');
@@ -344,4 +350,67 @@ test('규칙 문서 생성 구간은 명세만으로 결정되고 미확인 항�
   assert.match(text, /미확인 항목 3건: `protection.allowCommitPush`, `verification.gate`, `records.history`/);
   assert.match(text, /- `npm test`/);
   assert.doesNotMatch(text, /AI 작성 표기/, '커밋 차단 상태에서는 표기 정책을 쓰지 않는다');
+});
+
+// ── 벤치마크에서 드러난 진단·포인터 결함 ─────────────────────────────────────────
+test('진단 — 브랜치 한정·이력 재작성·조건부 허용 문장을 커밋·푸시 금지로 읽지 않는다', t => {
+  const root = fixture(t);
+  git(root, 'init', '-b', 'main');
+  // 벤치마크 고정 프로젝트의 지침: "요청받았을 때만" 커밋·푸시를 허용한다.
+  write(root, 'CONTRIBUTING.md', readFileSync(join(bundleRoot, 'benchmark/fixture/CONTRIBUTING.md'), 'utf8'));
+  const report = diagnose(root);
+  const allow = report.decisions['protection.allowCommitPush'];
+  assert.equal(allow.status, 'pending', '금지 근거로 확정하지 않고 팀에 묻는다');
+  assert.equal(allow.value, false, '권한을 넓히는 값은 답 없이 켜지 않는다');
+  assert.match(allow.basis, /조건부/);
+  assert.ok(report.questions.some(question => question.key === 'protection.allowCommitPush'));
+  assert.ok(!report.facts.some(item => item.id === 'protection.guidance'));
+
+  for (const [sentence, expected] of [
+    ['AI는 커밋하지 않는다. 커밋·푸시는 사람이 한다.', 'evidence'],
+    ['Agents must not commit or push.', 'evidence'],
+    ['`main`에 직접 push하지 않는다.', 'pending'],
+    ['이미 push한 이력은 다시 쓰지 않는다.', 'pending'],
+    ['`.env`는 커밋하지 않는다.', 'pending'],
+    ['커밋하지 않은 변경을 지우지 않는다.', 'pending'],
+    ['Never push to main.', 'pending'],
+  ]) {
+    write(root, 'CONTRIBUTING.md', `# 규칙\n\n- ${sentence}\n`);
+    assert.equal(diagnose(root).decisions['protection.allowCommitPush'].status, expected, sentence);
+  }
+});
+
+test('포인터 — 핵심 규칙을 담고, 그 문장은 다음 진단의 근거가 되지 않으며, 이전 구간은 새 구간으로 바뀐다', t => {
+  const root = fixture(t);
+  git(root, 'init', '-b', 'main');
+  write(root, 'CLAUDE.md', '# 데모\n\n- 한국어로 답한다.\n');
+  applyCompose(createCompose(root, { app: 'claude' }));
+  const pointer = readAt(root, 'CLAUDE.md');
+  assert.ok(pointer.startsWith('# 데모\n\n- 한국어로 답한다.'), '기존 내용은 보존한다');
+  for (const phrase of ['보호 브랜치', '셸 편집', 'force push', 'AI 작성 표기']) assert.ok(pointer.includes(phrase), phrase);
+  const report = diagnose(root);
+  assert.equal(report.decisions['protection.allowCommitPush'].status, 'pending', '포인터의 규칙 문장을 팀 지침으로 읽지 않는다');
+  assert.equal(applyCompose(createCompose(root)).changed, 0);
+
+  // 5.1이 붙인 구간(규칙 본문 없음)으로 되돌린 뒤 다시 compose한다.
+  const legacyBody = legacyPointerAssets[0].replace(/^# .*\n+/, '').trim();
+  const start = '<!-- guksu-harness:pointer start -->', end = '<!-- guksu-harness:pointer end -->';
+  const legacyText = `${pointer.slice(0, pointer.indexOf(start))}${start}\n${legacyBody}\n${end}\n`;
+  write(root, 'CLAUDE.md', legacyText);
+  const spec = readJson(root, teamSpecPath);
+  const { createHash } = require('node:crypto');
+  spec.generated['CLAUDE.md'] = createHash('sha256').update(`\n${legacyBody}\n`).digest('hex');
+  write(root, teamSpecPath, JSON.stringify(spec, null, 2) + '\n');
+  const plan = createCompose(root);
+  assert.equal(plan.conflicts.filter(item => item.blocking).length, 0, JSON.stringify(plan.conflicts));
+  applyCompose(plan);
+  assert.ok(readAt(root, 'CLAUDE.md').includes('보호 브랜치'));
+  assert.equal(applyCompose(createCompose(root)).changed, 0);
+
+  // 팀이 구간을 직접 고쳤으면 덮어쓰지 않는다.
+  write(root, 'CLAUDE.md', readAt(root, 'CLAUDE.md').replace('한 줄짜리 수정도 같다.', '우리 팀 문장.'));
+  const kept = createCompose(root);
+  assert.ok(!changedPaths(kept).includes('CLAUDE.md'));
+  applyCompose(kept);
+  assert.ok(readAt(root, 'CLAUDE.md').includes('우리 팀 문장.'));
 });

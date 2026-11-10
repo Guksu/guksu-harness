@@ -49,7 +49,18 @@ const parse = (text, fallback) => text == null ? fallback : JSON.parse(text);
 export const version = () => JSON.parse(readFileSync(join(bundleRoot, '.claude-plugin/plugin.json'), 'utf8')).version;
 const hookNames = ['blockGitMutation', 'blockSecretAccess', 'branchGuard'];
 const allHookNames = [...hookNames, 'verifierGate'];
-const deny = ['Read(./.env)', 'Read(./.env.*)', 'Read(./**/credentials*)', 'Read(./**/*.pem)', 'Read(./**/secrets/**)'];
+// Read deny에는 예외 문법이 없다. `Read(./.env.*)`는 .env.example까지 막아서 뺐고, 그 자리는 blockSecretAccess의 Read 검사가 맡는다.
+const deny = ['Read(./.env)', 'Read(./.env.local)', 'Read(./.env.*.local)', 'Read(./**/credentials*)', 'Read(./**/*.pem)', 'Read(./**/secrets/**)'];
+const legacyDeny = ['Read(./.env.*)']; // <=5.1이 넣은 항목. 이 도구가 넣은 것만 update에서 걷어낸다
+// <=5.1의 규칙 포인터 양식. init이 만든 그대로면 update가 핵심 규칙이 든 새 양식으로 바꾼다.
+export const legacyPointerAssets = [`# 프로젝트 작업 규칙
+
+## 하네스: 팀 설정
+
+프로젝트 정책은 \`docs/harness-rules.md\`에 있다. 공통 정책 연결은 \`.agents/harness-core-rules.md\`에 있으며 관리 도구가 갱신한다.
+
+하네스 설정 변경 시 \`npx guksu-harness check\`로 구조를 검사한다. 제품 빌드·테스트는 팀이 정한 명령을 사용한다. 기록·인계는 팀 정책 또는 사용자 요청에 따른다.
+`];
 export const hookPath = name => `${hooksDir}/${name}.mjs`;
 const legacyHookPath = name => `${legacyHooksDir}/${name}.mjs`;
 export const configPath = (dir = hooksDir, name) => `${dir}/${name}.config.json`;
@@ -124,11 +135,21 @@ const restorablePaths = new Set([
   ...allHookNames.flatMap(name => [configPath(hooksDir, name), configPath(legacyHooksDir, name)]),
 ]);
 
-function hookEntry(name, app = 'claude') {
+// 훅별 matcher. previous는 <=5.1 등록 형태다 — 그때의 훅 스크립트는 도구 종류를 구분하지 않으므로 eject한 훅에는 이 형태를 유지한다.
+// codex는 파일 편집 도구를 apply_patch로 보고한다(matcher에 Edit·Write 별칭 허용). NotebookEdit·Read·Grep은 claude 전용이다.
+const matchers = {
+  branchGuard: { claude: 'Edit|Write|NotebookEdit|Bash', codex: 'apply_patch|Edit|Write|Bash' },
+  blockSecretAccess: { claude: 'Bash|Read|Grep', codex: 'Bash' },
+};
+const previousMatchers = {
+  branchGuard: { claude: 'Edit|Write|NotebookEdit', codex: 'apply_patch|Edit|Write' },
+  blockSecretAccess: { claude: 'Bash', codex: 'Bash' },
+};
+const matcherOf = (name, app, previous = false) => (previous ? previousMatchers : matchers)[name]?.[app] ?? 'Bash';
+function hookEntry(name, app = 'claude', { previous = false } = {}) {
   if (!appNames.includes(app)) throw new Error(`알 수 없는 앱: ${app}`);
   const event = name === 'verifierGate' ? 'Stop' : 'PreToolUse';
-  // codex는 파일 편집 도구를 apply_patch로 보고한다(matcher에 Edit·Write 별칭 허용). NotebookEdit은 claude 전용이다.
-  const matcher = name === 'branchGuard' ? (app === 'codex' ? 'apply_patch|Edit|Write' : 'Edit|Write|NotebookEdit') : 'Bash';
+  const matcher = matcherOf(name, app, previous);
   // Codex는 세션 cwd에서 실행한다. 하위 패키지·worktree에서도 Git 루트의 훅을 찾는다.
   const command = app === 'codex' ? `node "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/${hookPath(name)}"` : `node "$CLAUDE_PROJECT_DIR/${hookPath(name)}"`;
   return { app, event, entry: { ...(event === 'Stop' ? {} : { matcher }), hooks: [{ type: 'command', command }] } };
@@ -137,20 +158,25 @@ function hookEntry(name, app = 'claude') {
 function legacyHookEntry(name) {
   const event = name === 'verifierGate' ? 'Stop' : 'PreToolUse';
   return { app: 'claude', event, entry: {
-    ...(event === 'Stop' ? {} : { matcher: name === 'branchGuard' ? 'Edit|Write|NotebookEdit' : 'Bash' }),
+    ...(event === 'Stop' ? {} : { matcher: matcherOf(name, 'claude', true) }),
     hooks: [{ type: 'command', command: `node "$CLAUDE_PROJECT_DIR/${legacyHookPath(name)}"` }],
   } };
 }
 // <=5.1 Codex registrations were relative to the session cwd.
 function relativeCodexHookEntry(name) {
-  const item = hookEntry(name, 'codex');
+  const item = hookEntry(name, 'codex', { previous: true });
   item.entry.hooks[0].command = `node "${hookPath(name)}"`;
   return item;
 }
+// 이 도구가 예전에 넣었을 수 있는 등록 형태 전부. update는 소유한 항목만 현재 형태로 바꾼다.
+const olderHookEntries = (name, app) => (app === 'codex'
+  ? [relativeCodexHookEntry(name), { ...hookEntry(name, 'codex'), entry: { ...hookEntry(name, 'codex').entry, hooks: relativeCodexHookEntry(name).entry.hooks } }, hookEntry(name, 'codex', { previous: true })]
+  : [legacyHookEntry(name), hookEntry(name, 'claude', { previous: true })])
+  .filter(item => !same(item, hookEntry(name, app)));
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 const normalizeOwned = item => ({ app: item?.app ?? 'claude', event: item?.event, entry: item?.entry });
 const sameHook = (a, b) => same(normalizeOwned(a), normalizeOwned(b));
-const hookNameOf = item => allHookNames.find(name => appNames.some(app => sameHook(hookEntry(name, app), item)) || sameHook(legacyHookEntry(name), item) || sameHook(relativeCodexHookEntry(name), item));
+const hookNameOf = item => allHookNames.find(name => appNames.some(app => sameHook(hookEntry(name, app), item) || olderHookEntries(name, app).some(older => sameHook(older, item))));
 const knownHook = item => hookNameOf(item) != null;
 
 function loadManifest(root) {
@@ -167,7 +193,7 @@ function loadManifest(root) {
   if (!Array.isArray(manifest.ownedHooks) || !Array.isArray(manifest.ownedDeny)) throw new Error('설치 기록의 등록 항목이 잘못되었습니다');
   manifest.ownedHooks = manifest.ownedHooks.map(normalizeOwned);
   if (manifest.ownedHooks.some(item => !knownHook(item))) throw new Error('설치 기록에 알 수 없는 훅이 있습니다');
-  if (manifest.ownedDeny.some(item => !deny.includes(item))) throw new Error('알 수 없는 권한 항목입니다');
+  if (manifest.ownedDeny.some(item => !deny.includes(item) && !legacyDeny.includes(item))) throw new Error('알 수 없는 권한 항목입니다');
   if (manifest.apps != null && (!Array.isArray(manifest.apps) || manifest.apps.some(app => !appNames.includes(app)))) throw new Error('설치 기록의 앱 항목이 잘못되었습니다');
   manifest.ejected ??= [];
   if (!Array.isArray(manifest.ejected) || manifest.ejected.some(path => !corePaths.has(path))) throw new Error('설치 기록의 eject 항목이 잘못되었습니다');
@@ -331,10 +357,13 @@ export function createPlan(project, options = {}) {
         read(safePath(root, gitConfig)) == null) {
       add(gitConfig, 'create', null, minimalGitConfig, '새 최소 구성 · 기록 게이트 선택 사용');
     }
-    // 프로젝트 파일은 없을 때만 만든다.
+    // 프로젝트 파일은 없을 때만 만든다. 예외: 규칙 포인터가 이전 양식 그대로면(팀이 손대지 않음) 핵심 규칙이 든 새 양식으로 바꾼다.
     for (const [path, source] of Object.entries(projectFiles(selectedApps, { ci }))) {
       if (operations.some(op => op.path === path)) continue;
-      if (read(safePath(root, path)) == null) add(path, 'create', null, readFileSync(join(bundleRoot, source), 'utf8'), '프로젝트 파일 · 최초 생성 후 관리하지 않음');
+      const before = read(safePath(root, path));
+      const after = readFileSync(join(bundleRoot, source), 'utf8');
+      if (before == null) add(path, 'create', null, after, '프로젝트 파일 · 최초 생성 후 관리하지 않음');
+      else if (source === pointerAsset && only == null && legacyPointerAssets.includes(before)) add(path, 'update', before, after, '이전 포인터 양식 그대로 · 핵심 규칙이 든 양식으로 교체');
     }
   }
   // 등록 파일은 기존 키를 보존하고 이 도구가 추가한 정확한 항목만 추적한다.
@@ -367,10 +396,12 @@ export function createPlan(project, options = {}) {
       const registry = loadRegistry(app);
       for (const name of activeHooks) {
         if (!selected(hookPath(name))) continue;
-        const item = hookEntry(name, app);
-        // 이전 위치로 등록한 소유 항목은 새 등록으로 교체한다. 수동 등록은 건드리지 않는다.
-        const legacy = app === 'codex' ? relativeCodexHookEntry(name) : legacyHookEntry(name);
-        if (next.ownedHooks.some(owned => sameHook(owned, legacy))) {
+        // eject한 훅은 예전 스크립트일 수 있다. 도구 종류를 구분하지 않는 스크립트에 새 matcher를 붙이면 Bash 전체를 막으므로 이전 등록 형태를 쓴다.
+        const ejected = previous.ejected.includes(hookPath(name));
+        const item = hookEntry(name, app, { previous: ejected });
+        // 이전 위치·이전 matcher로 등록한 소유 항목은 새 등록으로 교체한다. 수동 등록은 건드리지 않는다.
+        for (const legacy of olderHookEntries(name, app).filter(older => !same(older, item))) {
+          if (!next.ownedHooks.some(owned => sameHook(owned, legacy))) continue;
           registry.data.hooks[item.event] = entriesOf(registry, item.event).filter(entry => !same(entry, legacy.entry));
           next.ownedHooks = next.ownedHooks.filter(owned => !sameHook(owned, legacy));
         }
@@ -382,6 +413,13 @@ export function createPlan(project, options = {}) {
         }
       }
       if (app === 'claude') {
+        // 예시 파일까지 막던 이전 deny는 이 도구가 넣은 것만 걷어낸다. Read 검사가 든 새 훅이 그 자리를 맡으므로 eject한 훅이면 그대로 둔다.
+        if (selected(hookPath('blockSecretAccess')) && !previous.ejected.includes(hookPath('blockSecretAccess'))) {
+          for (const item of legacyDeny.filter(item => next.ownedDeny.includes(item))) {
+            registry.data.permissions.deny = registry.data.permissions.deny.filter(entry => entry !== item);
+            next.ownedDeny = next.ownedDeny.filter(entry => entry !== item);
+          }
+        }
         for (const item of deny) {
           if (!registry.data.permissions.deny.includes(item)) { registry.data.permissions.deny.push(item); next.ownedDeny.push(item); }
         }
@@ -578,6 +616,7 @@ export async function status(project) {
   const { manifest, legacyManifest } = loadManifest(root);
   const registries = Object.fromEntries(appNames.map(app => [app, parse(read(safePath(root, apps[app].registry)), {})]));
   const targetApps = manifest.apps ?? detectApps(root);
+  const outdated = []; // 이전 matcher로 등록된 훅 — Bash 편집·Read 검사가 아직 연결되지 않았다
   const hooks = allHookNames.map(name => {
     const content = read(safePath(root, hookPath(name)));
     const legacyContent = read(safePath(root, legacyHookPath(name)));
@@ -586,8 +625,10 @@ export async function status(project) {
       const item = hookEntry(name, app);
       const entries = registries[app].hooks?.[item.event];
       const commands = [item.entry.hooks[0].command, ...(app === 'codex' ? [relativeCodexHookEntry(name).entry.hooks[0].command] : [])];
-      return [app, Array.isArray(entries) && entries.some(entry =>
-        (entry.matcher ?? '') === (item.entry.matcher ?? '') && entry.hooks?.some(hook => commands.includes(hook.command)))];
+      const withMatcher = matcher => Array.isArray(entries) && entries.some(entry =>
+        (entry.matcher ?? '') === (matcher ?? '') && entry.hooks?.some(hook => commands.includes(hook.command)));
+      if (!withMatcher(item.entry.matcher) && withMatcher(hookEntry(name, app, { previous: true }).entry.matcher)) outdated.push(`${name}(${app})`);
+      return [app, withMatcher(item.entry.matcher) || withMatcher(hookEntry(name, app, { previous: true }).entry.matcher)];
     }));
     const configuration = existsSync(safePath(root, configPath(hooksDir, name))) ? 'present'
       : existsSync(safePath(root, configPath(legacyHooksDir, name))) ? 'legacy' : 'default';
@@ -619,6 +660,8 @@ export async function status(project) {
   if (Object.keys(manifest.files).length && !manifest.files[teamRulesPath] && teamRules != null && countRules(teamRules) >= 7) {
     issues.push({ level: 'warn', path: teamRulesPath, message: `팀 규칙 파일에 코어 규칙 전문이 남아 있습니다. 코어 규칙은 ${coreRulesPath}가 정본이니 이 파일에는 포인터와 팀 규칙만 남기세요` });
   }
+  const outdatedActive = outdated.filter(label => !manifest.ejected.includes(hookPath(label.split('(')[0])));
+  if (outdatedActive.length) issues.push({ level: 'warn', path: hooksDir, message: `훅 등록이 이전 형태입니다: ${outdatedActive.join(', ')}. 셸 편집·Read 도구 검사가 연결되지 않았습니다. update로 등록을 갱신하세요` });
   for (const hook of hooks) {
     const path = hookPath(hook.name);
     const missingRegistration = targetApps.some(app => !hook.registered[app]);
