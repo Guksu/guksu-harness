@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-import { createPlan, applyPlan, rollback, status, detectApps, eject, mergeThreeWay, bundleRoot, exportPreset, importPreset } from './harnessManager.mjs';
+import { createPlan, applyPlan, rollback, status, detectApps, eject, mergeThreeWay, bundleRoot, exportPreset, importPreset, legacyPointerAssets } from './harnessManager.mjs';
 const fixture = t => { const root = mkdtempSync(join(tmpdir(), 'harness-manager-')); t.after(() => rmSync(root, { recursive: true, force: true })); return root; };
 const write = (root, path, content) => { mkdirSync(join(root, path, '..'), { recursive: true }); writeFileSync(join(root, path), content); };
 
@@ -174,7 +174,7 @@ test('codex 설치는 .codex/hooks.json에 Git 루트 기준 명령과 apply_pat
   const commands = hooks.PreToolUse.flatMap(entry => entry.hooks.map(hook => hook.command));
   assert.ok(commands.includes('node "$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.agents/hooks/blockGitMutation.mjs"'));
   assert.ok(commands.every(command => !command.includes('CLAUDE_PROJECT_DIR')));
-  assert.equal(hooks.PreToolUse.find(entry => entry.matcher.includes('apply_patch')).matcher, 'apply_patch|Edit|Write');
+  assert.equal(hooks.PreToolUse.find(entry => entry.matcher.includes('apply_patch')).matcher, 'apply_patch|Edit|Write|Bash');
   assert.equal(hooks.Stop, undefined, '--verifier 없이는 Stop을 등록하지 않는다');
   const manifest = JSON.parse(readFileSync(join(root, '.agents/harness-install.json'), 'utf8'));
   assert.deepEqual(manifest.apps, ['codex']);
@@ -625,4 +625,84 @@ test('minimal로 가져온 양식은 이후 병합 가능하고 import 복원이
   applyPlan(createPlan(root));
   assert.match(readFileSync(join(root, path), 'utf8'), /새 버전/);
   assert.ok(readFileSync(join(root, path), 'utf8').endsWith('팀 가져오기\n'));
+});
+
+// ── 5.1 설치본 → 셸 편집·Read 검사가 연결된 등록으로 갱신 ─────────────────────────
+// 현재 설치를 5.1 형태로 되돌려 쓴다: 이전 matcher, 예시 파일까지 막던 deny, 규칙 본문이 없는 포인터.
+const downgradeTo51 = root => {
+  const oldMatcher = { 'Edit|Write|NotebookEdit|Bash': 'Edit|Write|NotebookEdit', 'apply_patch|Edit|Write|Bash': 'apply_patch|Edit|Write', 'Bash|Read|Grep': 'Bash' };
+  const manifestFile = join(root, '.agents/harness-install.json');
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
+  for (const item of manifest.ownedHooks) if (oldMatcher[item.entry.matcher]) item.entry.matcher = oldMatcher[item.entry.matcher];
+  manifest.ownedDeny = ['Read(./.env)', 'Read(./.env.*)', 'Read(./**/credentials*)', 'Read(./**/*.pem)', 'Read(./**/secrets/**)'];
+  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + '\n');
+  for (const file of ['.claude/settings.json', '.codex/hooks.json']) {
+    if (!existsSync(join(root, file))) continue;
+    const data = JSON.parse(readFileSync(join(root, file), 'utf8'));
+    for (const entry of data.hooks.PreToolUse) if (oldMatcher[entry.matcher]) entry.matcher = oldMatcher[entry.matcher];
+    if (data.permissions) data.permissions.deny = [...manifest.ownedDeny];
+    writeFileSync(join(root, file), JSON.stringify(data, null, 2) + '\n');
+  }
+  for (const file of ['CLAUDE.md', 'AGENTS.md']) if (existsSync(join(root, file))) writeFileSync(join(root, file), legacyPointerAssets[0]);
+};
+const matcherFor = (root, file, name) => JSON.parse(readFileSync(join(root, file), 'utf8')).hooks.PreToolUse.find(entry => entry.hooks.some(hook => hook.command.includes(`${name}.mjs`))).matcher;
+
+test('새 설치는 브랜치 가드를 Bash에도, 시크릿 훅을 Read·Grep에도 등록하고 예시 파일을 막는 deny를 넣지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { app: 'both' }));
+  assert.equal(matcherFor(root, '.claude/settings.json', 'branchGuard'), 'Edit|Write|NotebookEdit|Bash');
+  assert.equal(matcherFor(root, '.claude/settings.json', 'blockSecretAccess'), 'Bash|Read|Grep');
+  assert.equal(matcherFor(root, '.codex/hooks.json', 'branchGuard'), 'apply_patch|Edit|Write|Bash');
+  assert.equal(matcherFor(root, '.codex/hooks.json', 'blockSecretAccess'), 'Bash');
+  const deny = JSON.parse(readFileSync(join(root, '.claude/settings.json'), 'utf8')).permissions.deny;
+  assert.ok(deny.includes('Read(./.env)') && deny.includes('Read(./.env.local)'));
+  assert.ok(!deny.includes('Read(./.env.*)'), '.env.example까지 막는 패턴은 넣지 않는다');
+  const pointer = readFileSync(join(root, 'CLAUDE.md'), 'utf8');
+  for (const phrase of ['보호 브랜치', '.env', 'force push', 'AI 작성 표기', 'docs/harness-rules.md']) assert.ok(pointer.includes(phrase), `포인터에 핵심 규칙이 있다: ${phrase}`);
+});
+
+test('5.1 설치본의 update는 등록·deny·손대지 않은 포인터를 갱신하고 사용자 항목은 보존한다', async t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { app: 'both' }));
+  downgradeTo51(root);
+  const settingsFile = join(root, '.claude/settings.json');
+  const settings = JSON.parse(readFileSync(settingsFile, 'utf8'));
+  settings.permissions.deny.push('Read(./private/**)');
+  settings.hooks.PreToolUse.push({ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo user-hook' }] });
+  writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+  writeFileSync(join(root, 'AGENTS.md'), `${legacyPointerAssets[0]}\n## 우리 팀\n- 한국어로 답한다.\n`);
+  assert.ok((await status(root)).issues.some(issue => issue.message.includes('훅 등록이 이전 형태')), 'status가 갱신이 필요하다고 알린다');
+
+  const applied = applyPlan(createPlan(root));
+  assert.equal(matcherFor(root, '.claude/settings.json', 'branchGuard'), 'Edit|Write|NotebookEdit|Bash');
+  assert.equal(matcherFor(root, '.claude/settings.json', 'blockSecretAccess'), 'Bash|Read|Grep');
+  assert.equal(matcherFor(root, '.codex/hooks.json', 'branchGuard'), 'apply_patch|Edit|Write|Bash');
+  const updated = JSON.parse(readFileSync(settingsFile, 'utf8'));
+  assert.ok(!updated.permissions.deny.includes('Read(./.env.*)'), '이 도구가 넣은 이전 deny를 걷어낸다');
+  assert.ok(updated.permissions.deny.includes('Read(./private/**)'), '사용자 deny는 보존한다');
+  assert.ok(updated.hooks.PreToolUse.some(entry => entry.hooks[0].command === 'echo user-hook'), '사용자 훅은 보존한다');
+  assert.equal(updated.hooks.PreToolUse.filter(entry => entry.hooks.some(hook => hook.command.includes('branchGuard.mjs'))).length, 1, '등록이 중복되지 않는다');
+  assert.ok(readFileSync(join(root, 'CLAUDE.md'), 'utf8').includes('보호 브랜치'), '손대지 않은 포인터는 새 양식으로 바꾼다');
+  assert.ok(!readFileSync(join(root, 'AGENTS.md'), 'utf8').includes('보호 브랜치'), '팀이 고친 포인터는 그대로 둔다');
+  const result = await status(root);
+  assert.ok(!result.issues.some(issue => issue.message.includes('훅 등록이 이전 형태')));
+  assert.ok(result.hooks.filter(hook => hook.name !== 'verifierGate').every(hook => hook.registered.claude && hook.registered.codex));
+  assert.equal(createPlan(root).operations.filter(op => op.action !== 'unchanged').length, 0, '다시 실행하면 변경이 없다');
+  rollback(root, applied.backup);
+  assert.equal(matcherFor(root, '.claude/settings.json', 'branchGuard'), 'Edit|Write|NotebookEdit', '복원하면 이전 등록으로 돌아간다');
+});
+
+test('사용자가 직접 넣은 Read(./.env.*) deny와 eject한 훅의 등록은 update가 바꾸지 않는다', t => {
+  const root = fixture(t);
+  applyPlan(createPlan(root, { app: 'claude' }));
+  downgradeTo51(root);
+  const manifestFile = join(root, '.agents/harness-install.json');
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
+  manifest.ownedDeny = manifest.ownedDeny.filter(item => item !== 'Read(./.env.*)'); // 사용자가 넣은 항목으로 취급
+  writeFileSync(manifestFile, JSON.stringify(manifest, null, 2) + '\n');
+  eject(root, '.agents/hooks/branchGuard.mjs');
+  applyPlan(createPlan(root));
+  assert.ok(JSON.parse(readFileSync(join(root, '.claude/settings.json'), 'utf8')).permissions.deny.includes('Read(./.env.*)'));
+  assert.equal(matcherFor(root, '.claude/settings.json', 'branchGuard'), 'Edit|Write|NotebookEdit', '예전 스크립트일 수 있는 eject 훅에 Bash matcher를 붙이지 않는다');
+  assert.equal(matcherFor(root, '.claude/settings.json', 'blockSecretAccess'), 'Bash|Read|Grep');
 });

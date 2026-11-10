@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createPlan, readManifest, detectApps, version, bundleRoot, safePath, read, hash, json, commitChanges,
   hookPath, configPath, appFiles, teamRulesPath, teamSpecPath,
+  legacyPointerAssets,
 } from './harnessManager.mjs';
 import { validateHarness } from './validateHarness.mjs';
 import { discoverWorkspaces, resolveProjectRoot, workspaceCommands, verificationPlan } from './workspaces.mjs';
@@ -48,6 +49,12 @@ const INSTALL_COMMAND = /^(?:npm|pnpm|yarn|bun)\s+(?:ci|install|i)\b/;
 const VERIFY_COMMAND = /\b(test|lint|build|check|typecheck|tsc|eslint|vitest|jest|pytest|cargo\s+test|go\s+test)\b/;
 const GIT_WORDS = /(커밋|푸시|commit|push)/i;
 const FORBID_WORDS = /(하지\s*않|하지\s*마|금지|않는다|않습니다|말\s*것|never|do\s*not|don['’]t|must\s*not|not\s+allowed|사용자가\s*(?:직접\s*)?(?:한다|합니다|수행)|사람이\s*(?:직접\s*)?(?:한다|합니다))/i;
+// 커밋·푸시 행위 자체의 금지가 아닌 문장: 특정 브랜치 한정, 이력 재작성, 조건부 허용, 민감정보·미커밋 변경을 말하는 문장.
+const BRANCH_SCOPED = /(`?\b(?:main|master|develop|dev|release|production|staging)\b`?\s*(?:브랜치)?\s*(?:에서|에|으로|로)(?![가-힣])|(?:보호|기준|기본|배포)\s*브랜치|\b(?:on|to|into)\s+(?:the\s+)?`?(?:main|master|default|protected)\b)/i;
+const REWRITE_WORDS = /(히스토리|이력|force|강제|amend|rebase|reset|squash|다시\s*쓰)/i;
+const CONDITIONAL_WORDS = /(요청\s*(?:받|이|을|한|하|없|에)|승인|허락|리뷰\s*후|때만|경우에만|only\s+(?:when|if|after)|unless|without\s+(?:being\s+)?asked|when\s+asked|upon\s+request)/i;
+const SECRET_WORDS = /(\.env|secrets?\/|credentials|\.pem|민감정보|비밀|시크릿)/i;
+const UNCOMMITTED = /(커밋(?:하지|되지)\s*않은|미커밋|uncommitted)/gi;
 const REQUIRE_WORDS = /(필수|요구|반드시|must|required|마다|every)/i;
 
 // ── 결정 목록: 키·영역·질문·선택지·영향 ──────────────────────────────────────
@@ -118,6 +125,10 @@ const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pointerAssetText = () => readFileSync(join(bundleRoot, pointerAsset), 'utf8');
 const stripGenerated = text => Object.keys(MARK).reduce((rest, kind) =>
   rest.replace(new RegExp(`${escapeRegExp(markerStart(kind))}[\\s\\S]*?${escapeRegExp(markerEnd(kind))}`, 'g'), ''), text);
+// 하네스가 넣은 포인터 본문(현재·이전 양식)은 팀 지침이 아니다. 생성 구간과 함께 빼고 읽는다.
+const pointerBodyOf = asset => asset.replace(/^# .*\n+/, '').trim();
+const stripOurs = text => [pointerAssetText(), ...legacyPointerAssets].map(pointerBodyOf)
+  .reduce((rest, body) => rest.split(body).join(''), stripGenerated(text));
 const lineOf = (text, sentence) => text.split('\n').findIndex(line => line.includes(sentence.slice(0, 40))) + 1;
 const unique = list => [...new Set(list)];
 const decision = (value, status, basis, evidence = [], extra = {}) => ({ value, status, basis, evidence: unique(evidence), ...extra });
@@ -166,23 +177,25 @@ export function diagnose(project) {
 
   // 2. 지침 문서 — 존재, 포인터 절, 정책 문구(브랜치 접두어·커밋 금지·기록 의무). 내용은 정책 문장만 근거로 남긴다.
   const guidance = [];
-  const prefixLines = [], forbidLines = [], historyLines = [];
+  const prefixLines = [], forbidLines = [], conditionalLines = [], historyLines = [];
   for (const path of [...GUIDANCE_FILES, teamRulesPath]) {
     const text = readText(root, path);
     if (text == null) continue;
     const pointer = /##\s*하네스/.test(text);
     // 포인터만 있는 파일(init이 만든 양식 그대로, 또는 compose가 붙인 구간뿐)은 팀 지침이 아니다.
-    const remainder = stripGenerated(text).trim();
-    const pointerOnly = pointer && (remainder === '' || remainder === pointerAssetText().trim());
+    const remainder = stripOurs(text).trim();
+    const pointerOnly = pointer && (remainder === '' || remainder === pointerAssetText().split('\n')[0].trim());
     guidance.push({ path, pointer, pointerOnly, policySection: text.includes(markerStart('policy')) });
     // compose가 생성한 구간은 팀 지침이 아니다 — 정책 문구를 읽을 때 뺀다. 그래야 생성 결과가 다음 진단의 근거가 되지 않는다.
-    for (const sentence of sentences(stripGenerated(text))) {
+    for (const sentence of sentences(stripOurs(text))) {
       const line = `${path}:${lineOf(text, sentence)}`;
       const prefixes = unique([...sentence.matchAll(/\b(feat|feature|fix|bugfix|hotfix|refactor|docs|chore|test|release|perf|ci|build)\//g)].map(m => `${m[1]}/`));
       if (prefixes.length && /(브랜치|branch)/i.test(sentence)) prefixLines.push({ line, prefixes });
       // "커밋 메시지는 …"처럼 메시지 형식을 말하는 문장은 커밋 행위의 금지가 아니다.
-      const actionSentence = sentence.replace(/(커밋|commit)\s*(메시지|message)/gi, '');
-      if (GIT_WORDS.test(actionSentence) && FORBID_WORDS.test(actionSentence)) forbidLines.push({ line, sentence });
+      const actionSentence = sentence.replace(/(커밋|commit)\s*(메시지|message)/gi, '').replace(UNCOMMITTED, '');
+      if (GIT_WORDS.test(actionSentence) && CONDITIONAL_WORDS.test(actionSentence) && !REWRITE_WORDS.test(actionSentence)) conditionalLines.push({ line, sentence });
+      else if (GIT_WORDS.test(actionSentence) && FORBID_WORDS.test(actionSentence)
+        && ![BRANCH_SCOPED, REWRITE_WORDS, SECRET_WORDS].some(pattern => pattern.test(actionSentence))) forbidLines.push({ line, sentence });
       if (/docs\/history/.test(sentence) && REQUIRE_WORDS.test(sentence)) historyLines.push({ line, sentence });
     }
   }
@@ -359,12 +372,14 @@ export function diagnose(project) {
 
   const gitSelf = ours.has(gitConfigPath);
   const configuredAllow = typeof gitConfig.data?.allowCommitPush === 'boolean' ? gitConfig.data.allowCommitPush : null;
+  if (conditionalLines.length && !forbidLines.length) fact('protection.guidance.conditional', `지침은 조건부로 커밋·푸시를 허용한다: "${conditionalLines[0].sentence.slice(0, 60)}"`, conditionalLines.map(item => item.line));
   if (forbidLines.length) fact('protection.guidance', `지침에 커밋·푸시 금지 문구가 있다: "${forbidLines[0].sentence.slice(0, 60)}"`, forbidLines.map(item => item.line));
   if (configuredAllow === true && forbidLines.length && specDecision('protection.allowCommitPush')?.status !== 'confirmed') {
     conflict('protection.allow-vs-guidance', '훅 설정은 커밋·푸시를 허용하지만 지침은 금지한다', [gitConfigPath, ...forbidLines.map(item => item.line)], '팀이 protection.allowCommitPush를 정한다. 답이 없으면 기존 설정 값을 바꾸지 않고 표시만 한다');
     decisions['protection.allowCommitPush'] = decision(true, 'pending', '기존 설정(허용)과 지침(금지)이 충돌', [gitConfigPath, forbidLines[0].line], { conflict: 'protection.allow-vs-guidance', self: gitSelf });
   } else if (configuredAllow != null) decisions['protection.allowCommitPush'] = decision(configuredAllow, 'evidence', gitSelf ? 'compose가 생성한 설정' : '기존 blockGitMutation 설정', [gitConfigPath], { self: gitSelf });
   else if (forbidLines.length) decisions['protection.allowCommitPush'] = decision(false, 'evidence', '지침의 커밋·푸시 금지 문구', forbidLines.map(item => item.line));
+  else if (conditionalLines.length) decisions['protection.allowCommitPush'] = decision(false, 'pending', `지침은 조건부로 커밋·푸시를 허용한다(${conditionalLines[0].line}). 권한을 넓히는 값이라 팀 확인 전에는 차단`, conditionalLines.map(item => item.line));
   else decisions['protection.allowCommitPush'] = decision(false, 'pending', '명시된 정책이 없다. 기본값은 차단', []);
   decisions['protection.allowCommitPush'] = carry('protection.allowCommitPush', decisions['protection.allowCommitPush']);
   if (forbidLines.length && decisions['protection.allowCommitPush'].status === 'confirmed' && decisions['protection.allowCommitPush'].value === true) notes.push(`팀 확정(커밋·푸시 허용)이 지침의 금지 문구(${forbidLines[0].line})와 다르다. 지침을 고치거나 결정을 바꾼다.`);
@@ -674,6 +689,12 @@ export function createCompose(project, request = {}) {
   for (const app of appsValue) {
     const path = apps[app].pointer;
     const content = afterPlan(path);
+    // compose가 붙인 구간이 이전 양식 그대로면 핵심 규칙이 든 구간으로 바꾼다. 팀이 고친 구간은 그대로 둔다.
+    const section = content == null ? null : sectionOf(content, 'pointer');
+    if (section != null && legacyPointerAssets.some(asset => section.trim() === pointerBodyOf(asset))) {
+      teamOp(path, replaceSection(content, 'pointer', renderPointerSection()), '이전 포인터 구간 · 핵심 규칙이 든 구간으로 교체');
+      continue;
+    }
     if (content == null || /##\s*하네스/.test(content)) { if (recorded[path] != null && sectionOf(content, 'pointer') != null) generated[path] = generatedHashOf(path, content); continue; }
     teamOp(path, replaceSection(content, 'pointer', renderPointerSection()), '하네스 포인터 구간 추가 (기존 내용 보존)');
   }
@@ -808,6 +829,15 @@ export async function verify(project, { run = false, affected = false, base = nu
     expect('변경 보호', 'blockGitMutation 스크립트 — rebase', runHook('blockGitMutation', { tool_name: 'Bash', tool_input: { command: 'git rebase main' } }), 2, 'git rebase');
     expect('변경 보호', 'blockSecretAccess 스크립트 — .env 읽기', runHook('blockSecretAccess', { tool_name: 'Bash', tool_input: { command: 'cat .env' } }), 2, 'cat .env (가짜 경로)');
     expect('변경 보호', 'blockSecretAccess 스크립트 — 예시 파일', runHook('blockSecretAccess', { tool_name: 'Bash', tool_input: { command: 'cat .env.example' } }), 0, 'cat .env.example');
+    // 재귀 검색과 Read 도구 — 임시 저장소의 가짜 .env(값 없음)로 시험한다. eject했거나 고친 훅은 예전 스크립트일 수 있어 기대치를 적용하지 않는다.
+    if (readText(root, hookPath('blockSecretAccess')) === bundleHook('blockSecretAccess')) {
+    writeFileSync(join(temp, '.env'), 'VERIFY_PLACEHOLDER=\n');
+    expect('변경 보호', 'blockSecretAccess 스크립트 — 재귀 검색', runHook('blockSecretAccess', { tool_name: 'Bash', tool_input: { command: 'grep -rn KEY .' } }), 2, 'grep -rn KEY . (가짜 .env가 있는 폴더)');
+    expect('변경 보호', 'blockSecretAccess 스크립트 — 제외한 재귀 검색', runHook('blockSecretAccess', { tool_name: 'Bash', tool_input: { command: "grep -rn KEY --exclude='.env*' ." } }), 0, "grep -rn KEY --exclude='.env*' .");
+    expect('변경 보호', 'blockSecretAccess 스크립트 — Read 도구', runHook('blockSecretAccess', { tool_name: 'Read', tool_input: { file_path: join(temp, '.env') } }), 2, 'Read .env (가짜 경로)');
+    expect('변경 보호', 'blockSecretAccess 스크립트 — Read 예시 파일', runHook('blockSecretAccess', { tool_name: 'Read', tool_input: { file_path: join(temp, '.env.example') } }), 0, 'Read .env.example');
+    }
+    item('unverified', '변경 보호', 'branchGuard 스크립트 — 셸 편집', '보호 브랜치에서 추적 파일을 고치는 Bash(sed -i·리다이렉션 등) 차단은 실제 Git 저장소가 필요해 여기서 시험하지 않는다. 임시 저장소의 보호 브랜치에서 sed -i 편집을 요청해 확인한다');
     if (allow && gitConfig.requireHistoryDoc !== false) item('unverified', '기록·인계', '기록 게이트(requireHistoryDoc)', '임시 저장소에는 비교할 기준 브랜치가 없어 판정할 수 없다. 실제 저장소의 작업 브랜치에서 기록 없는 push가 차단되는지 확인한다');
   } finally { rmSync(temp, { recursive: true, force: true }); }
   if (hookNames.includes('verifierGate')) item('unverified', '검증', 'verifierGate 스크립트', existsSync(join(root, verifierConfigPath)) ? 'Stop 이벤트에서만 동작한다. 앱에서 검증 실패 상태로 턴을 끝내 차단 메시지가 나오는지 확인한다' : '설정 파일이 없어 비활성이다');

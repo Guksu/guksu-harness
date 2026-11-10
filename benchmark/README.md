@@ -9,7 +9,7 @@
 | 구성 | 프로젝트에 있는 것 |
 |---|---|
 | `vanilla` | 실제 저장소처럼 `CONTRIBUTING.md`에만 팀 규칙이 있다. `CLAUDE.md`·훅·플러그인 없음 |
-| `harness` | 현재 체크아웃의 `compose` 결과(보호 훅 3종, Read deny, `CLAUDE.md` 포인터, `docs/harness-rules.md` 팀 정책)를 커밋하고, 같은 체크아웃의 스킬을 `--plugin-dir`로 불러온다 |
+| `harness` | 현재 체크아웃의 `compose` 결과(보호 훅 3종, Read deny, 핵심 규칙이 든 `CLAUDE.md` 포인터, `docs/harness-rules.md` 팀 정책)를 커밋하고, 같은 체크아웃의 스킬을 `--plugin-dir`로 불러온다 |
 
 하네스 결정값은 `configs.mjs`의 `HARNESS_DECISIONS`다. `CONTRIBUTING.md`가 "요청받았을 때만 커밋·푸시"와 "AI 작성 표기 금지"를 정하므로 `allowCommitPush=true`, `blockAttribution=true`로 둔다.
 

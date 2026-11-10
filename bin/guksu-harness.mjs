@@ -136,7 +136,8 @@ export async function run(argv) {
   2. 훅 설정값(.agents/hooks/*.config.json)을 프로젝트에 맞춘다 — 보호 브랜치, 커밋 허용 여부.
      저장소를 진단해 팀 결정만 묻고 설정·규칙을 함께 만들려면 npx guksu-harness diagnose → compose → verify 를 쓴다.
   3. .gitignore에 .agents/harness-backups/ 와 .agents/hooks/verifierGate.*.state.json 을 추가한다. .agents/harness-base/ 는 커밋한다.
-  4. 앱에서 실제로 차단되는지 확인한다 (skills/harness/references/hooks-and-permissions.md §8).`);
+  4. 앱에서 실제로 차단되는지 확인한다 (skills/harness/references/hooks-and-permissions.md §8).
+  CLAUDE.md·AGENTS.md의 하네스 절에는 행동 전에 지킬 규칙 네 줄이 들어 있다. 팀 규칙과 다르면 그 절을 고친다.`);
     }
     return ok ? 0 : 1;
   }

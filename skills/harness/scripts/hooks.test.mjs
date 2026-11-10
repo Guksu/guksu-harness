@@ -14,7 +14,7 @@ import {
   normalizeHistoryCommitTypes,
   DEFAULT_HISTORY_COMMIT_TYPES,
 } from '../assets/hooks/blockGitMutation.mjs';
-import { referencesSecret } from '../assets/hooks/blockSecretAccess.mjs';
+import { referencesSecret, recursiveSearchHits, checkToolCall, isSecretPath } from '../assets/hooks/blockSecretAccess.mjs';
 import {
   decide,
   failureSignature,
@@ -26,6 +26,7 @@ import {
   DEFAULT_PROTECTED_BRANCHES,
   isProtectedBranch,
   readCurrentBranch,
+  bashWriteTargets,
 } from '../assets/hooks/branchGuard.mjs';
 
 test('git 변경 명령을 차단한다', () => {
@@ -695,4 +696,113 @@ test('작성자 검사 없이 간접 메시지를 허용하되 커밋 자체의 
   for (const command of ['git commit --amend --no-edit', 'git commit --fixup abc', 'git commit --squash abc']) {
     assert.equal(judgeGitCommand(command, { allowCommitPush: true }).blocked, true, command);
   }
+});
+
+// ── 벤치마크(docs/analysis/harness-benchmark.md)에서 드러난 빈틈 ─────────────────
+const hookFile = name => join(dirname(fileURLToPath(import.meta.url)), '../assets/hooks', `${name}.mjs`);
+const runHookFile = (name, payload) => spawnSync(process.execPath, [hookFile(name)], { input: JSON.stringify(payload), encoding: 'utf8' });
+const sh = (cwd, ...args) => spawnSync(args[0], args.slice(1), { cwd, encoding: 'utf8' });
+
+test('시크릿 훅 — 내용을 읽지 않는 명령과 검색 제외 옵션은 허용한다', () => {
+  const allowed = [
+    'ls -la .env',
+    'test -f .env && echo yes',
+    '[ -f .env ] || echo none',
+    'echo ".env" >> .gitignore',
+    'git status --short .env',
+    'git check-ignore .env',
+    'cp .env.example .env',
+    'grep -n PORT --exclude=.env README.md',
+    "grep -rn PORT --exclude='.env*' src",
+    "rg PORT -g '!.env*'",
+  ];
+  for (const command of allowed) assert.ok(!referencesSecret(command), `허용되어야 한다: ${command}`);
+  const blocked = [
+    'cat .env*',
+    'cp .env /tmp/copy',
+    'test -f .env && cat .env',
+    'echo "$(cat .env)"',
+    'cut -d= -f1 .env',
+    'PEM=./server.pem node sign.js',
+  ];
+  for (const command of blocked) assert.ok(referencesSecret(command), `차단되어야 한다: ${command}`);
+});
+
+test('시크릿 훅 — 시크릿 파일을 훑는 재귀 검색은 제외 옵션이 없으면 차단한다', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'hook-secret-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'apps/web'), { recursive: true });
+  await mkdir(join(root, 'src'), { recursive: true });
+  await writeFile(join(root, '.env'), 'PAYGATE_SECRET_KEY=canary\n');
+  await writeFile(join(root, '.env.example'), 'PAYGATE_SECRET_KEY=\n');
+  await writeFile(join(root, 'apps/web/.env.local'), 'TOKEN=canary\n');
+  await writeFile(join(root, 'src/config.js'), 'export const key = process.env.PAYGATE_SECRET_KEY;\n');
+  // 벤치마크에서 결제 키가 모델 문맥에 들어간 실제 명령
+  assert.deepEqual(recursiveSearchHits('grep -rn "SECRET_KEY\\|PAYGATE" --exclude-dir=.git .', root)?.files, ['.env', 'apps/web/.env.local']);
+  assert.equal(recursiveSearchHits('grep -rn PAYGATE', root)?.files[0], '.env', '경로를 생략하면 현재 디렉터리를 훑는다');
+  assert.equal(recursiveSearchHits('rg --hidden PAYGATE', root)?.command, 'rg');
+  assert.deepEqual(recursiveSearchHits('grep -rn PAYGATE --exclude=.env .', root)?.files, ['apps/web/.env.local'], '하위 패키지의 시크릿도 본다');
+  for (const safe of [
+    "grep -rn PAYGATE --exclude='.env*' .",
+    'grep -rn PAYGATE --exclude={.env,.env.local} .',
+    'grep -rn PAYGATE --include=*.js .',
+    'grep -rn PAYGATE src',
+    'grep -n PAYGATE src/config.js',
+    'rg PAYGATE',
+    "rg --hidden -g '!.env*' PAYGATE",
+    'git grep -n PAYGATE',
+  ]) assert.equal(recursiveSearchHits(safe, root), null, `허용되어야 한다: ${safe}`);
+  const blocked = runHookFile('blockSecretAccess', { cwd: root, tool_name: 'Bash', tool_input: { command: 'grep -rn PAYGATE .' } });
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /--exclude='\.env\*'/, '고치는 방법을 알려 준다');
+  assert.equal(runHookFile('blockSecretAccess', { cwd: root, tool_name: 'Bash', tool_input: { command: "grep -rn PAYGATE --exclude='.env*' ." } }).status, 0);
+});
+
+test('시크릿 훅 — Read·Grep 도구는 시크릿 파일만 막고 예시 파일은 연다', () => {
+  assert.ok(isSecretPath('/repo/apps/web/.env.production'));
+  assert.ok(!isSecretPath('/repo/.env.example'));
+  assert.match(checkToolCall({ tool_name: 'Read', tool_input: { file_path: '/repo/.env.local' } }), /차단됨/);
+  assert.match(checkToolCall({ tool_name: 'Grep', tool_input: { pattern: 'KEY', path: '/repo/secrets/prod.txt' } }), /차단됨/);
+  assert.match(checkToolCall({ tool_name: 'Grep', tool_input: { pattern: 'KEY', glob: '.env*' } }), /차단됨/);
+  assert.equal(checkToolCall({ tool_name: 'Read', tool_input: { file_path: '/repo/.env.example' } }), null);
+  assert.equal(checkToolCall({ tool_name: 'Read', tool_input: { file_path: '/repo/src/environment.ts' } }), null);
+  assert.equal(runHookFile('blockSecretAccess', { tool_name: 'Read', tool_input: { file_path: '.env' } }).status, 2);
+  assert.equal(runHookFile('blockSecretAccess', { tool_name: 'Read', tool_input: { file_path: '.env.example' } }).status, 0);
+});
+
+test('브랜치 가드 — Bash 명령에서 제자리 편집 대상을 뽑는다', () => {
+  const paths = command => bashWriteTargets(command, '/repo').map(target => target.path);
+  assert.deepEqual(paths("sed -i 's/3000/8080/' README.md"), ['s/3000/8080/', 'README.md']);
+  assert.deepEqual(paths('perl -pi -e s/a/b/ src/app.js'), ['s/a/b/', 'src/app.js']);
+  assert.deepEqual(paths('echo "port" >> README.md'), ['README.md']);
+  assert.deepEqual(paths('cat > src/new.js <<EOF'), ['src/new.js']);
+  assert.deepEqual(paths('printf x | tee -a docs/a.md'), ['docs/a.md']);
+  assert.deepEqual(paths('cp draft.md README.md'), ['README.md']);
+  assert.deepEqual(bashWriteTargets('cd docs && sed -i s/a/b/ guide.md', '/repo').at(-1), { cwd: '/repo/docs', path: 'guide.md' });
+  for (const readOnly of ['sed -n 1,5p README.md', 'cat README.md', 'npm test 2>&1', 'npm test > /dev/null', 'grep -n port README.md', 'node -e "x => y"']) {
+    assert.deepEqual(paths(readOnly).filter(path => path === 'README.md'), [], readOnly);
+  }
+});
+
+test('브랜치 가드 — 보호 브랜치에서 추적 파일을 고치는 Bash만 막는다', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'hook-branch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  sh(root, 'git', 'init', '-q', '-b', 'main');
+  await writeFile(join(root, 'README.md'), 'port 3000\n');
+  sh(root, 'git', 'add', 'README.md');
+  sh(root, 'git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '-m', 'init');
+  const bash = command => runHookFile('branchGuard', { cwd: root, tool_name: 'Bash', tool_input: { command } });
+  // 벤치마크의 하네스 위반 5건은 모두 main에서 sed -i로 README를 고친 경우였다
+  const blocked = bash("sed -i 's/3000/8080/' README.md");
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /보호 브랜치\(main\).*README\.md/);
+  assert.match(blocked.stderr, /git switch -c/);
+  assert.equal(bash('echo more >> README.md').status, 2);
+  assert.equal(bash('rm README.md').status, 2);
+  for (const allowed of ['npm test > test.log 2>&1', 'cat README.md', 'sed -n 1p README.md', 'echo x > /dev/null', 'git switch -c docs/port', 'echo x > untracked.txt']) {
+    assert.equal(bash(allowed).status, 0, `허용되어야 한다: ${allowed}`);
+  }
+  assert.equal(runHookFile('branchGuard', { cwd: root, tool_name: 'Edit', tool_input: { file_path: 'README.md' } }).status, 2, '편집 도구는 그대로 막는다');
+  sh(root, 'git', 'switch', '-q', '-c', 'docs/port');
+  assert.equal(bash("sed -i 's/3000/8080/' README.md").status, 0, '작업 브랜치에서는 통과한다');
 });
